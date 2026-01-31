@@ -81,7 +81,7 @@
                             <input type="text" id="scanner_id" class="form-control scan-input" placeholder="Enter/Scan Scanner ID here" required>
                         </div>
                         <div class="col-12 col-md-6">
-                            <input type="text" id="itr_input" class="form-control scan-input" placeholder="Enter ITR Number here" required>
+                            <input type="text" id="itr_input" class="form-control scan-input" placeholder="Enter ITR Number here (optional)">
                         </div>
                         <div class="col-12 mt-2">
                             <input type="text" id="qr_input" class="form-control scan-input" placeholder="Enter or Scan QR/Barcode here" required onkeydown="if(event.key==='Enter'){event.preventDefault();addItem();}">
@@ -144,8 +144,8 @@
             const scannerId = document.getElementById('scanner_id').value.trim();
             const itrNumber = document.getElementById('itr_input').value.trim();
             const qr = document.getElementById('qr_input').value.trim();
-            if (!scannerId || !itrNumber || !qr) {
-                alert('All fields are required.');
+            if (!scannerId || !qr) {
+                alert('Scanner ID and QR are required.');
                 return;
             }
             // Parse QR
