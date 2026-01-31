@@ -25,7 +25,7 @@ if (!is_array($items) || count($items) === 0) {
         $scanned_by = isset($item['scanner_id']) ? trim($item['scanner_id']) : '';
         if (!$item_code) {
             $fail++;
-            $failedItems[] = ['item'=>$item, 'reason'=>'Missing item code'];
+            $failedItems[] = ['item' => $item, 'reason' => 'Missing item code'];
             continue;
         }
         // Get PartName from SAP (ERP) database
@@ -37,7 +37,7 @@ if (!is_array($items) || count($items) === 0) {
         }
         if (!$part_name) {
             $fail++;
-            $failedItems[] = ['item'=>$item, 'reason'=>'Part not found in ERP'];
+            $failedItems[] = ['item' => $item, 'reason' => 'Part not found in ERP'];
             continue;
         }
         $sql = "INSERT INTO ScannedTags (ItemCode, PartName, LotNo, Quantity, ITRNumber, ScannedBy) VALUES (?, ?, ?, ?, ?, ?)";
@@ -47,10 +47,10 @@ if (!is_array($items) || count($items) === 0) {
             $fail++;
             $err = sqlsrv_errors();
             $errMsg = is_array($err) ? json_encode($err) : 'DB insert failed';
-            $failedItems[] = ['item'=>$item, 'reason'=>$errMsg];
+            $failedItems[] = ['item' => $item, 'reason' => $errMsg];
         } else {
             $success++;
-            $savedItems[] = ['item'=>$item, 'part_name'=>$part_name];
+            $savedItems[] = ['item' => $item, 'part_name' => $part_name];
         }
     }
     $pageTitle = 'Batch Save Complete';
@@ -59,18 +59,43 @@ if (!is_array($items) || count($items) === 0) {
 
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <title><?php echo htmlspecialchars($pageTitle); ?></title>
     <style>
-        body { background: #f5f7fb; }
-        .navbar .navbar-logo { max-height: 28px; width: auto; border-radius: 6px; object-fit: cover; display: inline-block }
-        .card { margin-top: 1.5rem; background-color: #fff; border-radius: 12px; box-shadow: 0 8px 30px rgba(16,24,40,0.06);} 
-        .small-note { font-size: 0.9rem; color: #6b7280 }
-        .table-responsive { max-height: 60vh; overflow: auto; }
+        body {
+            background: #f5f7fb;
+        }
+
+        .navbar .navbar-logo {
+            max-height: 28px;
+            width: auto;
+            border-radius: 6px;
+            object-fit: cover;
+            display: inline-block
+        }
+
+        .card {
+            margin-top: 1.5rem;
+            background-color: #fff;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(16, 24, 40, 0.06);
+        }
+
+        .small-note {
+            font-size: 0.9rem;
+            color: #6b7280
+        }
+
+        .table-responsive {
+            max-height: 60vh;
+            overflow: auto;
+        }
     </style>
 </head>
+
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
@@ -121,35 +146,35 @@ if (!is_array($items) || count($items) === 0) {
                             </tr>
                         </thead>
                         <tbody>
-                        <?php
-                        foreach ($savedItems as $s) {
-                            $it = $s['item'];
-                            echo '<tr>';
-                            echo '<td>' . htmlspecialchars($it['item_code'] ?? '') . '</td>';
-                            echo '<td>' . htmlspecialchars($s['part_name'] ?? '') . '</td>';
-                            echo '<td>' . htmlspecialchars($it['quantity'] ?? '') . '</td>';
-                            echo '<td>' . htmlspecialchars($it['lot_no'] ?? '') . '</td>';
-                            echo '<td>' . htmlspecialchars($it['itr_number'] ?? '') . '</td>';
-                            echo '<td>' . htmlspecialchars($it['scanner_id'] ?? '') . '</td>';
-                            echo '<td class="text-success">Saved</td>';
-                            echo '</tr>';
-                        }
-                        foreach ($failedItems as $f) {
-                            $it = $f['item'];
-                            echo '<tr>';
-                            echo '<td>' . htmlspecialchars($it['item_code'] ?? '') . '</td>';
-                            echo '<td>' . htmlspecialchars($it['part_name'] ?? '') . '</td>';
-                            echo '<td>' . htmlspecialchars($it['quantity'] ?? '') . '</td>';
-                            echo '<td>' . htmlspecialchars($it['lot_no'] ?? '') . '</td>';
-                            echo '<td>' . htmlspecialchars($it['itr_number'] ?? '') . '</td>';
-                            echo '<td>' . htmlspecialchars($it['scanner_id'] ?? '') . '</td>';
-                            echo '<td class="text-danger">' . htmlspecialchars($f['reason']) . '</td>';
-                            echo '</tr>';
-                        }
-                        if (empty($savedItems) && empty($failedItems)) {
-                            echo '<tr><td colspan="7" class="text-center">No items to display.</td></tr>';
-                        }
-                        ?>
+                            <?php
+                            foreach ($savedItems as $s) {
+                                $it = $s['item'];
+                                echo '<tr>';
+                                echo '<td>' . htmlspecialchars($it['item_code'] ?? '') . '</td>';
+                                echo '<td>' . htmlspecialchars($s['part_name'] ?? '') . '</td>';
+                                echo '<td>' . htmlspecialchars($it['quantity'] ?? '') . '</td>';
+                                echo '<td>' . htmlspecialchars($it['lot_no'] ?? '') . '</td>';
+                                echo '<td>' . htmlspecialchars($it['itr_number'] ?? '') . '</td>';
+                                echo '<td>' . htmlspecialchars($it['scanner_id'] ?? '') . '</td>';
+                                echo '<td class="text-success">Saved</td>';
+                                echo '</tr>';
+                            }
+                            foreach ($failedItems as $f) {
+                                $it = $f['item'];
+                                echo '<tr>';
+                                echo '<td>' . htmlspecialchars($it['item_code'] ?? '') . '</td>';
+                                echo '<td>' . htmlspecialchars($it['part_name'] ?? '') . '</td>';
+                                echo '<td>' . htmlspecialchars($it['quantity'] ?? '') . '</td>';
+                                echo '<td>' . htmlspecialchars($it['lot_no'] ?? '') . '</td>';
+                                echo '<td>' . htmlspecialchars($it['itr_number'] ?? '') . '</td>';
+                                echo '<td>' . htmlspecialchars($it['scanner_id'] ?? '') . '</td>';
+                                echo '<td class="text-danger">' . htmlspecialchars($f['reason']) . '</td>';
+                                echo '</tr>';
+                            }
+                            if (empty($savedItems) && empty($failedItems)) {
+                                echo '<tr><td colspan="7" class="text-center">No items to display.</td></tr>';
+                            }
+                            ?>
                         </tbody>
                     </table>
                 </div>
@@ -160,4 +185,5 @@ if (!is_array($items) || count($items) === 0) {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
+
 </html>
