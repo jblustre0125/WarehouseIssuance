@@ -19,6 +19,10 @@ function get_whpokayoke_connection()
         "PWD" => DB_PASS_WHP,
         "CharacterSet" => "UTF-8"
     ];
+    // If the server uses a self-signed or untrusted certificate, allow trusting it.
+    // For production, install a trusted certificate instead of using this.
+    $connectionOptions["Encrypt"] = "yes";
+    $connectionOptions["TrustServerCertificate"] = "yes";
     $conn = sqlsrv_connect($serverName, $connectionOptions);
     if ($conn === false) {
         die("WHPOKAYOKE DB Connection failed: " . print_r(sqlsrv_errors(), true));
@@ -35,6 +39,10 @@ function get_erp_connection()
         "PWD" => DB_PASS_ERP,
         "CharacterSet" => "UTF-8"
     ];
+    // If the server uses a self-signed or untrusted certificate, allow trusting it.
+    // For production, install a trusted certificate instead of using this.
+    $connectionOptions["Encrypt"] = "yes";
+    $connectionOptions["TrustServerCertificate"] = "yes";
     $conn = sqlsrv_connect($serverName, $connectionOptions);
     if ($conn === false) {
         die("ERP DB Connection failed: " . print_r(sqlsrv_errors(), true));
