@@ -45,6 +45,82 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: 0');
 
+$conn = get_whpokayoke_connection();
+
+function issuer_report_has_column($conn, $table, $column)
+{
+    return (bool)fetch_one(
+        $conn,
+        "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND COLUMN_NAME = ?",
+        [$table, $column]
+    );
+}
+
+$traceHasReceiveStatus = issuer_report_has_column($conn, 'RawmatTraceLines', 'VerificationStatus');
+$traceHasReceivedBy = issuer_report_has_column($conn, 'RawmatTraceLines', 'ReceivedByUsername');
+$traceHasReceivedAt = issuer_report_has_column($conn, 'RawmatTraceLines', 'ReceivedAt');
+$traceHasReceivedScanAt = issuer_report_has_column($conn, 'RawmatTraceLines', 'ReceivedScanAt');
+
+$localReceiveStatusExpr = $traceHasReceiveStatus ? 'TL.VerificationStatus' : "CAST('' AS NVARCHAR(80))";
+$localScannedByExpr = $traceHasReceivedBy ? 'TL.ReceivedByUsername' : "CAST('' AS NVARCHAR(120))";
+if ($traceHasReceivedScanAt && $traceHasReceivedAt) {
+    $localReceivedAtExpr = 'COALESCE(TL.ReceivedScanAt, TL.ReceivedAt)';
+} elseif ($traceHasReceivedScanAt) {
+    $localReceivedAtExpr = 'TL.ReceivedScanAt';
+} elseif ($traceHasReceivedAt) {
+    $localReceivedAtExpr = 'TL.ReceivedAt';
+} else {
+    $localReceivedAtExpr = 'CAST(NULL AS DATETIME)';
+}
+
+// Local receiver confirmation is the safest sign that the receiver process has run.
+// SAP/ScanPlus can sometimes return transfer data before local receiving is finalized.
+$localReceiverApply = "
+    OUTER APPLY (
+        SELECT TOP 1
+            {$localReceiveStatusExpr} AS LocalReceiveStatus,
+            {$localScannedByExpr} AS LocalScannedBy,
+            {$localReceivedAtExpr} AS LocalReceivedAt
+        FROM RawmatTraceLines TL
+        INNER JOIN RawmatTraceHeader TH ON TH.TraceID = TL.TraceID
+        WHERE TH.TraceNo = IT.TraceNo
+          AND TL.ItemCode = IT.ItemCode
+          AND (
+                ISNULL(TL.LotNo, NCHAR(0)) = ISNULL(IT.LotNo, NCHAR(0))
+                OR LEN(LTRIM(RTRIM(ISNULL(TL.LotNo, NCHAR(0))))) = 0
+                OR LEN(LTRIM(RTRIM(ISNULL(IT.LotNo, NCHAR(0))))) = 0
+          )
+        ORDER BY TL.TraceLineID DESC
+    ) LocalRx";
+
+// WH Lot No was added after the original report. Detect the actual DB column name
+// so older environments do not throw a 500 error if the column is not present yet.
+$warehouseLotColumn = '';
+foreach (['WarehouseLotNo', 'WHLotNo', 'WarehouseLot', 'WhLotNo'] as $candidateColumn) {
+    try {
+        $checkRows = fetch_all(
+            $conn,
+            "SELECT COL_LENGTH('dbo.IssuanceTransactions', '" . str_replace("'", "''", $candidateColumn) . "') AS ColumnLength",
+            []
+        );
+
+        if ((int)($checkRows[0]['ColumnLength'] ?? 0) > 0) {
+            $warehouseLotColumn = $candidateColumn;
+            break;
+        }
+    } catch (Throwable $e) {
+        $warehouseLotColumn = '';
+    }
+}
+
+$warehouseLotSelect = $warehouseLotColumn !== ''
+    ? 'IT.[' . str_replace(']', ']]', $warehouseLotColumn) . '] AS WarehouseLotNo'
+    : "CAST('' AS NVARCHAR(100)) AS WarehouseLotNo";
+$warehouseLotSearchSql = $warehouseLotColumn !== ''
+    ? "
+        OR IT.[" . str_replace(']', ']]', $warehouseLotColumn) . "] LIKE ?"
+    : '';
+
 $where = [
     'IT.IssuedAt >= ?',
     'IT.IssuedAt < DATEADD(day, 1, ?)'
@@ -65,16 +141,21 @@ if ($q !== '') {
         IT.TraceNo LIKE ?
         OR IT.ItemCode LIKE ?
         OR IT.PartName LIKE ?
-        OR IT.LotNo LIKE ?
+        OR IT.LotNo LIKE ?' . $warehouseLotSearchSql . '
         OR IT.ITRNumber LIKE ?
         OR IT.IssuedByUsername LIKE ?
     )';
 
     $like = '%' . $q . '%';
-    array_push($params, $like, $like, $like, $like, $like, $like);
+    array_push($params, $like, $like, $like, $like);
+
+    if ($warehouseLotColumn !== '') {
+        $params[] = $like;
+    }
+
+    array_push($params, $like, $like);
 }
 
-$conn = get_whpokayoke_connection();
 $whereSql = implode(' AND ', $where);
 
 $countSql = '
@@ -100,8 +181,14 @@ $sql = '
         Req.IssuedQty AS RequestLineIssuedQty,
         Req.RequestNo,
         Req.RequestedByUsername,
+        Req.RequestHeaderStatus,
+        Req.RequestLineStatus,
+        LocalRx.LocalReceiveStatus,
+        LocalRx.LocalScannedBy,
+        LocalRx.LocalReceivedAt,
         IT.Quantity,
         IT.LotNo,
+        ' . $warehouseLotSelect . ',
         IT.ITRNumber,
         IT.ITRDocEntry,
         IT.ITRLineNum,
@@ -114,6 +201,8 @@ $sql = '
         SELECT TOP 1
             H.RequestNo,
             H.RequestedByUsername,
+            H.Status AS RequestHeaderStatus,
+            L.Status AS RequestLineStatus,
             L.RequestedQty,
             L.IssuedQty
         FROM WarehouseIssueRequestHeader H
@@ -137,6 +226,7 @@ $sql = '
             H.RequestedAt DESC,
             L.RequestLineID DESC
     ) Req
+    ' . $localReceiverApply . '
     WHERE ' . $whereSql . '
     ORDER BY IssuedAt DESC, TransactionID DESC
 ';
@@ -243,6 +333,93 @@ function enrich_issuer_scan_rows_with_scanplus(&$rows, $whpConn)
 
 enrich_issuer_scan_rows_with_scanplus($rows, $conn);
 
+function issuer_report_valid_datetime($value): bool
+{
+    $dateValue = trim(report_cell($value));
+    return $dateValue !== '' && strpos($dateValue, '1900-01-01') !== 0;
+}
+
+function issuer_report_received_status($status): bool
+{
+    $status = strtoupper(trim((string)$status));
+    return in_array($status, ['RECEIVED', 'CLOSED', 'COMPLETED', 'MATCHED'], true);
+}
+
+function issuer_row_is_received($row): bool
+{
+    return issuer_report_received_status($row['RequestHeaderStatus'] ?? '') ||
+        issuer_report_received_status($row['RequestLineStatus'] ?? '') ||
+        issuer_report_received_status($row['LocalReceiveStatus'] ?? '') ||
+        issuer_report_received_status($row['ScanStatus'] ?? '') ||
+        trim((string)($row['LocalScannedBy'] ?? '')) !== '' ||
+        issuer_report_valid_datetime($row['LocalReceivedAt'] ?? '') ||
+        issuer_report_valid_datetime($row['ReceivedAt'] ?? '');
+}
+
+
+function issuer_cap_received_qty($sapQty, $row)
+{
+    $qty = (float)($sapQty ?? 0);
+
+    if ($qty <= 0) {
+        return '';
+    }
+
+    $limits = [];
+
+    foreach (['Quantity', 'RequestedQty'] as $field) {
+        if (isset($row[$field]) && is_numeric($row[$field]) && (float)$row[$field] > 0) {
+            $limits[] = (float)$row[$field];
+        }
+    }
+
+    if (!empty($limits)) {
+        $qty = min($qty, min($limits));
+    }
+
+    return rtrim(rtrim(number_format($qty, 3, '.', ''), '0'), '.');
+}
+
+function report_received_value($row, $field)
+{
+    if (!issuer_row_is_received($row)) {
+        return '';
+    }
+
+    if ($field === 'BarcodeUser') {
+        $local = trim((string)($row['LocalScannedBy'] ?? ''));
+        if ($local !== '') {
+            return $local;
+        }
+    }
+
+    if ($field === 'ReceivedAt') {
+        $localDate = $row['LocalReceivedAt'] ?? '';
+        if (issuer_report_valid_datetime($localDate)) {
+            return report_cell($localDate);
+        }
+
+        $dateValue = $row[$field] ?? '';
+        return issuer_report_valid_datetime($dateValue) ? report_cell($dateValue) : '';
+    }
+
+    if ($field === 'ReceivedQty') {
+        return issuer_cap_received_qty($row[$field] ?? 0, $row);
+    }
+
+    return $row[$field] ?? '';
+}
+
+// Show received values only when receiving is confirmed locally or SAP returns a real
+// receive timestamp/status. Do not show SAP_RECEIVED rows with the placeholder 1900 date.
+foreach ($rows as &$issuerReportRow) {
+    $issuerReportRow['IssueStatus'] = 'ISSUED';
+    $issuerReportRow['DisplayReceivedQty'] = report_received_value($issuerReportRow, 'ReceivedQty');
+    $issuerReportRow['DisplayBarcodeUser'] = report_received_value($issuerReportRow, 'BarcodeUser');
+    $issuerReportRow['DisplayReceivedAt'] = report_received_value($issuerReportRow, 'ReceivedAt');
+}
+unset($issuerReportRow);
+
 $baseQuery = [
     'date_from' => $dateFrom,
     'date_to' => $dateTo
@@ -263,11 +440,12 @@ $columns = [
     'Part Name',
     'Req Qty',
     'Iss Qty',
-    'Qty',
-    'Lot',
+    'Received Qty (SAP)',
+    'GRPO Lot No',
+    'WH Lot No',
     'ITR/IT',
     'Iss By',
-    'Scan Status',
+    'Issue Status',
     'Barcode User',
     'Scanned At',
     'Hostname',
@@ -311,13 +489,14 @@ if ($export) {
                     <td><?= excel_cell($r['PartName'] ?? '') ?></td>
                     <td><?= excel_cell($r['RequestedQty'] ?? '') ?></td>
                     <td><?= excel_cell($r['Quantity'] ?? '') ?></td>
-                    <td><?= excel_cell($r['ReceivedQty'] ?? '') ?></td>
+                    <td><?= excel_cell($r['DisplayReceivedQty'] ?? '') ?></td>
                     <td><?= excel_cell($r['LotNo'] ?? '') ?></td>
+                    <td><?= excel_cell($r['WarehouseLotNo'] ?? '') ?></td>
                     <td><?= excel_cell($r['ITRNumber'] ?? '') ?></td>
                     <td><?= excel_cell($r['IssuedByUsername'] ?? '') ?></td>
-                    <td><?= excel_cell($r['ScanStatus'] ?? '') ?></td>
-                    <td><?= excel_cell($r['BarcodeUser'] ?? '') ?></td>
-                    <td><?= excel_cell($r['ReceivedAt'] ?? '') ?></td>
+                    <td><?= excel_cell($r['IssueStatus'] ?? 'ISSUED') ?></td>
+                    <td><?= excel_cell($r['DisplayBarcodeUser'] ?? '') ?></td>
+                    <td><?= excel_cell($r['DisplayReceivedAt'] ?? '') ?></td>
                     <td><?= excel_cell($r['DeviceHostname'] ?? '') ?></td>
                     <td><?= excel_cell($r['DeviceIPAddress'] ?? '') ?></td>
                     <td><?= excel_cell($r['IssuedAt'] ?? '') ?></td>
@@ -652,8 +831,9 @@ if ($export) {
         .col-trace { width: 9%; white-space: nowrap; }
         .col-item { width: 8%; white-space: nowrap; }
         .col-part { width: 14%; white-space: normal; line-height: 1.25; }
-        .col-qty { width: 6%; text-align: right; white-space: nowrap; }
+        .col-qty { width: 5%; text-align: right; white-space: nowrap; }
         .col-lot { width: 7%; white-space: nowrap; }
+        .col-wh-lot { width: 7%; white-space: nowrap; }
         .col-itr { width: 6%; white-space: nowrap; }
         .col-user { width: 8%; white-space: nowrap; }
         .col-status { width: 8%; white-space: nowrap; }
@@ -795,6 +975,7 @@ if ($export) {
             .col-part,
             .col-qty,
             .col-lot,
+            .col-wh-lot,
             .col-itr,
             .col-user,
             .col-status,
@@ -807,6 +988,11 @@ if ($export) {
 
             .col-part {
                 min-width: 240px;
+            }
+
+            .col-lot,
+            .col-wh-lot {
+                min-width: 150px;
             }
 
             .col-date {
@@ -847,7 +1033,7 @@ if ($export) {
             <div>
                 <h4 class="page-title">Issuer Scan Report</h4>
                 <div class="page-subtitle">
-                    Issued transaction history by date range, with receiver scan details cached from SAP into WHPOKAYOKE.
+                    Issued transaction history by date range. Issue status remains ISSUED; receiver details are shown separately when available.
                 </div>
             </div>
 
@@ -915,7 +1101,7 @@ if ($export) {
                                 id="searchReport"
                                 name="q"
                                 value="<?= h($q) ?>"
-                                placeholder="Search SAP code, part name, trace, lot, ITR, issuer..."
+                                placeholder="Search SAP code, part name, trace, GRPO lot, WH lot, ITR, issuer..."
                             >
                             <div class="form-text">
                                 Use SAP ItemCode or Part Name to search items. Press Enter or click Filter to search all records.
@@ -933,11 +1119,12 @@ if ($export) {
                                 <th class="col-part">Part Name</th>
                                 <th class="col-qty">Req Qty</th>
                                 <th class="col-qty">Iss Qty</th>
-                                <th class="col-qty">Qty</th>
-                                <th class="col-lot">Lot</th>
+                                <th class="col-qty">Received Qty (SAP)</th>
+                                <th class="col-lot">GRPO Lot No</th>
+                                <th class="col-wh-lot">WH Lot No</th>
                                 <th class="col-itr">ITR/IT</th>
                                 <th class="col-user">Iss By</th>
-                                <th class="col-status">Scan Status</th>
+                                <th class="col-status">Issue Status</th>
                                 <th class="col-user">Barcode User</th>
                                 <th class="col-date">Scanned At</th>
                                 <th class="col-host">Hostname</th>
@@ -956,7 +1143,7 @@ if ($export) {
                             <?php else: ?>
                                 <?php foreach ($rows as $r): ?>
                                     <?php
-                                        $scanStatus = strtolower((string)($r['ScanStatus'] ?? ''));
+                                        $scanStatus = strtolower((string)($r['IssueStatus'] ?? 'ISSUED'));
                                     ?>
                                     <tr>
                                         <td class="col-trace" title="<?= h(report_cell($r['TraceNo'] ?? '')) ?>">
@@ -979,12 +1166,16 @@ if ($export) {
                                             <?= h(report_cell($r['Quantity'] ?? '')) ?>
                                         </td>
 
-                                        <td class="col-qty" title="<?= h(report_cell($r['ReceivedQty'] ?? '')) ?>">
-                                            <?= h(report_cell($r['ReceivedQty'] ?? '')) ?>
+                                        <td class="col-qty" title="SAP received qty: <?= h(report_cell($r['DisplayReceivedQty'] ?? '')) ?>">
+                                            <?= h(report_cell($r['DisplayReceivedQty'] ?? '')) ?>
                                         </td>
 
                                         <td class="col-lot" title="<?= h(report_cell($r['LotNo'] ?? '')) ?>">
                                             <?= h(report_cell($r['LotNo'] ?? '')) ?>
+                                        </td>
+
+                                        <td class="col-wh-lot" title="<?= h(report_cell($r['WarehouseLotNo'] ?? '')) ?>">
+                                            <?= h(report_cell($r['WarehouseLotNo'] ?? '')) ?>
                                         </td>
 
                                         <td class="col-itr" title="<?= h(report_cell($r['ITRNumber'] ?? '')) ?>">
@@ -995,20 +1186,18 @@ if ($export) {
                                             <?= h(report_cell($r['IssuedByUsername'] ?? '')) ?>
                                         </td>
 
-                                        <td class="col-status" title="<?= h(report_cell($r['ScanStatus'] ?? '')) ?>">
-                                            <?php if (trim((string)($r['ScanStatus'] ?? '')) !== ''): ?>
-                                                <span class="status-pill status-<?= h($scanStatus) ?>">
-                                                    <?= h(report_cell($r['ScanStatus'] ?? '')) ?>
-                                                </span>
-                                            <?php endif; ?>
+                                        <td class="col-status" title="<?= h(report_cell($r['IssueStatus'] ?? 'ISSUED')) ?>">
+                                            <span class="status-pill status-issued">
+                                                <?= h(report_cell($r['IssueStatus'] ?? 'ISSUED')) ?>
+                                            </span>
                                         </td>
 
-                                        <td class="col-user" title="<?= h(report_cell($r['BarcodeUser'] ?? '')) ?>">
-                                            <?= h(report_cell($r['BarcodeUser'] ?? '')) ?>
+                                        <td class="col-user" title="<?= h(report_cell($r['DisplayBarcodeUser'] ?? '')) ?>">
+                                            <?= h(report_cell($r['DisplayBarcodeUser'] ?? '')) ?>
                                         </td>
 
-                                        <td class="col-date" title="<?= h(report_cell($r['ReceivedAt'] ?? '')) ?>">
-                                            <?= h(report_cell($r['ReceivedAt'] ?? '')) ?>
+                                        <td class="col-date" title="<?= h(report_cell($r['DisplayReceivedAt'] ?? '')) ?>">
+                                            <?= h(report_cell($r['DisplayReceivedAt'] ?? '')) ?>
                                         </td>
 
                                         <td class="col-host" title="<?= h(report_cell($r['DeviceHostname'] ?? '')) ?>">
@@ -1031,7 +1220,7 @@ if ($export) {
 
                 <div class="small text-muted mt-2">
                     Showing page <?= number_format($page) ?> of <?= number_format($totalPages) ?>.
-                    Receiver scan status, quantity, barcode user, and scanned date are read from the WHPOKAYOKE cache, with missing or stale rows refreshed from SAP.
+                    Issue status shows the issuer transaction state. Receiver quantity, barcode user, and scanned date are still read from the WHPOKAYOKE cache when available.
                 </div>
 
                 <?php if (!$export && $totalPages > 1): ?>

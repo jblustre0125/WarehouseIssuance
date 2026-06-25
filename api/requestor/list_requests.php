@@ -48,6 +48,7 @@ $rows = fetch_all(
         L.PartName,
         L.RequestedQty,
         ISNULL(L.IssuedQty, 0) AS IssuedQty,
+        L.LotNo,
         L.Status AS LineStatus
      FROM WarehouseIssueRequestHeader H
      INNER JOIN WarehouseIssueRequestLines L ON L.RequestID = H.RequestID
@@ -64,6 +65,7 @@ foreach ($rows as $sigRow) {
         $sigRow['RequestLineID'] ?? '',
         $sigRow['RequestedQty'] ?? '',
         $sigRow['IssuedQty'] ?? '',
+        $sigRow['LotNo'] ?? '',
         $sigRow['LineStatus'] ?? ''
     ]);
 }
@@ -204,6 +206,7 @@ foreach ($rows as $r) {
         'requested_qty' => $requestedQty,
         'issued_qty' => $issuedQty,
         'remaining_qty' => max(0, $requestedQty - $issuedQty),
+        'lot_no' => (string)($r['LotNo'] ?? ''),
         'source_stock_qty' => (float)$stock['source_stock_qty'],
         'destination_stock_qty' => (float)$stock['destination_stock_qty'],
         'from_whs_code' => (string)$stock['from_whs_code'],

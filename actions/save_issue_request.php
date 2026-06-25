@@ -112,6 +112,7 @@ foreach ($items as $idx => $item) {
     $itemCode = save_issue_trim($item['item_code'] ?? '');
     $partName = save_issue_trim($item['part_name'] ?? '');
     $qtyRaw = save_issue_trim($item['request_qty'] ?? '');
+    $lotNo = save_issue_trim($item['lot_no'] ?? '');
 
     if ($docEntry <= 0) {
         $docEntry = $itrDocEntry;
@@ -150,6 +151,7 @@ foreach ($items as $idx => $item) {
         'line_num' => $lineNum,
         'item_code' => $itemCode,
         'part_name' => $partName,
+        'lot_no' => $lotNo,
         'request_qty' => $qty
     ];
 }
@@ -306,10 +308,11 @@ foreach ($validItems as $line) {
                 PartName,
                 RequestedQty,
                 IssuedQty,
+                LotNo,
                 Status
             )
         VALUES
-            (?, ?, ?, ?, ?, ?, ?, 0, 'OPEN')
+            (?, ?, ?, ?, ?, ?, ?, 0, ?, 'OPEN')
     ";
 
     $lineStmt = sqlsrv_query(
@@ -322,7 +325,8 @@ foreach ($validItems as $line) {
             $line['line_num'],
             $line['item_code'],
             $line['part_name'],
-            $line['request_qty']
+            $line['request_qty'],
+            $line['lot_no']
         ]
     );
 

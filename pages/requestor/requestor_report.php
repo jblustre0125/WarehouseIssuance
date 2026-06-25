@@ -116,6 +116,64 @@ function request_report_sap_key($docEntry, $lineNum, $itemCode)
     return $docEntry . '|' . $lineNum . '|' . $itemCode;
 }
 
+function request_report_is_received_status($status)
+{
+    $status = strtoupper(trim((string)$status));
+
+    return in_array($status, [
+        'RECEIVED',
+        'CLOSED',
+        'COMPLETED',
+        'MATCHED'
+    ], true);
+}
+
+function request_report_valid_datetime($value)
+{
+    $dateText = trim(request_report_cell($value));
+    return $dateText !== '' && strpos($dateText, '1900-01-01') !== 0;
+}
+
+function request_report_row_is_received(array $row)
+{
+    return request_report_is_received_status($row['HeaderStatus'] ?? '') ||
+        request_report_is_received_status($row['ReceiveStatus'] ?? '') ||
+        trim((string)($row['ScannedBy'] ?? '')) !== '' ||
+        request_report_valid_datetime($row['ScannedAt'] ?? '') ||
+        request_report_valid_datetime($row['ClosedAt'] ?? '');
+}
+
+function request_report_scanplus_is_received(array $scanPlus)
+{
+    return request_report_is_received_status($scanPlus['receive_status'] ?? '') ||
+        request_report_valid_datetime($scanPlus['scanned_at'] ?? '') ||
+        request_report_valid_datetime($scanPlus['closed_at'] ?? '');
+}
+
+
+function request_report_cap_received_qty($sapQty, array $row)
+{
+    $qty = (float)($sapQty ?? 0);
+
+    if ($qty <= 0) {
+        return '';
+    }
+
+    $limits = [];
+
+    foreach (['IssuedQty', 'RequestedQty'] as $field) {
+        if (isset($row[$field]) && is_numeric($row[$field]) && (float)$row[$field] > 0) {
+            $limits[] = (float)$row[$field];
+        }
+    }
+
+    if (!empty($limits)) {
+        $qty = min($qty, min($limits));
+    }
+
+    return rtrim(rtrim(number_format($qty, 3, '.', ''), '0'), '.');
+}
+
 function request_report_enrich_scanplus(array &$rows)
 {
     if (empty($rows)) {
@@ -328,6 +386,17 @@ function request_report_enrich_scanplus(array &$rows)
         $scanPlus = $scanPlusByLine[$key];
         $localStatus = strtoupper(trim((string)($row['ReceiveStatus'] ?? '')));
 
+        // Show SAP received quantity only when receiving is confirmed locally or SAP has
+        // a real receive timestamp/status. This avoids showing placeholder SAP_RECEIVED data
+        // for newly issued rows that still have the default 1900 date.
+        $sapReceivedConfirmed = request_report_scanplus_is_received($scanPlus);
+        if (!request_report_row_is_received($row) && !$sapReceivedConfirmed) {
+            $row['SAPReceivedQty'] = '';
+            continue;
+        }
+
+        $row['SAPReceivedQty'] = request_report_cap_received_qty($scanPlus['transfer_qty'] ?? 0, $row);
+
         if (trim((string)($row['ScannedBy'] ?? '')) === '') {
             $row['ScannedBy'] = $scanPlus['scanned_by'];
         }
@@ -441,6 +510,23 @@ $sql = "
 $rows = fetch_all($conn, $sql, $params);
 request_report_enrich_scanplus($rows);
 
+foreach ($rows as &$requestReportRow) {
+    if (!request_report_row_is_received($requestReportRow)) {
+        $requestReportRow['SAPReceivedQty'] = '';
+        $requestReportRow['ScannedBy'] = '';
+        $requestReportRow['ScannedArea'] = '';
+        $requestReportRow['ScannedAt'] = '';
+        $requestReportRow['ClosedAt'] = '';
+
+        if (strtoupper(trim((string)($requestReportRow['ReceiveStatus'] ?? ''))) === 'SAP_RECEIVED') {
+            $requestReportRow['ReceiveStatus'] = '';
+        }
+    } elseif (!isset($requestReportRow['SAPReceivedQty'])) {
+        $requestReportRow['SAPReceivedQty'] = '';
+    }
+}
+unset($requestReportRow);
+
 $columns = [
     'Request No',
     'ITR/IT',
@@ -450,6 +536,7 @@ $columns = [
     'Part Name',
     'Requested Qty',
     'Issued Qty',
+    'Received Qty (SAP)',
     'Lot',
     'Requested By',
     'Requested At',
@@ -501,6 +588,7 @@ if ($export) {
                     <td><?= request_excel_cell($r['PartName'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['RequestedQty'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['IssuedQty'] ?? '') ?></td>
+                    <td><?= request_excel_cell($r['SAPReceivedQty'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['LotNo'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['RequestedByUsername'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['RequestedAt'] ?? '') ?></td>
@@ -967,7 +1055,7 @@ if ($export) {
             }
 
             .report-table {
-                min-width: 1650px;
+                min-width: 1750px;
                 table-layout: auto;
                 font-size: 12px;
             }
@@ -1046,7 +1134,7 @@ if ($export) {
             <div>
                 <h4 class="page-title">Requestor Report</h4>
                 <div class="page-subtitle">
-                    Issue request history by date range, including receiver scan details.
+                    Issue request history by date range. Receiver scan details and SAP received quantity appear only after receiving is completed.
                 </div>
             </div>
 
@@ -1109,7 +1197,7 @@ if ($export) {
                 <input
                     id="searchReport"
                     class="form-control form-control-sm mb-3"
-                    placeholder="Search request, ITR, item, status, scanned by..."
+                    placeholder="Search request, ITR, item, status, received qty, scanned by..."
                 >
 
                 <div class="report-table-wrap">
@@ -1124,6 +1212,7 @@ if ($export) {
                                 <th class="col-part">Part Name</th>
                                 <th class="col-qty">Req Qty</th>
                                 <th class="col-qty">Iss Qty</th>
+                                <th class="col-qty">Received Qty (SAP)</th>
                                 <th class="col-lot">Lot / Qty</th>
                                 <th class="col-user">Req By</th>
                                 <th class="col-date">Requested At</th>
@@ -1183,6 +1272,10 @@ if ($export) {
 
                                         <td class="col-qty" title="<?= h(request_report_cell($r['IssuedQty'] ?? '')) ?>">
                                             <?= h(request_report_cell($r['IssuedQty'] ?? '')) ?>
+                                        </td>
+
+                                        <td class="col-qty" title="<?= h(request_report_cell($r['SAPReceivedQty'] ?? '')) ?>">
+                                            <?= h(request_report_cell($r['SAPReceivedQty'] ?? '')) ?>
                                         </td>
 
                                         <td class="col-lot" title="<?= h(request_report_cell($r['LotNo'] ?? '')) ?>">

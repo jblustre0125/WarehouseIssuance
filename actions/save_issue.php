@@ -69,13 +69,17 @@ $lineHasSapLineNum = whp_has_column($conn, 'RawmatTraceLines', 'SAP_IT_LineNum')
 $lineHasRequestId = whp_has_column($conn, 'RawmatTraceLines', 'IssueRequestID');
 $lineHasRequestLineId = whp_has_column($conn, 'RawmatTraceLines', 'IssueRequestLineID');
 $lineHasVerificationStatus = whp_has_column($conn, 'RawmatTraceLines', 'VerificationStatus');
+$lineHasWarehouseLot = whp_has_column($conn, 'RawmatTraceLines', 'WarehouseLotNo');
 $txHasItrDocEntry = whp_has_column($conn, 'IssuanceTransactions', 'ITRDocEntry');
 $txHasItrLineNum = whp_has_column($conn, 'IssuanceTransactions', 'ITRLineNum');
 $txHasRequestId = whp_has_column($conn, 'IssuanceTransactions', 'IssueRequestID');
 $txHasRequestLineId = whp_has_column($conn, 'IssuanceTransactions', 'IssueRequestLineID');
+$txHasWarehouseLot = whp_has_column($conn, 'IssuanceTransactions', 'WarehouseLotNo');
+$requestLineHasWarehouseLot = whp_has_column($conn, 'WarehouseIssueRequestLines', 'WarehouseLotNo');
 
 foreach ($items as $item) {
     $itemCode = trim($item['item_code'] ?? ''); $qty = trim($item['quantity'] ?? ''); $lot = trim($item['lot_no'] ?? '');
+    $warehouseLot = trim((string)($item['warehouse_lot_no'] ?? ''));
     $lineItrNumber = trim($item['itr_number'] ?? '');
     $itrDocEntry = trim($item['itr_doc_entry'] ?? '');
     $itrDocNum = trim($item['itr_doc_num'] ?? $lineItrNumber);
@@ -83,7 +87,8 @@ foreach ($items as $item) {
     $requestId = trim($item['request_id'] ?? '');
     $requestLineId = trim($item['request_line_id'] ?? '');
     $method = strtoupper(trim($item['entry_method'] ?? 'SCAN')); $reason = trim($item['manual_reason'] ?? '');
-    if ($itemCode === '' || $qty === '' || $lot === '') { $failed[] = ['item'=>$item,'reason'=>'Missing item, qty, or lot']; continue; }
+    if ($itemCode === '' || $qty === '' || $lot === '') { $failed[] = ['item'=>$item,'reason'=>'Missing item, qty, or GRPO lot']; continue; }
+    if ($warehouseLot === '') { $failed[] = ['item'=>$item,'reason'=>'Missing warehouse lot']; continue; }
     if (!is_numeric($qty) || (float)$qty <= 0) { $failed[] = ['item'=>$item,'reason'=>'Quantity must be greater than zero']; continue; }
     if ($method === 'MANUAL' && $reason === '') { $failed[] = ['item'=>$item,'reason'=>'Manual entry requires reason']; continue; }
     // Resolve SAP item by ItemCode, OITM.CodeBars, or OBCD.BcdCode.
@@ -125,6 +130,7 @@ foreach ($items as $item) {
     if ($lineHasSapLineNum && $itrLineNum !== '') { $lineCols[] = 'SAP_IT_LineNum'; $params[] = $itrLineNum; }
     if ($lineHasRequestId && $requestId !== '') { $lineCols[] = 'IssueRequestID'; $params[] = $requestId; }
     if ($lineHasRequestLineId && $requestLineId !== '') { $lineCols[] = 'IssueRequestLineID'; $params[] = $requestLineId; }
+    if ($lineHasWarehouseLot) { $lineCols[] = 'WarehouseLotNo'; $params[] = $warehouseLot; }
     if ($lineHasVerificationStatus) { $lineCols[] = 'VerificationStatus'; $params[] = 'ISSUED'; }
     $lineSql = 'INSERT INTO RawmatTraceLines (' . implode(', ', $lineCols) . ') VALUES (' . implode(', ', array_fill(0, count($lineCols), '?')) . ')';
     $ok = sqlsrv_query($conn, $lineSql, $params);
@@ -135,17 +141,27 @@ foreach ($items as $item) {
     if ($txHasItrLineNum && $itrLineNum !== '') { $txCols[] = 'ITRLineNum'; $txParams[] = $itrLineNum; }
     if ($txHasRequestId && $requestId !== '') { $txCols[] = 'IssueRequestID'; $txParams[] = $requestId; }
     if ($txHasRequestLineId && $requestLineId !== '') { $txCols[] = 'IssueRequestLineID'; $txParams[] = $requestLineId; }
+    if ($txHasWarehouseLot) { $txCols[] = 'WarehouseLotNo'; $txParams[] = $warehouseLot; }
     sqlsrv_query($conn, 'INSERT INTO IssuanceTransactions (' . implode(', ', $txCols) . ') VALUES (' . implode(', ', array_fill(0, count($txCols), '?')) . ')', $txParams);
     if ($requestLineId !== '') {
-        sqlsrv_query(
-            $conn,
-            "UPDATE WarehouseIssueRequestLines
+        $requestUpdateSql = "UPDATE WarehouseIssueRequestLines
              SET IssuedQty = ISNULL(IssuedQty, 0) + ?,
-                 LotNo = ?,
+                 LotNo = COALESCE(NULLIF(LotNo, ''), ?),";
+        $requestUpdateParams = [$qty, $lot];
+
+        if ($requestLineHasWarehouseLot) {
+            $requestUpdateSql .= "
+                 WarehouseLotNo = ?,";
+            $requestUpdateParams[] = $warehouseLot;
+        }
+
+        $requestUpdateSql .= "
                  Status = CASE WHEN ISNULL(IssuedQty, 0) + ? >= RequestedQty THEN 'ISSUED' ELSE 'PARTIAL' END
-             WHERE RequestLineID = ?",
-            [$qty, $lot, $qty, $requestLineId]
-        );
+             WHERE RequestLineID = ?";
+        $requestUpdateParams[] = $qty;
+        $requestUpdateParams[] = $requestLineId;
+
+        sqlsrv_query($conn, $requestUpdateSql, $requestUpdateParams);
         if ($requestId !== '') {
             $open = fetch_one(
                 $conn,
@@ -155,16 +171,18 @@ foreach ($items as $item) {
                 [$requestId]
             );
             $newRequestStatus = ((int)($open['OpenCount'] ?? 0) === 0) ? 'ISSUED' : 'PARTIAL';
+            // Issuer save should mark the request as ISSUED/PARTIAL only.
+            // Do not set ClosedAt here; receiver completion should be the only step that closes the request.
             sqlsrv_query(
                 $conn,
                 "UPDATE WarehouseIssueRequestHeader
-                 SET Status = ?, IssuedTraceNo = ?, ClosedAt = CASE WHEN ? = 'ISSUED' THEN GETDATE() ELSE ClosedAt END
+                 SET Status = ?, IssuedTraceNo = ?
                  WHERE RequestID = ?",
-                [$newRequestStatus, $traceNo, $newRequestStatus, $requestId]
+                [$newRequestStatus, $traceNo, $requestId]
             );
         }
     }
-    $item['item_code'] = $itemCode; $item['part_name'] = $partName; $saved[] = $item;
+    $item['item_code'] = $itemCode; $item['part_name'] = $partName; $item['warehouse_lot_no'] = $warehouseLot; $saved[] = $item;
 }
 $pageTitle = 'Issuance Saved';
 $backUrl = 'pages/issuer/issuer.php';

@@ -32,6 +32,16 @@ $hasDestinationArea = fetch_one(
 $destinationAreaSelect = $hasDestinationArea
     ? 'H.DestinationArea,'
     : "CAST('' AS NVARCHAR(80)) AS DestinationArea,";
+$hasWarehouseLotNo = fetch_one(
+    $conn,
+    "SELECT 1 AS HasColumn
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_NAME = 'WarehouseIssueRequestLines'
+       AND COLUMN_NAME = 'WarehouseLotNo'"
+);
+$warehouseLotSelect = $hasWarehouseLotNo
+    ? 'L.WarehouseLotNo,'
+    : "CAST('' AS NVARCHAR(80)) AS WarehouseLotNo,";
 $rows = fetch_all(
     $conn,
     "SELECT TOP 200
@@ -53,6 +63,7 @@ $rows = fetch_all(
         L.RequestedQty,
         ISNULL(L.IssuedQty, 0) AS IssuedQty,
         L.LotNo,
+        {$warehouseLotSelect}
         L.Status LineStatus
      FROM WarehouseIssueRequestHeader H
      INNER JOIN WarehouseIssueRequestLines L ON H.RequestID = L.RequestID
@@ -69,6 +80,8 @@ foreach ($rows as $sigRow) {
         $sigRow['RequestLineID'] ?? '',
         $sigRow['RequestedQty'] ?? '',
         $sigRow['IssuedQty'] ?? '',
+        $sigRow['LotNo'] ?? '',
+        $sigRow['WarehouseLotNo'] ?? '',
         $sigRow['LineStatus'] ?? ''
     ]);
 }
@@ -223,6 +236,7 @@ foreach ($rows as $r) {
         'issued_qty' => $issuedQty,
         'remaining_qty' => $remainingQty,
         'lot_no' => (string)($r['LotNo'] ?? ''),
+        'warehouse_lot_no' => (string)($r['WarehouseLotNo'] ?? ''),
         'available_lots' => $lotsByItem[(string)$r['ItemCode']] ?? [],
         'stock_whs_code' => '01',
         'warehouse_stock_qty' => $stockQty,

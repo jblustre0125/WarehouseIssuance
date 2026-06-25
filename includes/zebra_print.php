@@ -270,6 +270,7 @@ function zebra_pick_label_zpl(array $item)
     $itemCode = zebra_zpl_text($item['item_code'] ?? '', 40);
     $partName = zebra_zpl_text($item['part_name'] ?? '', 72);
     $lotNo = zebra_zpl_text($item['lot_no'] ?? '', 45);
+    $warehouseLotNo = zebra_zpl_text($item['warehouse_lot_no'] ?? '', 45);
     $qty = zebra_zpl_text($item['quantity'] ?? '', 22);
     $uom = zebra_zpl_text($item['uom'] ?? '', 20);
     $requestNoRaw = trim((string)($item['request_no'] ?? ''));
@@ -283,6 +284,22 @@ function zebra_pick_label_zpl(array $item)
 
     if ($referenceBarcode === '') {
         $referenceBarcode = $referenceText;
+    }
+
+    if ($warehouseLotNo !== '') {
+        $lotBlock = "^FO238,416^A0N,18,18^FDGRPO LOT NO^FS\r\n"
+            . "^FO238,438^FB290,2,3,L^A0N,25,25^FD{$lotNo}^FS\r\n"
+            . "^FO238,492^A0N,18,18^FDWH LOT NO^FS\r\n"
+            . "^FO238,514^FB290,1,0,L^A0N,25,25^FD{$warehouseLotNo}^FS\r\n";
+        $partBlock = "^FO28,558^GB520,2,2^FS\r\n"
+            . "^FO28,574^A0N,18,18^FDPART NAME^FS\r\n"
+            . "^FO28,598^FB510,2,3,L^A0N,20,20^FD{$partName}^FS\r\n";
+    } else {
+        $lotBlock = "^FO238,432^A0N,18,18^FDLOT NO^FS\r\n"
+            . "^FO238,456^FB290,2,3,L^A0N,28,28^FD{$lotNo}^FS\r\n";
+        $partBlock = "^FO28,506^GB520,2,2^FS\r\n"
+            . "^FO28,524^A0N,18,18^FDPART NAME^FS\r\n"
+            . "^FO28,548^FB510,2,3,L^A0N,22,22^FD{$partName}^FS\r\n";
     }
 
     /*
@@ -329,13 +346,10 @@ function zebra_pick_label_zpl(array $item)
         . "^FO238,368^A0N,18,18^FDQTY {$uom}^FS\r\n"
         . "^FO300,354^FB210,1,0,L^A0N,44,44^FD{$qty}^FS\r\n"
 
-        . "^FO238,432^A0N,18,18^FDLOT NO^FS\r\n"
-        . "^FO238,456^FB290,2,3,L^A0N,28,28^FD{$lotNo}^FS\r\n"
+        . $lotBlock
 
         /* Part name */
-        . "^FO28,506^GB520,2,2^FS\r\n"
-        . "^FO28,524^A0N,18,18^FDPART NAME^FS\r\n"
-        . "^FO28,548^FB510,2,3,L^A0N,22,22^FD{$partName}^FS\r\n"
+        . $partBlock
 
         /* Small payload text */
         . "^FO28,648^A0N,14,14^FD{$payload}^FS\r\n"

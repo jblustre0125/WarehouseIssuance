@@ -473,7 +473,12 @@ $qrPayloads = [];
         }
 
         .col-lot {
-            width: 14%;
+            width: 12%;
+            white-space: nowrap;
+        }
+
+        .col-wh-lot {
+            width: 12%;
             white-space: nowrap;
         }
 
@@ -575,6 +580,7 @@ $qrPayloads = [];
             .col-part,
             .col-qty,
             .col-lot,
+            .col-wh-lot,
             .col-status {
                 width: auto;
                 min-width: 120px;
@@ -732,7 +738,8 @@ $qrPayloads = [];
                                 <th class="col-item">Part Number</th>
                                 <th class="col-part">Part Name</th>
                                 <th class="col-qty">Qty</th>
-                                <th class="col-lot">Lot</th>
+                                <th class="col-lot">GRPO Lot</th>
+                                <th class="col-wh-lot">WH Lot</th>
                                 <th class="col-status">Status</th>
                             </tr>
                         </thead>
@@ -740,7 +747,7 @@ $qrPayloads = [];
                         <tbody>
                             <?php if (empty($saved) && empty($failed)): ?>
                                 <tr>
-                                    <td colspan="5" class="text-center text-muted py-4">
+                                    <td colspan="6" class="text-center text-muted py-4">
                                         No items to display.
                                     </td>
                                 </tr>
@@ -762,6 +769,10 @@ $qrPayloads = [];
 
                                     <td class="col-lot" title="<?= result_h($s['lot_no'] ?? '') ?>">
                                         <?= result_h($s['lot_no'] ?? '') ?>
+                                    </td>
+
+                                    <td class="col-wh-lot" title="<?= result_h($s['warehouse_lot_no'] ?? '') ?>">
+                                        <?= result_h($s['warehouse_lot_no'] ?? '') ?>
                                     </td>
 
                                     <td class="col-status text-success fw-bold">
@@ -787,6 +798,10 @@ $qrPayloads = [];
 
                                     <td class="col-lot">
                                         <?= result_h($it['lot_no'] ?? '') ?>
+                                    </td>
+
+                                    <td class="col-wh-lot">
+                                        <?= result_h($it['warehouse_lot_no'] ?? '') ?>
                                     </td>
 
                                     <td class="col-status text-danger fw-bold" title="<?= result_h($f['reason'] ?? '') ?>">

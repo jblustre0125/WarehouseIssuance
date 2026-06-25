@@ -324,7 +324,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
         }
 
         .col-part {
-            width: 18%;
+            width: 16%;
             white-space: normal;
             line-height: 1.25;
         }
@@ -347,7 +347,12 @@ $currentRole = strtolower($currentUser['role'] ?? '');
         }
 
         .col-lot {
-            width: 14%;
+            width: 12%;
+            white-space: nowrap;
+        }
+
+        .col-wh-lot {
+            width: 12%;
             white-space: nowrap;
         }
 
@@ -743,6 +748,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             .col-requested,
             .col-qty,
             .col-lot,
+            .col-wh-lot,
             .col-itr,
             .col-match,
             .col-action {
@@ -755,6 +761,10 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             }
 
             .col-lot {
+                min-width: 150px;
+            }
+
+            .col-wh-lot {
                 min-width: 150px;
             }
         }
@@ -792,7 +802,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             <div>
                 <h4 class="page-title">Issuer - Warehouse</h4>
                 <div class="page-subtitle">
-                    Load open issue requests, enter actual lot numbers, edit issue quantities, then save issuance.
+                    Load open issue requests, keep the GRPO lot for app scanning, enter warehouse lot numbers, then save issuance.
                 </div>
             </div>
 
@@ -842,7 +852,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
                                 </button>
                             </div>
                             <div class="small text-muted mt-1">
-                                Load a request first, then scan the picker tag to fill item quantity and lot.
+                                Load a request first, then scan the picker tag to fill item quantity and GRPO lot.
                             </div>
                         </div>
 
@@ -856,7 +866,8 @@ $currentRole = strtolower($currentUser['role'] ?? '');
                                         <th class="col-stock">WH 01 Stock</th>
                                         <th class="col-requested">Qty Requested</th>
                                         <th class="col-qty">Qty to Issue</th>
-                                        <th class="col-lot">Actual Lot No</th>
+                                        <th class="col-lot">GRPO Lot No</th>
+                                        <th class="col-wh-lot">WH Lot No</th>
                                         <th class="col-match">Lot Balance</th>
                                         <th class="col-itr">ITR/IT</th>
                                         <th class="col-action">Action</th>
@@ -1381,7 +1392,8 @@ function loadDocumentItemsConfirmed(docIdx) {
             stock_whs_code: req.stock_whs_code || '01',
             requested_lot_no: req.lot_no || '',
             available_lots: Array.isArray(req.available_lots) ? req.available_lots : [],
-            lot_no: '',
+            lot_no: req.lot_no || '',
+            warehouse_lot_no: req.warehouse_lot_no || '',
             itr_number: req.doc_num,
             itr_doc_entry: req.doc_entry,
             itr_doc_num: req.doc_num,
@@ -1477,7 +1489,8 @@ function splitItem(idx) {
     const newRow = {
         ...it,
         quantity: remaining,
-        lot_no: '',
+        lot_no: it.lot_no || '',
+        warehouse_lot_no: '',
         scanned_code: (it.request_no ? it.request_no + ' / ' : '') + 'ITR ' + it.itr_number + ' line ' + it.itr_line_num,
         entry_method: 'MANUAL_SPLIT',
         manual_reason: 'Split lot row',
@@ -1585,11 +1598,21 @@ function render() {
                         id="lot_${idx}"
                         ${lotListAttr}
                         value="${esc(it.lot_no)}"
-                        placeholder="Enter actual lot"
+                        placeholder="GRPO lot"
                         onchange="updateItemField(${idx}, 'lot_no', this.value); validateItemLot(${idx})"
                     >
                     ${lotOptionsHtml ? `<datalist id="lot_options_${idx}">${lotOptionsHtml}</datalist>` : ''}
-                    ${it.requested_lot_no ? `<div class="small text-muted">Req ${esc(it.requested_lot_no)}</div>` : ''}
+                    ${it.requested_lot_no ? `<div class="small text-muted">GRPO ${esc(it.requested_lot_no)}</div>` : ''}
+                </td>
+
+                <td class="col-wh-lot">
+                    <input
+                        class="form-control form-control-sm lot-input"
+                        id="warehouse_lot_${idx}"
+                        value="${esc(it.warehouse_lot_no)}"
+                        placeholder="WH actual lot"
+                        onchange="updateItemField(${idx}, 'warehouse_lot_no', this.value)"
+                    >
                 </td>
 
                 <td class="col-match" title="${esc(it.lot_message || '')}">${lotStatusHtml(it)}</td>
@@ -1625,6 +1648,7 @@ function syncTableItems() {
     items.forEach((it, idx) => {
         const qty = document.getElementById('qty_' + idx);
         const lot = document.getElementById('lot_' + idx);
+        const warehouseLot = document.getElementById('warehouse_lot_' + idx);
 
         if (qty) {
             it.quantity = qty.value.trim();
@@ -1632,6 +1656,10 @@ function syncTableItems() {
 
         if (lot) {
             it.lot_no = lot.value.trim();
+        }
+
+        if (warehouseLot) {
+            it.warehouse_lot_no = warehouseLot.value.trim();
         }
     });
 }
@@ -1878,13 +1906,23 @@ async function applyPickerQrScan() {
           This prevents a 50/25/25 split from becoming 50/50/25 when scanning a QR with qty 50.
         - If all split rows already have lots and remaining request qty still exists, create a new split row.
     */
+    const matchingLotRows = sameItemRows.filter(x =>
+        String(x.row.lot_no || '').trim().toUpperCase() === scannedLot.toUpperCase()
+    );
     const blankLotRows = sameItemRows.filter(x => !String(x.row.lot_no || '').trim());
     const isSplitItem = sameItemRows.length > 1;
 
     let matchIdx = -1;
     let qtyToValidate = scannedQty;
 
-    if (blankLotRows.length > 0) {
+    if (matchingLotRows.length > 0) {
+        matchIdx = matchingLotRows[0].idx;
+        qtyToValidate = Number(items[matchIdx].quantity || 0) > 0 ? Number(items[matchIdx].quantity || 0) : scannedQty;
+
+        if (Number(items[matchIdx].quantity || 0) <= 0) {
+            items[matchIdx].quantity = parsed.quantity;
+        }
+    } else if (blankLotRows.length > 0) {
         matchIdx = blankLotRows[0].idx;
 
         if (isSplitItem) {
@@ -1921,6 +1959,7 @@ async function applyPickerQrScan() {
             ...baseRow,
             quantity: newQty,
             lot_no: '',
+            warehouse_lot_no: '',
             scanned_code: 'ITR ' + (baseRow.itr_number || '') + ' line ' + (baseRow.itr_line_num || ''),
             entry_method: 'SCAN',
             manual_reason: '',
@@ -1995,7 +2034,14 @@ async function printAllIssueTags(silent = false) {
 
         if (!it.lot_no) {
             if (!silent) {
-                showMessage('Line ' + (idx + 1) + ' actual lot number is required.');
+                showMessage('Line ' + (idx + 1) + ' GRPO lot number is required.');
+            }
+            return false;
+        }
+
+        if (!it.warehouse_lot_no) {
+            if (!silent) {
+                showMessage('Line ' + (idx + 1) + ' warehouse lot number is required.');
             }
             return false;
         }
@@ -2096,7 +2142,12 @@ async function saveItems(skipOverQtyCheck = false) {
         }
 
         if (!it.lot_no) {
-            showMessage('Line ' + (idx + 1) + ' actual lot number is required.');
+            showMessage('Line ' + (idx + 1) + ' GRPO lot number is required.');
+            return;
+        }
+
+        if (!it.warehouse_lot_no) {
+            showMessage('Line ' + (idx + 1) + ' warehouse lot number is required.');
             return;
         }
     }

@@ -52,11 +52,22 @@ if (!$loadedZebra || !function_exists('zebra_print_pick_labels')) {
 $printItems = [];
 
 foreach ($items as $item) {
+    $warehouseLotNo = trim((string)($item['warehouse_lot_no'] ?? ''));
+
+    if ($warehouseLotNo === '') {
+        echo json_encode([
+            'ok' => false,
+            'message' => 'Warehouse lot number is required for every printed tag.'
+        ]);
+        exit;
+    }
+
     $printItems[] = [
         'item_code' => trim((string)($item['item_code'] ?? '')),
         'part_name' => trim((string)($item['part_name'] ?? '')),
         'quantity' => trim((string)($item['quantity'] ?? '')),
         'lot_no' => trim((string)($item['lot_no'] ?? '')),
+        'warehouse_lot_no' => $warehouseLotNo,
         'uom' => trim((string)($item['uom'] ?? '')),
         'request_no' => trim((string)($item['request_no'] ?? '')),
         'itr_number' => trim((string)($item['itr_number'] ?? '')),

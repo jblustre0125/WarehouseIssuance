@@ -98,6 +98,7 @@ BEGIN
         ItemCode NVARCHAR(50) NOT NULL,
         PartName NVARCHAR(255) NOT NULL,
         LotNo NVARCHAR(80) NOT NULL,
+        WarehouseLotNo NVARCHAR(80) NULL,
         IssuedQty DECIMAL(18,3) NOT NULL,
         ReceivedLotNo NVARCHAR(80) NULL,
         ReceivedQty DECIMAL(18,3) NULL,
@@ -130,6 +131,7 @@ BEGIN
     IF COL_LENGTH('dbo.RawmatTraceLines', 'IssueRequestLineID') IS NULL ALTER TABLE dbo.RawmatTraceLines ADD IssueRequestLineID INT NULL;
     IF COL_LENGTH('dbo.RawmatTraceLines', 'ReceiveToken') IS NULL ALTER TABLE dbo.RawmatTraceLines ADD ReceiveToken NVARCHAR(80) NULL;
     IF COL_LENGTH('dbo.RawmatTraceLines', 'ReceivedScanAt') IS NULL ALTER TABLE dbo.RawmatTraceLines ADD ReceivedScanAt DATETIME NULL;
+    IF COL_LENGTH('dbo.RawmatTraceLines', 'WarehouseLotNo') IS NULL ALTER TABLE dbo.RawmatTraceLines ADD WarehouseLotNo NVARCHAR(80) NULL;
 END
 GO
 
@@ -148,6 +150,7 @@ BEGIN
         PartName NVARCHAR(255) NOT NULL,
         Quantity DECIMAL(18,3) NOT NULL,
         LotNo NVARCHAR(80) NOT NULL,
+        WarehouseLotNo NVARCHAR(80) NULL,
         ITRNumber NVARCHAR(80) NULL,
         IssuedByUserID INT NULL,
         IssuedByUsername NVARCHAR(60) NULL,
@@ -170,6 +173,7 @@ IF COL_LENGTH('dbo.IssuanceTransactions', 'ITRDocEntry') IS NULL ALTER TABLE dbo
 IF COL_LENGTH('dbo.IssuanceTransactions', 'ITRLineNum') IS NULL ALTER TABLE dbo.IssuanceTransactions ADD ITRLineNum INT NULL;
 IF COL_LENGTH('dbo.IssuanceTransactions', 'IssueRequestID') IS NULL ALTER TABLE dbo.IssuanceTransactions ADD IssueRequestID INT NULL;
 IF COL_LENGTH('dbo.IssuanceTransactions', 'IssueRequestLineID') IS NULL ALTER TABLE dbo.IssuanceTransactions ADD IssueRequestLineID INT NULL;
+IF COL_LENGTH('dbo.IssuanceTransactions', 'WarehouseLotNo') IS NULL ALTER TABLE dbo.IssuanceTransactions ADD WarehouseLotNo NVARCHAR(80) NULL;
 GO
 
 IF OBJECT_ID('dbo.WarehouseIssueRequestHeader', 'U') IS NULL
@@ -214,9 +218,22 @@ BEGIN
         RequestedQty DECIMAL(18,3) NOT NULL,
         IssuedQty DECIMAL(18,3) NULL,
         LotNo NVARCHAR(80) NULL,
+        WarehouseLotNo NVARCHAR(80) NULL,
         Status NVARCHAR(30) NOT NULL DEFAULT 'OPEN',
         CONSTRAINT FK_WarehouseIssueRequestLines_Header FOREIGN KEY (RequestID) REFERENCES dbo.WarehouseIssueRequestHeader(RequestID)
     );
+END
+GO
+
+IF COL_LENGTH('dbo.WarehouseIssueRequestLines', 'LotNo') IS NULL
+BEGIN
+    ALTER TABLE dbo.WarehouseIssueRequestLines ADD LotNo NVARCHAR(80) NULL;
+END
+GO
+
+IF COL_LENGTH('dbo.WarehouseIssueRequestLines', 'WarehouseLotNo') IS NULL
+BEGIN
+    ALTER TABLE dbo.WarehouseIssueRequestLines ADD WarehouseLotNo NVARCHAR(80) NULL;
 END
 GO
 
