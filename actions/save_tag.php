@@ -1,7 +1,7 @@
 <?php
-require_once 'db_connect.php';
+require_once __DIR__ . '/../includes/db_connect.php';
 if (!isset($_POST['batch_items'])) {
-    header('Location: index.php');
+    header('Location: ../index.php');
     exit;
 }
 
@@ -62,6 +62,7 @@ if (!is_array($items) || count($items) === 0) {
 
 <head>
     <meta name="viewport" content="width=device-width,initial-scale=1">
+    <base href="../">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <title><?php echo htmlspecialchars($pageTitle); ?></title>
     <style>
@@ -128,7 +129,7 @@ if (!is_array($items) || count($items) === 0) {
                         </div>
                     </div>
                     <div class="col-md-4 text-end">
-                        <a class="btn btn-outline-primary" href="view_tags.php">View Scanned Tags</a>
+                        <a class="btn btn-outline-primary" href="pages/tags/view_tags.php">View Scanned Tags</a>
                     </div>
                 </div>
 
