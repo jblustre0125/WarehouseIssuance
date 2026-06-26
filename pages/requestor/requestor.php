@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/app_shell.php';
+
 require_role([ROLE_REQUESTOR, ROLE_ADMIN]);
 
 $currentUser = current_user();
@@ -19,35 +20,35 @@ $currentRole = strtolower($currentUser['role'] ?? '');
 
     <style>
         :root {
-            --sap-shell: #354a5f;
-            --sap-shell-dark: #233545;
-            --sap-accent: #0a6ed1;
-            --sap-accent-hover: #085caf;
-            --sap-highlight: #d1e8ff;
-            --sap-bg: #f7f7f7;
-            --sap-card: #ffffff;
-            --sap-border: #d9d9d9;
-            --sap-border-soft: #ebebeb;
-            --sap-text: #32363a;
-            --sap-muted: #6a6d70;
-            --sap-success-bg: #f1fdf6;
-            --sap-success: #107e3e;
-            --sap-error-bg: #fff1f1;
-            --sap-error: #bb0000;
-            --sap-warning-bg: #fff8e6;
-            --sap-warning: #b06000;
+            --shell: #263b4f;
+            --shell2: #354f68;
+            --accent: #0a6ed1;
+            --accent-dark: #085caf;
+            --bg: #f3f6fb;
+            --card: #ffffff;
+            --border: #d9e4f2;
+            --soft: #edf2f7;
+            --text: #1f2937;
+            --muted: #64748b;
+            --success: #047857;
+            --danger: #b91c1c;
+            --warning: #c2410c;
             --side-width: 17rem;
-            --topbar-height: 3.25rem;
+            --topbar-height: 3.5rem;
         }
 
-        * { box-sizing: border-box; }
+        * {
+            box-sizing: border-box;
+        }
 
         body {
             min-height: 100vh;
             margin: 0;
-            background: var(--sap-bg);
-            color: var(--sap-text);
-            font-family: "72", "Segoe UI", Arial, Helvetica, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+            font-size: 16px;
+            line-height: 1.45;
             overflow-x: hidden;
         }
 
@@ -56,39 +57,38 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             inset: 0 0 auto 0;
             z-index: 1040;
             min-height: var(--topbar-height);
-            background: linear-gradient(90deg, var(--sap-shell-dark), var(--sap-shell));
+            background: linear-gradient(90deg, var(--shell), var(--shell2));
             color: #fff;
             display: flex;
             align-items: center;
-            gap: .85rem;
-            padding: .45rem 1rem;
-            box-shadow: 0 .125rem .5rem rgba(0, 0, 0, .22);
+            gap: 14px;
+            padding: 8px 18px;
+            box-shadow: 0 4px 18px rgba(15, 23, 42, .22);
         }
 
         .shell-menu-btn {
             display: none;
             border: 0;
-            background: rgba(255, 255, 255, .12);
+            background: rgba(255, 255, 255, .14);
             color: #fff;
-            width: 2.25rem;
-            height: 2.25rem;
-            border-radius: .375rem;
-            font-size: 1.25rem;
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            font-size: 23px;
             line-height: 1;
         }
 
         .shell-logo {
-            width: 2.4rem;
-            height: 2.4rem;
-            border-radius: .35rem;
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
             background: #fff;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             overflow: hidden;
             flex: 0 0 auto;
-            padding: .15rem;
-            margin-right: .25rem;
+            padding: 3px;
         }
 
         .shell-logo img {
@@ -98,21 +98,27 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             display: block;
         }
 
-        .shell-title-wrap { min-width: 0; flex: 1; }
+        .shell-title-wrap {
+            min-width: 0;
+            flex: 1;
+        }
+
         .shell-title {
-            font-size: .98rem;
-            font-weight: 800;
-            line-height: 1.1;
+            font-size: 16px;
+            font-weight: 900;
+            line-height: 1.15;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
+
         .shell-subtitle {
-            font-size: .74rem;
-            color: rgba(255, 255, 255, .85);
+            font-size: 12px;
+            color: rgba(255, 255, 255, .86);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            margin-top: 2px;
         }
 
         .app-layout {
@@ -121,165 +127,17 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             padding-top: var(--topbar-height);
         }
 
-        .sidebar {
+        .sidebar,
+        .sap-side-nav {
             position: fixed;
             inset: var(--topbar-height) auto 0 0;
             width: var(--side-width);
             z-index: 1035;
             background: #fff;
-            color: var(--sap-text);
-            border-right: 1px solid var(--sap-border);
+            border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            box-shadow: .125rem 0 .5rem rgba(0, 0, 0, .08);
-        }
-
-        .side-nav-header {
-            padding: 1rem;
-            border-bottom: 1px solid var(--sap-border-soft);
-            background: #fff;
-        }
-
-        .side-nav-eyebrow {
-            color: var(--sap-muted);
-            font-size: .6875rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: .06em;
-        }
-
-        .side-nav-title {
-            margin-top: .25rem;
-            font-size: 1rem;
-            font-weight: 700;
-            color: var(--sap-text);
-        }
-
-        .sidebar-brand { display: none; }
-        .sidebar-menu {
-            flex: 1;
-            overflow-y: auto;
-            padding: .5rem;
-        }
-
-        .sidebar-section {
-            color: var(--sap-muted);
-            font-size: .6875rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            padding: .875rem .625rem .375rem;
-            letter-spacing: .045em;
-        }
-
-        .sidebar-link {
-            min-height: 2.5rem;
-            display: flex;
-            align-items: center;
-            gap: .625rem;
-            color: var(--sap-text);
-            text-decoration: none;
-            border-radius: .375rem;
-            padding: .5rem .625rem;
-            font-size: .875rem;
-            font-weight: 600;
-            border: 1px solid transparent;
-            margin-bottom: .125rem;
-            transition: background .15s ease, border-color .15s ease, color .15s ease;
-        }
-
-        .sidebar-link:hover {
-            background: #f5f6f7;
-            border-color: #e5e5e5;
-            color: var(--sap-accent);
-        }
-
-        .sidebar-link.active {
-            background: var(--sap-highlight);
-            border-color: #8fc7ff;
-            color: #074f91;
-        }
-
-        .sidebar-icon {
-            width: 1.375rem;
-            text-align: center;
-            font-size: 1rem;
-            flex: 0 0 auto;
-        }
-
-        .sidebar-footer {
-            padding: .75rem;
-            border-top: 1px solid var(--sap-border-soft);
-            background: #fbfbfb;
-        }
-
-        .user-box {
-            display: flex;
-            align-items: center;
-            gap: .625rem;
-            padding: .625rem;
-            margin-bottom: .625rem;
-            border: 1px solid var(--sap-border-soft);
-            background: #fff;
-            border-radius: .5rem;
-            min-width: 0;
-        }
-
-        .user-box::before {
-            content: "<?= h(strtoupper(substr($currentUser['full_name'] ?? $currentUser['username'] ?? 'U', 0, 1))) ?>";
-            width: 2.25rem;
-            height: 2.25rem;
-            border-radius: 50%;
-            background: #91c8f6;
-            color: #0b2948;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 800;
-            flex: 0 0 auto;
-        }
-
-        .user-name,
-        .user-role {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .user-name {
-            color: var(--sap-text);
-            font-size: .875rem;
-            font-weight: 700;
-            line-height: 1.2;
-        }
-
-        .user-role {
-            margin-top: .125rem;
-            color: var(--sap-muted);
-            font-size: .6875rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-        }
-
-        .logout-link {
-            width: 100%;
-            min-height: 2.25rem;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border: 1px solid #ffb8b8;
-            color: var(--sap-error);
-            background: #fff;
-            text-decoration: none;
-            border-radius: .375rem;
-            font-size: .875rem;
-            font-weight: 700;
-            padding: .45rem .75rem;
-        }
-
-        .logout-link:hover {
-            background: var(--sap-error-bg);
-            color: var(--sap-error);
+            box-shadow: 4px 0 16px rgba(15, 23, 42, .08);
         }
 
         .main-content {
@@ -289,291 +147,399 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             overflow-x: hidden;
         }
 
-        .mobile-topbar { display: none !important; }
-
         .page-header {
-            background: linear-gradient(180deg, #eff6ff 0%, #f7f7f7 100%);
-            border-bottom: 1px solid var(--sap-border-soft);
-            padding: 1.25rem 1.5rem 1rem;
-            margin: 0;
+            background: linear-gradient(135deg, #eaf4ff, #f8fbff);
+            border-bottom: 1px solid var(--border);
+            padding: 24px 28px;
             display: flex;
             align-items: flex-start;
             justify-content: space-between;
-            gap: 1rem;
+            gap: 18px;
         }
 
         .page-title {
             margin: 0;
-            color: var(--sap-text);
-            font-size: clamp(1.35rem, 2vw, 2rem);
-            font-weight: 700;
-            letter-spacing: -.015em;
+            font-size: 30px;
+            font-weight: 950;
+            letter-spacing: -0.03em;
         }
 
         .page-subtitle {
-            margin-top: .375rem;
-            color: var(--sap-muted);
-            font-size: .875rem;
+            margin-top: 6px;
+            color: var(--muted);
+            font-size: 16px;
         }
 
-        #countBadge {
+        .line-count-badge {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-height: 1.75rem;
-            padding: .25rem .75rem !important;
-            border-radius: 1rem !important;
-            background: var(--sap-highlight) !important;
-            color: #074f91 !important;
-            border: 1px solid #8fc7ff;
-            font-size: .75rem;
-            font-weight: 800;
+            min-height: 40px;
+            padding: 8px 18px;
+            border-radius: 999px;
+            background: #e8f3ff;
+            color: #074f91;
+            border: 1px solid #93c5fd;
+            font-size: 15px;
+            font-weight: 950;
             white-space: nowrap;
         }
 
-        .main-content > .row,
-        .main-content > .content-card,
-        .main-content > .sap-page-body {
-            padding: 1rem 1.5rem 1.5rem;
+        .page-body {
+            padding: 24px 28px 28px;
         }
 
-        .main-content > .row {
-            margin: 0;
+        .guide-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+            margin-bottom: 20px;
+        }
+
+        .guide-card {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 16px;
+            display: flex;
+            gap: 14px;
+            align-items: flex-start;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, .05);
+        }
+
+        .guide-no {
+            width: 36px;
+            height: 36px;
+            border-radius: 999px;
+            background: var(--accent);
+            color: #fff;
+            font-weight: 950;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+        }
+
+        .guide-title {
+            font-size: 16px;
+            font-weight: 950;
+        }
+
+        .guide-text {
+            margin-top: 3px;
+            color: var(--muted);
+            font-size: 14px;
         }
 
         .content-card {
-            background: var(--sap-card);
-            border: 1px solid var(--sap-border);
-            border-radius: .5rem;
-            box-shadow: 0 .125rem .5rem rgba(0, 0, 0, .06);
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, .08);
             overflow: hidden;
-            height: 100%;
+            margin-bottom: 22px;
         }
 
         .content-card-header {
-            min-height: 3.25rem;
-            padding: .875rem 1rem;
-            border-bottom: 1px solid var(--sap-border-soft);
+            padding: 20px 22px;
+            border-bottom: 1px solid var(--soft);
             background: #fff;
         }
 
         .content-card-title {
             margin: 0;
-            color: var(--sap-text);
-            font-size: 1rem;
-            font-weight: 700;
+            color: var(--text);
+            font-size: 21px;
+            font-weight: 950;
         }
 
         .content-card-subtitle {
-            margin-top: .1875rem;
-            color: var(--sap-muted);
-            font-size: .8125rem;
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 15px;
         }
 
-        .content-card-body { padding: 1rem; }
+        .content-card-body {
+            padding: 22px;
+        }
 
         .form-label {
-            color: var(--sap-text);
-            font-size: .8125rem;
-            font-weight: 700;
-            margin-bottom: .3125rem;
+            color: var(--text);
+            font-size: 15px;
+            font-weight: 950;
+            margin-bottom: 7px;
         }
 
         .form-control,
         .form-select {
-            min-height: 2.375rem;
-            border-radius: .25rem;
-            border-color: #89919a;
-            color: var(--sap-text);
-            font-size: .875rem;
+            min-height: 50px;
+            border-radius: 14px;
+            border-color: #b6c2d1;
+            color: var(--text);
+            font-size: 16px;
             background-color: #fff;
         }
 
-        .form-control:hover,
-        .form-select:hover { border-color: var(--sap-accent); }
+        .form-control-lg {
+            min-height: 52px;
+            font-size: 16px;
+        }
+
+        .form-control-sm {
+            min-height: 46px;
+            font-size: 15px;
+        }
+
         .form-control:focus,
         .form-select:focus {
-            border-color: var(--sap-accent);
-            box-shadow: 0 0 0 .125rem rgba(10, 110, 209, .22);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 4px rgba(10, 110, 209, .16);
         }
 
         .btn {
-            min-height: 2.25rem;
-            border-radius: .25rem;
-            font-size: .875rem;
-            font-weight: 700;
+            min-height: 48px;
+            border-radius: 14px;
+            font-size: 16px;
+            font-weight: 950;
+            padding-left: 18px;
+            padding-right: 18px;
         }
 
         .btn-primary,
         .btn-success {
-            background: var(--sap-accent);
-            border-color: var(--sap-accent);
+            background: var(--accent);
+            border-color: var(--accent);
         }
 
         .btn-primary:hover,
         .btn-success:hover,
         .btn-primary:focus,
         .btn-success:focus {
-            background: var(--sap-accent-hover);
-            border-color: var(--sap-accent-hover);
+            background: var(--accent-dark);
+            border-color: var(--accent-dark);
+        }
+
+        .btn-sm {
+            min-height: 42px;
+            font-size: 15px;
+            padding: 8px 14px;
+        }
+
+        .big-action-row {
+            display: grid;
+            grid-template-columns: 1.4fr 1fr 1fr;
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+
+        .big-action {
+            border: 1px solid var(--border);
+            background: #fff;
+            border-radius: 18px;
+            padding: 18px;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, .05);
+            transition: .15s ease;
+            width: 100%;
+        }
+
+        .big-action:hover {
+            border-color: #93c5fd;
+            background: #f8fbff;
+            transform: translateY(-1px);
+        }
+
+        .big-action.primary {
+            background: linear-gradient(135deg, #0a6ed1, #2563eb);
+            border-color: #0a6ed1;
+            color: #fff;
+        }
+
+        .big-action.primary .action-subtitle {
+            color: rgba(255, 255, 255, .86);
+        }
+
+        .action-icon {
+            width: 54px;
+            height: 54px;
+            border-radius: 18px;
+            background: rgba(10, 110, 209, .12);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            flex: 0 0 auto;
+        }
+
+        .big-action.primary .action-icon {
+            background: rgba(255, 255, 255, .18);
+        }
+
+        .action-title {
+            font-size: 18px;
+            font-weight: 950;
+            line-height: 1.15;
+        }
+
+        .action-subtitle {
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 14px;
         }
 
         .info-box {
-            border-radius: .5rem;
-            font-size: .875rem;
-            border-color: var(--sap-border-soft);
+            border-radius: 16px;
+            font-size: 16px;
+            border-color: var(--soft);
+            padding: 16px 18px;
         }
 
         .request-table-wrap {
             max-height: 58vh;
             overflow: auto;
-            border: 1px solid var(--sap-border);
-            border-radius: .5rem;
+            border: 1px solid var(--border);
+            border-radius: 18px;
             background: #fff;
         }
 
         .request-table {
             margin: 0;
-            min-width: 64rem;
+            min-width: 1180px;
             table-layout: fixed;
-            font-size: .75rem;
+            font-size: 15px;
         }
 
         .request-table thead th {
             position: sticky;
             top: 0;
             z-index: 5;
-            background: #f2f2f2;
-            color: var(--sap-text);
-            border-bottom: 1px solid var(--sap-border);
-            font-weight: 800;
-            padding: .625rem .5rem;
+            background: #f8fafc;
+            color: #334155;
+            border-bottom: 1px solid var(--border);
+            font-weight: 950;
+            padding: 15px 14px;
             white-space: nowrap;
             vertical-align: middle;
             text-transform: uppercase;
-            font-size: .6875rem;
-            letter-spacing: .02em;
+            font-size: 13px;
+            letter-spacing: .03em;
         }
 
         .request-table td {
-            padding: .575rem .5rem;
-            color: var(--sap-text);
+            padding: 15px 14px;
+            color: var(--text);
             vertical-align: middle;
             overflow: hidden;
             text-overflow: ellipsis;
+            border-color: #edf1f7;
         }
 
-        .request-table tbody tr:hover { background: #f5f9ff; }
+        .request-table tbody tr:hover {
+            background: #f5f9ff;
+        }
 
-        .col-item { width: 13%; white-space: nowrap; }
-        .col-part { width: 20%; white-space: normal; line-height: 1.25; }
-        .col-line { width: 11%; white-space: nowrap; }
+        .col-item {
+            width: 14%;
+            white-space: nowrap;
+            font-weight: 950;
+        }
+
+        .col-part {
+            width: 22%;
+            white-space: normal;
+            line-height: 1.35;
+        }
+
+        .col-line {
+            width: 11%;
+            white-space: nowrap;
+        }
+
         .col-requested,
         .col-remaining,
-        .col-stock { width: 11%; text-align: right; white-space: nowrap; }
-        .col-qty { width: 13%; white-space: nowrap; }
-        .col-action { width: 9%; text-align: center; white-space: nowrap; }
+        .col-stock {
+            width: 12%;
+            text-align: right;
+            white-space: nowrap;
+            font-weight: 850;
+        }
+
+        .col-qty {
+            width: 13%;
+            white-space: nowrap;
+        }
+
+        .col-action {
+            width: 10%;
+            text-align: center;
+            white-space: nowrap;
+        }
 
         .table-input {
             width: 100%;
             min-width: 0;
-            height: 2.25rem;
-            font-size: .8125rem;
-            padding: .375rem .5rem;
-            border-radius: .25rem;
+            height: 50px;
+            font-size: 18px;
+            padding: 9px 12px;
+            border-radius: 14px;
+            font-weight: 950;
+            text-align: right;
         }
 
         .remove-btn {
-            min-height: 1.875rem;
-            font-size: .75rem;
-            padding: .25rem .5rem;
+            min-height: 42px;
+            font-size: 15px;
+            padding: 8px 12px;
+            border-radius: 12px;
         }
 
-        .request-actions { display: flex; gap: .375rem; margin-top: .75rem; }
-        .request-actions .btn { flex: 1; min-height: 2rem; font-size: .75rem; padding: .25rem .5rem; }
+        #saveBtn {
+            min-width: 280px;
+            min-height: 56px;
+            font-size: 18px;
+        }
+
+        .pending-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 14px;
+        }
 
         .requests-panel {
-            max-height: calc(100vh - 210px);
+            max-height: 430px;
             overflow-y: auto;
-            padding-right: .25rem;
+            padding-right: 4px;
         }
 
-        .side-panel-list { max-height: calc(100vh - 300px); }
-
-        .request-tabs {
-            gap: .375rem;
-            border-bottom: 0;
-            flex-wrap: wrap;
-        }
-
-        .request-tabs .nav-link {
-            border: 1px solid var(--sap-border-soft);
-            border-radius: .375rem;
-            color: var(--sap-text);
+        .itr-card,
+        .stock-card {
             background: #fff;
-            font-size: .8125rem;
-            font-weight: 800;
-            padding: .45rem .625rem;
-            display: flex;
-            align-items: center;
-            gap: .5rem;
-        }
-
-        .request-tabs .nav-link.active {
-            background: var(--sap-highlight);
-            border-color: #8fc7ff;
-            color: #074f91;
-        }
-
-        .tab-count {
-            min-width: 1.35rem;
-            height: 1.35rem;
-            border-radius: 999px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0 .4rem;
-            background: #e5e7eb;
-            color: #111827;
-            font-size: .6875rem;
-            font-weight: 900;
-            line-height: 1;
-        }
-
-        .request-tabs .nav-link.active .tab-count {
-            background: #fff;
-            color: #074f91;
-        }
-
-        .stock-toolbar {
-            display: flex;
-            gap: .5rem;
-            margin-bottom: .625rem;
-        }
-
-        .stock-card,
-        .itr-card {
-            background: #fff;
-            border: 1px solid var(--sap-border-soft);
-            border-radius: .5rem;
-            margin-bottom: .5rem;
-            color: var(--sap-text);
+            border: 1px solid var(--soft);
+            border-radius: 18px;
+            margin-bottom: 12px;
+            color: var(--text);
             overflow: hidden;
-            box-shadow: 0 .125rem .375rem rgba(0, 0, 0, .04);
+            box-shadow: 0 6px 18px rgba(15, 23, 42, .06);
             transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
         }
 
-        .stock-card { padding: .75rem; }
-        .stock-card:hover,
-        .itr-card:hover {
+        .stock-card {
+            padding: 16px;
+        }
+
+        .itr-card:hover,
+        .stock-card:hover {
             transform: translateY(-1px);
-            border-color: #8fc7ff;
-            box-shadow: 0 .25rem .75rem rgba(10, 110, 209, .12);
+            border-color: #93c5fd;
+            box-shadow: 0 8px 20px rgba(10, 110, 209, .13);
         }
 
         .itr-card.active {
-            border-color: var(--sap-accent);
-            box-shadow: 0 0 0 .125rem rgba(10, 110, 209, .2);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 4px rgba(10, 110, 209, .16);
         }
 
         .itr-header {
@@ -581,16 +547,18 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             border: 0;
             background: #fff;
             text-align: left;
-            padding: .875rem;
+            padding: 18px;
         }
 
-        .itr-header:hover { background: #f8fbff; }
+        .itr-header:hover {
+            background: #f8fbff;
+        }
 
         .request-title,
         .stock-code {
-            font-size: .875rem;
-            font-weight: 800;
-            color: var(--sap-text);
+            font-size: 18px;
+            font-weight: 950;
+            color: var(--text);
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -598,102 +566,237 @@ $currentRole = strtolower($currentUser['role'] ?? '');
 
         .request-meta,
         .stock-name {
-            font-size: .75rem;
-            color: var(--sap-muted);
-            margin-top: .125rem;
-            line-height: 1.25;
+            font-size: 15px;
+            color: var(--muted);
+            margin-top: 3px;
+            line-height: 1.35;
+        }
+
+        .request-meta strong {
+            color: #334155;
+        }
+
+        .warehouse-route {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+            font-size: 15px;
+            font-weight: 850;
+        }
+
+        .warehouse-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border-radius: 999px;
+            padding: 5px 10px;
+            background: #eff6ff;
+            color: #075985;
+            border: 1px solid #bfdbfe;
+        }
+
+        .warehouse-arrow {
+            color: #64748b;
+            font-weight: 950;
+        }
+
+        .request-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 14px;
+        }
+
+        .request-actions .btn {
+            flex: 1;
+            min-height: 42px;
+            font-size: 15px;
+            padding: 8px 12px;
         }
 
         .qty-grid,
         .stock-metrics {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: .4375rem;
-            margin-top: .75rem;
+            gap: 10px;
+            margin-top: 14px;
         }
 
         .qty-box,
         .stock-metric {
             background: #f8fafc;
-            border: 1px solid var(--sap-border-soft);
-            border-radius: .375rem;
-            padding: .5rem;
+            border: 1px solid var(--soft);
+            border-radius: 14px;
+            padding: 13px;
             min-width: 0;
         }
 
         .qty-box .label,
         .stock-metric .label {
-            font-size: .6875rem;
-            color: var(--sap-muted);
-            font-weight: 700;
+            font-size: 13px;
+            color: var(--muted);
+            font-weight: 850;
         }
 
         .qty-box .value,
         .stock-metric .value {
-            font-size: .875rem;
-            font-weight: 800;
-            color: var(--sap-text);
-            margin-top: .125rem;
+            font-size: 18px;
+            font-weight: 950;
+            color: var(--text);
+            margin-top: 3px;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
-        .sap-it-lines { margin-top: .625rem; border-top: 1px solid var(--sap-border-soft); }
-        .sap-it-line { padding: .5rem 0; border-bottom: 1px solid #edf2f7; }
-        .sap-it-line:last-child { border-bottom: 0; padding-bottom: 0; }
-        .sap-it-lot { font-size: .75rem; font-weight: 800; color: var(--sap-text); word-break: break-all; }
-
         .badge.text-bg-primary,
-        .badge.bg-primary { background: var(--sap-accent) !important; }
-        .badge.text-bg-success { background: var(--sap-success) !important; }
-        .badge.text-bg-warning { background: var(--sap-warning-bg) !important; color: var(--sap-warning) !important; border: 1px solid #ffd580; }
+        .badge.bg-primary {
+            background: var(--accent) !important;
+        }
 
-        .modal-content { border-radius: .5rem; border-color: var(--sap-border); }
-        .modal-header { border-bottom-color: var(--sap-border-soft); }
-        .modal-footer { border-top-color: var(--sap-border-soft); }
+        .badge.text-bg-success {
+            background: var(--success) !important;
+        }
+
+        .badge.text-bg-warning {
+            background: #fff7ed !important;
+            color: var(--warning) !important;
+            border: 1px solid #fed7aa;
+        }
+
+        .modal-content {
+            border-radius: 20px;
+            border-color: var(--border);
+        }
+
+        .modal-header,
+        .modal-footer {
+            padding: 18px 20px;
+        }
+
+        .modal-body {
+            padding: 20px;
+            font-size: 16px;
+        }
+
+        .modal-title {
+            font-size: 22px;
+            font-weight: 950;
+        }
+
+        .modal-xl {
+            --bs-modal-width: 1180px;
+        }
+
+        .modal-search-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
 
         .sidebar-backdrop {
             display: none;
             position: fixed;
             inset: var(--topbar-height) 0 0 0;
             z-index: 1030;
-            background: rgba(0, 0, 0, .38);
+            background: rgba(15, 23, 42, .45);
+        }
+
+        .small,
+        small {
+            font-size: 13px !important;
         }
 
         @media (max-width: 1199.98px) {
-            .request-table { font-size: .6875rem; }
-            .request-table thead th { font-size: .625rem; padding: .5rem .375rem; }
-            .request-table td { padding: .5rem .375rem; }
+            .guide-grid,
+            .big-action-row {
+                grid-template-columns: 1fr;
+            }
+
+            .request-table {
+                min-width: 1080px;
+                font-size: 14px;
+            }
         }
 
         @media (max-width: 991.98px) {
-            :root { --side-width: 16rem; }
-            .shell-menu-btn { display: inline-flex; align-items: center; justify-content: center; }
-            .sidebar { transform: translateX(-105%); transition: transform .2s ease; }
-            .sidebar.show { transform: translateX(0); }
-            .sidebar-backdrop.show { display: block; }
-            .main-content { margin-left: 0; width: 100%; }
-            .page-header { flex-direction: column; padding-left: 1rem; padding-right: 1rem; }
-            .main-content > .row { padding-left: 1rem; padding-right: 1rem; }
-            .requests-panel { max-height: none; padding-right: 0; }
-        }
+            :root {
+                --side-width: 16rem;
+            }
 
-        @media (max-width: 767.98px) {
-            .sap-shellbar { padding-inline: .75rem; }
-            .shell-logo { width: 2rem; height: 2rem; }
-            .shell-subtitle { display: none; }
-            .main-content > .row { padding: .75rem; }
-            .content-card-header,
-            .content-card-body { padding-left: .75rem; padding-right: .75rem; }
-            .stock-toolbar { flex-direction: column; }
-            .request-tabs .nav-link { flex: 1 1 auto; justify-content: center; }
+            .shell-menu-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .sidebar,
+            .sap-side-nav {
+                transform: translateX(-105%);
+                transition: transform .2s ease;
+            }
+
+            .sidebar.show,
+            .sap-side-nav.show {
+                transform: translateX(0);
+            }
+
+            .sidebar-backdrop.show {
+                display: block;
+            }
+
+            .main-content {
+                margin-left: 0;
+                width: 100%;
+            }
+
+            .page-header {
+                flex-direction: column;
+                padding-left: 18px;
+                padding-right: 18px;
+            }
+
+            .page-body {
+                padding-left: 16px;
+                padding-right: 16px;
+            }
+
+            .modal-search-row {
+                grid-template-columns: 1fr;
+            }
         }
 
         @media (max-width: 575.98px) {
-            .page-title { font-size: 1.25rem; }
-            .page-header { padding-top: 1rem; }
+            .page-title {
+                font-size: 24px;
+            }
+
+            .page-subtitle {
+                font-size: 14px;
+            }
+
+            .big-action {
+                padding: 14px;
+            }
+
+            .action-icon {
+                display: none;
+            }
+
             .qty-grid,
-            .stock-metrics { grid-template-columns: 1fr; }
+            .stock-metrics {
+                grid-template-columns: 1fr;
+            }
+
+            #saveBtn,
+            .btn {
+                width: 100%;
+            }
+
+            .request-actions .btn {
+                width: auto;
+            }
         }
     </style>
 </head>
@@ -708,192 +811,248 @@ $currentRole = strtolower($currentUser['role'] ?? '');
 
     <div class="shell-title-wrap">
         <div class="shell-title">NBC Rawmats Traceability</div>
-        <div class="shell-subtitle">Administration workspace</div>
+        <div class="shell-subtitle">Requestor workspace</div>
     </div>
 </header>
 
 <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
 <div class="app-layout">
-
     <?php app_sidebar('requestor'); ?>
 
     <main class="main-content">
-
         <div class="page-header">
             <div>
-                <h4 class="page-title">Requestor - Issue Order</h4>
+                <h4 class="page-title">Issue Request</h4>
                 <div class="page-subtitle">
-                    Load an open WH 01 ITR, then enter only the quantities needed for the selected date.
+                    Select SAP ITR, input quantity needed, then submit to Warehouse.
                 </div>
             </div>
 
-            <span class="badge bg-primary rounded-pill px-3 py-2" id="countBadge">
+            <span class="line-count-badge" id="countBadge">
                 0 line(s)
             </span>
         </div>
 
-        <div class="row g-3">
-            <div class="col-xl-8">
-                <div class="content-card">
-                    <div class="content-card-header">
-                        <h5 class="content-card-title">Issue Request Details</h5>
-                        <div class="content-card-subtitle">
-                            Select a needed date, add remarks, and input requested quantities.
-                        </div>
+        <div class="page-body">
+            <div class="guide-grid">
+                <div class="guide-card">
+                    <div class="guide-no">1</div>
+                    <div>
+                        <div class="guide-title">Select SAP ITR</div>
+                        <div class="guide-text">Choose the ITR document from SAP.</div>
                     </div>
+                </div>
 
-                    <div class="content-card-body">
-                        <div class="row g-2 mb-3">
-                            <div class="col-md-3">
-                                <label class="form-label" for="neededDate">Needed Date</label>
-                                <input id="neededDate" class="form-control" type="date" value="<?= h(date('Y-m-d')) ?>">
-                            </div>
+                <div class="guide-card">
+                    <div class="guide-no">2</div>
+                    <div>
+                        <div class="guide-title">Enter Qty</div>
+                        <div class="guide-text">Type only the quantity needed.</div>
+                    </div>
+                </div>
 
-                            <div class="col-md-9">
-                                <label class="form-label" for="remarksInput">Remarks</label>
-                                <input id="remarksInput" class="form-control" placeholder="Optional note for warehouse">
-                            </div>
-                        </div>
-
-                        <div id="loadedInfo" class="alert alert-secondary info-box">
-                            No ITR loaded.
-                        </div>
-
-                        <input
-                            id="itemSearchInput"
-                            class="form-control form-control-sm mb-3"
-                            placeholder="Search SAP code or part name..."
-                            oninput="renderTable()"
-                        >
-
-                        <div class="request-table-wrap">
-                            <table class="table table-bordered table-striped align-middle request-table" id="itemsTable">
-                                <thead>
-                                    <tr>
-                                        <th class="col-item">SAP ItemCode</th>
-                                        <th class="col-part">Part Name</th>
-                                        <th class="col-line">ITR/Line</th>
-                                        <th class="col-requested">Already Requested</th>
-                                        <th class="col-remaining">Remaining</th>
-                                        <th class="col-stock">Your WH Stock</th>
-                                        <th class="col-qty">Qty to Request</th>
-                                        <th class="col-action"></th>
-                                    </tr>
-                                </thead>
-
-                                <tbody></tbody>
-                            </table>
-                        </div>
-
-                        <div class="text-end mt-3">
-                            <button id="saveBtn" class="btn btn-success" onclick="saveRequest()" disabled>
-                                Submit Issue Request
-                            </button>
-                        </div>
+                <div class="guide-card">
+                    <div class="guide-no">3</div>
+                    <div>
+                        <div class="guide-title">Submit</div>
+                        <div class="guide-text">Warehouse will process your request.</div>
                     </div>
                 </div>
             </div>
 
-            <div class="col-xl-4">
-                <div class="content-card">
-                    <div class="content-card-header">
-                        <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
+            <div class="content-card">
+                <div class="content-card-header">
+                    <h5 class="content-card-title">New Issue Request</h5>
+                    <div class="content-card-subtitle">
+                        This is the main request form. SAP IT and stock are available only as reference tools.
+                    </div>
+                </div>
+
+                <div class="content-card-body">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3">
+                            <label class="form-label" for="neededDate">Needed Date</label>
+                            <input id="neededDate" class="form-control" type="date" value="<?= h(date('Y-m-d')) ?>">
+                        </div>
+
+                        <div class="col-md-9">
+                            <label class="form-label" for="remarksInput">Remarks</label>
+                            <input id="remarksInput" class="form-control" placeholder="Optional note for warehouse">
+                        </div>
+                    </div>
+
+                    <div class="big-action-row">
+                        <button class="big-action primary" type="button" onclick="openItrModal()">
+                            <div class="action-icon">📄</div>
                             <div>
-                                <h5 class="content-card-title">Requests</h5>
-                                <div class="content-card-subtitle">Manage saved requests or load a new ITR.</div>
+                                <div class="action-title">Select SAP ITR</div>
+                                <div class="action-subtitle">Start a new issue request from open ITR</div>
                             </div>
+                        </button>
 
-                            <button class="btn btn-sm btn-outline-primary" type="button" onclick="refreshSideTabs()">
-                                Refresh
-                            </button>
-                        </div>
+                        <button class="big-action" type="button" onclick="openStockModal()">
+                            <div class="action-icon">📦</div>
+                            <div>
+                                <div class="action-title">Check Stock</div>
+                                <div class="action-subtitle"><span id="stockCount">0</span> item(s)</div>
+                            </div>
+                        </button>
 
-                        <ul class="nav request-tabs" id="requestSideTabs" role="tablist">
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link active" id="myRequestsTab" data-bs-toggle="tab" data-bs-target="#myRequestsPane" type="button" role="tab" aria-controls="myRequestsPane" aria-selected="true">
-                                    My Open
-                                    <span class="tab-count" id="myRequestCount">0</span>
-                                </button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="openItrsTab" data-bs-toggle="tab" data-bs-target="#openItrsPane" type="button" role="tab" aria-controls="openItrsPane" aria-selected="false">
-                                    Open ITRs
-                                    <span class="tab-count" id="openItrCount">0</span>
-                                </button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="sapItsTab" data-bs-toggle="tab" data-bs-target="#sapItsPane" type="button" role="tab" aria-controls="sapItsPane" aria-selected="false">
-                                    SAP ITs
-                                    <span class="tab-count" id="sapItCount">0</span>
-                                </button>
-                            </li>
-                            <li class="nav-item" role="presentation">
-                                <button class="nav-link" id="stockViewerTab" data-bs-toggle="tab" data-bs-target="#stockViewerPane" type="button" role="tab" aria-controls="stockViewerPane" aria-selected="false">
-                                    Stock
-                                    <span class="tab-count" id="stockCount">0</span>
-                                </button>
-                            </li>
-                        </ul>
+                        <button class="big-action" type="button" onclick="openSapItModal()">
+                            <div class="action-icon">✅</div>
+                            <div>
+                                <div class="action-title">View SAP IT</div>
+                                <div class="action-subtitle"><span id="sapItCount">0</span> record(s)</div>
+                            </div>
+                        </button>
                     </div>
 
-                    <div class="content-card-body">
-                        <div class="tab-content">
-                            <div class="tab-pane fade show active" id="myRequestsPane" role="tabpanel" aria-labelledby="myRequestsTab" tabindex="0">
-                                <div class="small text-muted mb-2" id="myRequestStatus">
-                                    Loading requests...
-                                </div>
+                    <div id="loadedInfo" class="alert alert-secondary info-box">
+                        No ITR loaded. Click <strong>Select SAP ITR</strong> to start.
+                    </div>
 
-                                <div id="myRequestList" class="requests-panel side-panel-list"></div>
-                            </div>
+                    <input
+                        id="itemSearchInput"
+                        class="form-control form-control-lg mb-3"
+                        placeholder="Search loaded item by SAP code or part name..."
+                        oninput="renderTable()"
+                    >
 
-                            <div class="tab-pane fade" id="openItrsPane" role="tabpanel" aria-labelledby="openItrsTab" tabindex="0">
-                                <div class="stock-toolbar">
-                                    <input class="form-control form-control-sm" id="itrItemSearchInput" placeholder="Search ITR, SAP code, or part name" oninput="renderItrs()">
-                                    <button class="btn btn-sm btn-outline-primary" type="button" onclick="loadOpenItrs()">Reload</button>
-                                </div>
+                    <div class="request-table-wrap">
+                        <table class="table table-bordered table-striped align-middle request-table" id="itemsTable">
+                            <thead>
+                                <tr>
+                                    <th class="col-item">SAP ItemCode</th>
+                                    <th class="col-part">Part Name</th>
+                                    <th class="col-line">ITR/Line</th>
+                                    <th class="col-requested">Already Requested</th>
+                                    <th class="col-remaining">Remaining</th>
+                                    <th class="col-stock">Your WH Stock</th>
+                                    <th class="col-qty">Qty to Request</th>
+                                    <th class="col-action"></th>
+                                </tr>
+                            </thead>
 
-                                <div class="small text-muted mb-2" id="requestStatus">
-                                    Loading ITRs...
-                                </div>
+                            <tbody></tbody>
+                        </table>
+                    </div>
 
-                                <div class="small text-muted mb-2" id="requestMonth">Current month</div>
+                    <div class="text-end mt-4">
+                        <button id="saveBtn" class="btn btn-success" onclick="saveRequest()" disabled>
+                            Submit Issue Request
+                        </button>
+                    </div>
+                </div>
+            </div>
 
-                                <div id="itrList" class="requests-panel side-panel-list"></div>
-                            </div>
-
-                            <div class="tab-pane fade" id="sapItsPane" role="tabpanel" aria-labelledby="sapItsTab" tabindex="0">
-                                <div class="stock-toolbar">
-                                    <input class="form-control form-control-sm" id="sapItSearchInput" placeholder="Search IT, ITR, item, lot" oninput="renderSapInventoryTransfers()">
-                                    <button class="btn btn-sm btn-outline-primary" type="button" onclick="loadSapInventoryTransfers()">Reload</button>
-                                </div>
-
-                                <div class="small text-muted mb-2" id="sapItStatus">
-                                    Click Reload to load the latest SAP ITs.
-                                </div>
-
-                                <div id="sapItList" class="requests-panel side-panel-list"></div>
-                            </div>
-
-                            <div class="tab-pane fade" id="stockViewerPane" role="tabpanel" aria-labelledby="stockViewerTab" tabindex="0">
-                                <div class="stock-toolbar">
-                                    <input class="form-control form-control-sm" id="stockSearchInput" placeholder="Search item or warehouse" oninput="renderStocks()">
-                                    <button class="btn btn-sm btn-outline-primary" type="button" onclick="loadStocks()">Reload</button>
-                                </div>
-
-                                <div class="small text-muted mb-2" id="stockStatus">
-                                    Loading stock...
-                                </div>
-
-                                <div id="stockList" class="requests-panel side-panel-list"></div>
+            <div class="content-card">
+                <div class="content-card-header">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div>
+                            <h5 class="content-card-title">My Pending Requests</h5>
+                            <div class="content-card-subtitle" id="myRequestStatus">
+                                Loading requests...
                             </div>
                         </div>
+
+                        <button class="btn btn-outline-primary" type="button" onclick="loadMyRequests()">
+                            Reload Pending
+                        </button>
                     </div>
+                </div>
+
+                <div class="content-card-body">
+                    <div class="mb-2">
+                        <span class="badge bg-primary rounded-pill px-3 py-2">
+                            <span id="myRequestCount">0</span> open request(s)
+                        </span>
+                    </div>
+
+                    <div id="myRequestList" class="requests-panel pending-grid"></div>
                 </div>
             </div>
         </div>
-
     </main>
+</div>
+
+<div class="modal fade" id="itrSelectModal" tabindex="-1" aria-labelledby="itrSelectTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" id="itrSelectTitle">Select SAP ITR</h5>
+                    <div class="text-muted" id="requestStatus">Loading ITRs...</div>
+                    <div class="text-muted small" id="requestMonth">Current month</div>
+                </div>
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="modal-search-row">
+                    <input class="form-control form-control-lg" id="itrItemSearchInput" placeholder="Search ITR, SAP code, or part name" oninput="renderItrs()">
+                    <button class="btn btn-outline-primary" type="button" onclick="loadOpenItrs()">Reload ITR</button>
+                </div>
+
+                <div class="mb-3">
+                    <span class="badge bg-primary rounded-pill px-3 py-2">
+                        <span id="openItrCount">0</span> open ITR(s)
+                    </span>
+                </div>
+
+                <div id="itrList" class="requests-panel"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="sapItModal" tabindex="-1" aria-labelledby="sapItTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" id="sapItTitle">SAP IT Records</h5>
+                    <div class="text-muted" id="sapItStatus">Click Reload to load the latest SAP ITs.</div>
+                </div>
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="modal-search-row">
+                    <input class="form-control form-control-lg" id="sapItSearchInput" placeholder="Search IT, ITR, item, lot" oninput="renderSapInventoryTransfers()">
+                    <button class="btn btn-outline-primary" type="button" onclick="loadSapInventoryTransfers()">Reload SAP IT</button>
+                </div>
+
+                <div id="sapItList" class="requests-panel"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="stockModal" tabindex="-1" aria-labelledby="stockTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" id="stockTitle">Warehouse Stock</h5>
+                    <div class="text-muted" id="stockStatus">Loading stock...</div>
+                </div>
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="modal-search-row">
+                    <input class="form-control form-control-lg" id="stockSearchInput" placeholder="Search item or warehouse" oninput="renderStocks()">
+                    <button class="btn btn-outline-primary" type="button" onclick="loadStocks()">Reload Stock</button>
+                </div>
+
+                <div id="stockList" class="requests-panel"></div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="modal fade" id="requestSavedModal" tabindex="-1" aria-labelledby="requestSavedTitle" aria-hidden="true">
@@ -903,21 +1062,27 @@ $currentRole = strtolower($currentUser['role'] ?? '');
                 <h5 class="modal-title" id="requestSavedTitle">Request Saved</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+
             <div class="modal-body">
                 <div class="alert alert-success mb-3" id="requestSavedMessage">
                     Issue request saved successfully.
                 </div>
+
                 <div class="row g-2 small">
                     <div class="col-5 text-muted">Request No</div>
                     <div class="col-7 fw-bold" id="modalRequestNo">-</div>
+
                     <div class="col-5 text-muted">ITR Number</div>
                     <div class="col-7 fw-bold" id="modalItrNumber">-</div>
+
                     <div class="col-5 text-muted">Needed Date</div>
                     <div class="col-7 fw-bold" id="modalNeededDate">-</div>
+
                     <div class="col-5 text-muted">Saved Lines</div>
                     <div class="col-7 fw-bold" id="modalSavedLines">-</div>
                 </div>
             </div>
+
             <div class="modal-footer">
                 <a class="btn btn-outline-primary" href="pages/requestor/requestor_report.php">View Report</a>
                 <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Create Another</button>
@@ -955,6 +1120,66 @@ function esc(v) {
     }[c]));
 }
 
+function getDocWarehouseSummary(doc) {
+    const fromWarehouses = [...new Set(
+        (doc.lines || [])
+            .map(line => String(line.from_whs_code || '').trim())
+            .filter(Boolean)
+    )];
+
+    const toWarehouses = [...new Set(
+        (doc.lines || [])
+            .map(line => String(line.to_whs_code || '').trim())
+            .filter(Boolean)
+    )];
+
+    return {
+        from: fromWarehouses.length ? fromWarehouses.join(', ') : '-',
+        to: toWarehouses.length ? toWarehouses.join(', ') : '-'
+    };
+}
+
+function openItrModal() {
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('itrSelectModal')).show();
+
+    if (openDocuments.length === 0) {
+        loadOpenItrs();
+    }
+}
+
+function openSapItModal() {
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('sapItModal')).show();
+
+    if (sapInventoryTransfers.length === 0 && !sapItLoading) {
+        const status = document.getElementById('sapItStatus');
+
+        if (status) {
+            status.textContent = 'Click Reload to load the latest SAP ITs.';
+        }
+    }
+}
+
+function openStockModal() {
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('stockModal')).show();
+
+    if (stockRows.length === 0) {
+        loadStocks();
+    }
+}
+
+function hideModal(id) {
+    const el = document.getElementById(id);
+
+    if (!el) {
+        return;
+    }
+
+    const modal = bootstrap.Modal.getInstance(el);
+
+    if (modal) {
+        modal.hide();
+    }
+}
 
 function findWarehouseStock(itemCode, whsCode) {
     const item = String(itemCode || '').trim().toLowerCase();
@@ -1211,8 +1436,9 @@ function renderSapInventoryTransfers() {
                             <div class="request-title">IT ${esc(doc.it_number)}</div>
                             <div class="request-meta">Based on ITR ${esc(doc.itr_number)} | ${esc(doc.it_date)}</div>
                         </div>
-                        <span class="badge text-bg-success rounded-pill">Load</span>
+                        <span class="badge text-bg-success rounded-pill">View</span>
                     </div>
+
                     <div class="qty-grid">
                         <div class="qty-box"><div class="label">Total Qty</div><div class="value">${fmtQty(doc.total_qty)}</div></div>
                         <div class="qty-box"><div class="label">Rows</div><div class="value">${esc(lineCount)}</div></div>
@@ -1272,6 +1498,7 @@ function loadSapInventoryTransfer(idx) {
     document.getElementById('saveBtn').disabled = true;
     document.getElementById('saveBtn').textContent = 'SAP IT View Only';
 
+    hideModal('sapItModal');
     renderSapInventoryTransfers();
     renderItrs();
     renderMyRequests();
@@ -1346,9 +1573,13 @@ function itrMatchesItemSearch(doc, search) {
         return true;
     }
 
+    const wh = getDocWarehouseSummary(doc);
+
     const headerText = [
         doc.doc_num,
-        doc.doc_date
+        doc.doc_date,
+        wh.from,
+        wh.to
     ].join(' ').toLowerCase();
 
     if (headerText.includes(search)) {
@@ -1357,7 +1588,9 @@ function itrMatchesItemSearch(doc, search) {
 
     return (doc.lines || []).some(line =>
         String(line.item_code || '').toLowerCase().includes(search) ||
-        String(line.part_name || '').toLowerCase().includes(search)
+        String(line.part_name || '').toLowerCase().includes(search) ||
+        String(line.from_whs_code || '').toLowerCase().includes(search) ||
+        String(line.to_whs_code || '').toLowerCase().includes(search)
     );
 }
 
@@ -1376,12 +1609,13 @@ function renderItrs() {
         .filter(row => itrMatchesItemSearch(row.doc, search));
 
     if (rows.length === 0) {
-        list.innerHTML = '<div class="alert alert-light border info-box">No ITRs found for that SAP code or part name.</div>';
+        list.innerHTML = '<div class="alert alert-light border info-box">No ITRs found for that SAP code, part name, or warehouse.</div>';
         return;
     }
 
     rows.forEach(({ doc, idx }) => {
         const active = selectedDocument && selectedDocument.doc_num === doc.doc_num ? ' active' : '';
+        const wh = getDocWarehouseSummary(doc);
 
         list.insertAdjacentHTML('beforeend', `
             <div class="itr-card${active}">
@@ -1389,9 +1623,16 @@ function renderItrs() {
                     <div class="d-flex justify-content-between align-items-start gap-2">
                         <div>
                             <div class="request-title">ITR ${esc(doc.doc_num)}</div>
-                            <div class="request-meta">${esc(doc.doc_date)} | ${esc(doc.line_count)} WH 01 item(s)</div>
+                            <div class="request-meta">${esc(doc.doc_date)} | ${esc(doc.line_count)} item(s)</div>
+
+                            <div class="warehouse-route">
+                                <span class="warehouse-pill">From WH: ${esc(wh.from)}</span>
+                                <span class="warehouse-arrow">→</span>
+                                <span class="warehouse-pill">To WH: ${esc(wh.to)}</span>
+                            </div>
                         </div>
-                        <span class="badge text-bg-primary rounded-pill">Load</span>
+
+                        <span class="badge text-bg-primary rounded-pill">Select</span>
                     </div>
 
                     <div class="qty-grid">
@@ -1418,6 +1659,11 @@ function renderItrs() {
                         <div class="qty-box">
                             <div class="label">Your WH Stock</div>
                             <div class="value">${fmtQty(doc.destination_stock_qty)}</div>
+                        </div>
+
+                        <div class="qty-box">
+                            <div class="label">Warehouse Route</div>
+                            <div class="value">${esc(wh.from)} → ${esc(wh.to)}</div>
                         </div>
                     </div>
                 </button>
@@ -1514,9 +1760,15 @@ function loadItr(idx) {
             request_qty: ''
         }));
 
-    document.getElementById('loadedInfo').className = 'alert alert-info info-box';
-    document.getElementById('loadedInfo').textContent = 'Loaded ITR ' + doc.doc_num + '. Enter quantity only for items needed on the selected date.';
+    const wh = getDocWarehouseSummary(doc);
 
+    document.getElementById('loadedInfo').className = 'alert alert-info info-box';
+    document.getElementById('loadedInfo').innerHTML =
+        'Loaded ITR <strong>' + esc(doc.doc_num) + '</strong>. ' +
+        'Warehouse route: <strong>' + esc(wh.from) + '</strong> to <strong>' + esc(wh.to) + '</strong>. ' +
+        'Enter quantity only for items needed on the selected date.';
+
+    hideModal('itrSelectModal');
     renderItrs();
     renderMyRequests();
     renderTable();
@@ -1567,6 +1819,11 @@ function loadSavedRequest(idx) {
     renderItrs();
     renderMyRequests();
     renderTable();
+
+    window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+    });
 }
 
 function renderTable() {
@@ -1606,7 +1863,9 @@ function renderTable() {
         .map((it, idx) => ({ it, idx }))
         .filter(row => itemMatchesSearch(row.it, itemSearch));
 
-    if (requestItems.length > 0 && visibleItems.length === 0) {
+    if (requestItems.length === 0) {
+        tb.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No items loaded. Click Select SAP ITR to start.</td></tr>';
+    } else if (visibleItems.length === 0) {
         tb.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No items found for that SAP code or part name.</td></tr>';
     }
 
@@ -1722,7 +1981,7 @@ function clearRequestForm() {
     requestItems = [];
     document.getElementById('remarksInput').value = '';
     document.getElementById('loadedInfo').className = 'alert alert-secondary info-box';
-    document.getElementById('loadedInfo').textContent = 'No ITR loaded.';
+    document.getElementById('loadedInfo').innerHTML = 'No ITR loaded. Click <strong>Select SAP ITR</strong> to start.';
     document.getElementById('saveBtn').textContent = 'Submit Issue Request';
     renderItrs();
     renderMyRequests();
@@ -1895,26 +2154,7 @@ const requestorRefresh = window.createRefreshController([
 ]);
 
 requestorRefresh.scheduleAll();
-
-const sapItsTabEl = document.getElementById('sapItsTab');
-if (sapItsTabEl) {
-    sapItsTabEl.addEventListener('click', function () {
-        const status = document.getElementById('sapItStatus');
-
-        if (status && sapInventoryTransfers.length === 0 && !sapItLoading) {
-            status.textContent = 'Click Reload to load the latest SAP ITs.';
-        }
-    });
-
-    sapItsTabEl.addEventListener('shown.bs.tab', function () {
-        const status = document.getElementById('sapItStatus');
-
-        if (status && sapInventoryTransfers.length === 0 && !sapItLoading) {
-            status.textContent = 'Click Reload to load the latest SAP ITs.';
-        }
-    });
-}
-
+renderTable();
 </script>
 
 </body>
