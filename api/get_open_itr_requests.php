@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/sap_cache.php';
+require_once __DIR__ . '/../includes/itr_pack_sizes.php';
 
 require_role([ROLE_ISSUER, ROLE_REQUESTOR, ROLE_ADMIN]);
 
@@ -286,7 +287,8 @@ $cacheKey = sap_cache_make_key('sap.open_itr_requests', [
     'section' => $currentSection,
     'warehouses' => implode(',', $allowedWarehouses),
     'month' => date('Y-m'),
-    'version' => 'quantity-as-open-v2'
+    'version' => 'quantity-as-open-v3-pack-size',
+    'pack_sizes' => itr_pack_sizes_cache_token()
 ]);
 
 if (!sap_cache_should_refresh()) {
@@ -441,6 +443,7 @@ foreach ($rows as $r) {
     */
     $openQty = (float)$r['OpenQty'];
     $remainingQty = max(0, $openQty - $appRequestedQty);
+    $qtyPerPack = itr_qty_per_pack_for_item($r['ItemCode']);
 
     if ($remainingQty <= 0) {
         continue;
@@ -459,6 +462,8 @@ foreach ($rows as $r) {
         'app_requested_qty' => $appRequestedQty,
         'remaining_qty' => $remainingQty,
         'uom' => (string)($r['UomName'] ?? ''),
+        'qty_per_pack' => $qtyPerPack,
+        'qty_per_pack_source' => $qtyPerPack > 0 ? 'June 2026 Excel SUMMARY' : '',
         'num_per_msr' => (float)($r['NumPerMsr'] ?? 1),
         'from_whs_code' => (string)$r['FromWhsCode'],
         'to_whs_code' => (string)$r['ToWhsCode'],

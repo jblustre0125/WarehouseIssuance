@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/sap_cache.php';
+require_once __DIR__ . '/../includes/itr_pack_sizes.php';
 require_role([ROLE_PICKER, ROLE_ISSUER, ROLE_ADMIN]);
 
 header('Content-Type: application/json; charset=utf-8');
@@ -87,7 +88,8 @@ foreach ($rows as $sigRow) {
 }
 
 $cacheKey = sap_cache_make_key('sap.open_issue_requests', [
-    'signature' => hash('sha256', implode('|', $rowSignatureParts))
+    'signature' => hash('sha256', implode('|', $rowSignatureParts)),
+    'pack_sizes' => itr_pack_sizes_cache_token()
 ]);
 
 if (!sap_cache_should_refresh()) {
@@ -221,6 +223,7 @@ foreach ($rows as $r) {
     $issuedQty = (float)$r['IssuedQty'];
     $remainingQty = max(0, $requestedQty - $issuedQty);
     $stockQty = $stockByItem[(string)$r['ItemCode']] ?? 0.0;
+    $qtyPerPack = itr_qty_per_pack_for_item($r['ItemCode']);
     $line = [
         'request_id' => (int)$r['RequestID'],
         'request_line_id' => (int)$r['RequestLineID'],
@@ -241,6 +244,8 @@ foreach ($rows as $r) {
         'stock_whs_code' => '01',
         'warehouse_stock_qty' => $stockQty,
         'uom' => $uomByItem[(string)$r['ItemCode']] ?? '',
+        'qty_per_pack' => $qtyPerPack,
+        'qty_per_pack_source' => $qtyPerPack > 0 ? 'June 2026 Excel SUMMARY' : '',
         'num_per_msr' => 1,
         'needed_date' => $neededDate,
         'destination_area' => (string)($r['DestinationArea'] ?? ''),

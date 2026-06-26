@@ -23,12 +23,25 @@ $hostname = trim($_POST['device_hostname'] ?? '');
 $ip = trim($_POST['device_ip'] ?? '');
 $isActive = isset($_POST['is_active']) ? 1 : 0;
 
-if (!in_array($role, [ROLE_ISSUER, ROLE_PICKER, ROLE_REQUESTOR, ROLE_RECEIVER, ROLE_ADMIN], true)) {
+$validRoles = [
+    ROLE_ISSUER,
+    ROLE_PICKER,
+    ROLE_REQUESTOR,
+    ROLE_RECEIVER,
+    ROLE_SAP_ENCODER,
+    ROLE_ADMIN,
+];
+
+if (!in_array($role, $validRoles, true)) {
     app_error('Invalid role.');
 }
 
 if ($username === '') {
     app_error('Username is required.');
+}
+
+if ($id <= 0 && $password === '') {
+    app_error('Password is required for new users.');
 }
 
 $validRequestorSections = [

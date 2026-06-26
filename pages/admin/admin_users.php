@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/app_shell.php';
+
 require_role(ROLE_ADMIN);
 
 $conn = get_whpokayoke_connection();
@@ -11,9 +12,11 @@ $users = fetch_all($conn, 'SELECT * FROM AppUsers ORDER BY RoleName, Username');
 
 $currentUser = current_user();
 $currentRole = strtolower($currentUser['role'] ?? '');
+
 $totalUsers = count($users);
 $activeUsers = 0;
 $inactiveUsers = 0;
+
 foreach ($users as $userRow) {
     if ((int)($userRow['IsActive'] ?? 0) === 1) {
         $activeUsers++;
@@ -21,6 +24,15 @@ foreach ($users as $userRow) {
         $inactiveUsers++;
     }
 }
+
+$roleOptions = [
+    ROLE_PICKER,
+    ROLE_ISSUER,
+    ROLE_RECEIVER,
+    ROLE_REQUESTOR,
+    ROLE_SAP_ENCODER,
+    ROLE_ADMIN,
+];
 ?>
 <!doctype html>
 <html lang="en">
@@ -712,10 +724,12 @@ foreach ($users as $userRow) {
                     <div class="kpi-label">Total Accounts</div>
                     <div class="kpi-value"><?= (int)$totalUsers ?></div>
                 </div>
+
                 <div class="kpi-tile">
                     <div class="kpi-label">Active</div>
                     <div class="kpi-value"><?= (int)$activeUsers ?></div>
                 </div>
+
                 <div class="kpi-tile">
                     <div class="kpi-label">Inactive</div>
                     <div class="kpi-value"><?= (int)$inactiveUsers ?></div>
@@ -757,8 +771,8 @@ foreach ($users as $userRow) {
                                     <div class="col-12">
                                         <label class="form-label" for="role">Role</label>
                                         <select class="form-select" name="role" id="role" required onchange="toggleRoleFields()">
-                                            <?php foreach ([ROLE_PICKER, ROLE_ISSUER, ROLE_REQUESTOR, ROLE_ADMIN] as $r): ?>
-                                                <option value="<?= h($r) ?>" <?= strtolower($editUser['RoleName'] ?? '') === $r ? 'selected' : '' ?>>
+                                            <?php foreach ($roleOptions as $r): ?>
+                                                <option value="<?= h($r) ?>" <?= strtolower($editUser['RoleName'] ?? '') === strtolower($r) ? 'selected' : '' ?>>
                                                     <?= h(role_label($r)) ?>
                                                 </option>
                                             <?php endforeach; ?>
@@ -856,15 +870,17 @@ foreach ($users as $userRow) {
                                     <?php else: ?>
                                         <?php foreach ($users as $u): ?>
                                             <tr>
-                                                <td title="<?= h($u['Username']) ?>"><?= h($u['Username']) ?></td>
-                                                <td title="<?= h($u['FullName']) ?>"><?= h($u['FullName']) ?></td>
-                                                <td title="<?= h(role_label(strtolower($u['RoleName']))) ?>"><?= h(role_label(strtolower($u['RoleName']))) ?></td>
+                                                <td title="<?= h($u['Username'] ?? '') ?>"><?= h($u['Username'] ?? '') ?></td>
+                                                <td title="<?= h($u['FullName'] ?? '') ?>"><?= h($u['FullName'] ?? '') ?></td>
+                                                <td title="<?= h(role_label(strtolower($u['RoleName'] ?? ''))) ?>">
+                                                    <?= h(role_label(strtolower($u['RoleName'] ?? ''))) ?>
+                                                </td>
                                                 <td title="<?= h($u['RequestorSection'] ?? '') ?>"><?= h($u['RequestorSection'] ?? '') ?></td>
-                                                <td title="<?= h($u['ReceiverArea']) ?>"><?= h($u['ReceiverArea']) ?></td>
-                                                <td title="<?= h($u['DeviceHostname']) ?>"><?= h($u['DeviceHostname']) ?></td>
-                                                <td title="<?= h($u['DeviceIPAddress']) ?>"><?= h($u['DeviceIPAddress']) ?></td>
+                                                <td title="<?= h($u['ReceiverArea'] ?? '') ?>"><?= h($u['ReceiverArea'] ?? '') ?></td>
+                                                <td title="<?= h($u['DeviceHostname'] ?? '') ?>"><?= h($u['DeviceHostname'] ?? '') ?></td>
+                                                <td title="<?= h($u['DeviceIPAddress'] ?? '') ?>"><?= h($u['DeviceIPAddress'] ?? '') ?></td>
                                                 <td>
-                                                    <?php if ((int)$u['IsActive']): ?>
+                                                    <?php if ((int)($u['IsActive'] ?? 0) === 1): ?>
                                                         <span class="status-pill status-active">● Active</span>
                                                     <?php else: ?>
                                                         <span class="status-pill status-inactive">● Inactive</span>
@@ -901,12 +917,14 @@ function toggleRoleFields() {
         return;
     }
 
+    const selectedRole = String(role.value || '').toLowerCase();
+
     if (receiverAreaBox) {
-        receiverAreaBox.style.display = role.value === 'receiver' ? '' : 'none';
+        receiverAreaBox.style.display = selectedRole === 'receiver' ? '' : 'none';
     }
 
     if (requestorSectionBox) {
-        requestorSectionBox.style.display = role.value === 'requestor' ? '' : 'none';
+        requestorSectionBox.style.display = selectedRole === 'requestor' ? '' : 'none';
     }
 }
 
@@ -920,6 +938,7 @@ function closeSidebar() {
     if (sidebar) {
         sidebar.classList.remove('show');
     }
+
     if (sidebarBackdrop) {
         sidebarBackdrop.classList.remove('show');
     }
@@ -946,6 +965,7 @@ const usersTable = document.getElementById('usersTable');
 if (userSearch && usersTable) {
     userSearch.addEventListener('input', function () {
         const query = this.value.trim().toLowerCase();
+
         usersTable.querySelectorAll('tbody tr').forEach(function (row) {
             const text = row.textContent.toLowerCase();
             row.style.display = text.includes(query) ? '' : 'none';

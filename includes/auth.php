@@ -7,6 +7,7 @@ const ROLE_PICKER = 'picker';
 const ROLE_REQUESTOR = 'requestor';
 const ROLE_RECEIVER = 'receiver';
 const ROLE_ADMIN = 'admin';
+const ROLE_SAP_ENCODER = 'sap_encoder';
 
 function h($value) { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); }
 function current_user() { return $_SESSION['user'] ?? null; }

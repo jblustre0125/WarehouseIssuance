@@ -33,6 +33,7 @@ $dateFrom = report_date_value('date_from', $today);
 $dateTo = report_date_value('date_to', $today);
 $export = strtolower(trim((string)($_GET['export'] ?? ''))) === 'excel';
 $q = trim((string)($_GET['q'] ?? ''));
+$refreshScanPlus = in_array(strtolower(trim((string)($_GET['refresh_scanplus'] ?? ''))), ['1', 'true', 'yes', 'force'], true);
 
 $pageSize = 50;
 $page = max(1, (int)($_GET['page'] ?? 1));
@@ -172,6 +173,38 @@ if ($page > $totalPages) {
     $offset = ($page - 1) * $pageSize;
 }
 
+$itSourceSelect = '
+            IT.TransactionID,
+            IT.TraceNo,
+            IT.ItemCode,
+            IT.PartName,
+            IT.Quantity,
+            IT.LotNo,
+            IT.ITRNumber,
+            IT.ITRDocEntry,
+            IT.ITRLineNum,
+            IT.IssuedByUsername,
+            IT.DeviceHostname,
+            IT.DeviceIPAddress,
+            IT.IssuedAt,
+            ' . $warehouseLotSelect;
+
+$itSourceSql = $export
+    ? '(
+        SELECT
+            ' . $itSourceSelect . '
+        FROM IssuanceTransactions IT
+        WHERE ' . $whereSql . '
+    ) IT'
+    : '(
+        SELECT
+            ' . $itSourceSelect . '
+        FROM IssuanceTransactions IT
+        WHERE ' . $whereSql . '
+        ORDER BY IT.IssuedAt DESC, IT.TransactionID DESC
+        OFFSET ' . (int)$offset . ' ROWS FETCH NEXT ' . (int)$pageSize . ' ROWS ONLY
+    ) IT';
+
 $sql = '
     SELECT
         IT.TraceNo,
@@ -188,7 +221,7 @@ $sql = '
         LocalRx.LocalReceivedAt,
         IT.Quantity,
         IT.LotNo,
-        ' . $warehouseLotSelect . ',
+        IT.WarehouseLotNo,
         IT.ITRNumber,
         IT.ITRDocEntry,
         IT.ITRLineNum,
@@ -196,7 +229,7 @@ $sql = '
         IT.DeviceHostname,
         IT.DeviceIPAddress,
         IT.IssuedAt
-    FROM IssuanceTransactions IT
+    FROM ' . $itSourceSql . '
     OUTER APPLY (
         SELECT TOP 1
             H.RequestNo,
@@ -227,17 +260,12 @@ $sql = '
             L.RequestLineID DESC
     ) Req
     ' . $localReceiverApply . '
-    WHERE ' . $whereSql . '
-    ORDER BY IssuedAt DESC, TransactionID DESC
+    ORDER BY IT.IssuedAt DESC, IT.TransactionID DESC
 ';
-
-if (!$export) {
-    $sql .= ' OFFSET ' . (int)$offset . ' ROWS FETCH NEXT ' . (int)$pageSize . ' ROWS ONLY';
-}
 
 $rows = fetch_all($conn, $sql, $params);
 
-function enrich_issuer_scan_rows_with_scanplus(&$rows, $whpConn)
+function enrich_issuer_scan_rows_with_scanplus(&$rows, $whpConn, $allowLiveRefresh = false)
 {
     if (empty($rows)) {
         return;
@@ -294,7 +322,7 @@ function enrich_issuer_scan_rows_with_scanplus(&$rows, $whpConn)
         }
     }
 
-    if (!empty($refsToRefresh)) {
+    if ($allowLiveRefresh && !empty($refsToRefresh)) {
         $freshScanplusRows = scanplus_lookup_by_itr_lines(get_erp_connection(), $refsToRefresh);
 
         foreach ($refsToRefresh as $ref) {
@@ -331,7 +359,7 @@ function enrich_issuer_scan_rows_with_scanplus(&$rows, $whpConn)
     unset($row);
 }
 
-enrich_issuer_scan_rows_with_scanplus($rows, $conn);
+enrich_issuer_scan_rows_with_scanplus($rows, $conn, $refreshScanPlus);
 
 function issuer_report_valid_datetime($value): bool
 {
@@ -380,6 +408,18 @@ function issuer_cap_received_qty($sapQty, $row)
     return rtrim(rtrim(number_format($qty, 3, '.', ''), '0'), '.');
 }
 
+function issuer_report_qty_variance($issuedQty, $receivedQty)
+{
+    $receivedText = trim((string)($receivedQty ?? ''));
+
+    if (!is_numeric($issuedQty) || $receivedText === '' || !is_numeric($receivedText)) {
+        return '';
+    }
+
+    $variance = (float)$issuedQty - (float)$receivedText;
+    return rtrim(rtrim(number_format($variance, 3, '.', ''), '0'), '.');
+}
+
 function report_received_value($row, $field)
 {
     if (!issuer_row_is_received($row)) {
@@ -415,6 +455,7 @@ function report_received_value($row, $field)
 foreach ($rows as &$issuerReportRow) {
     $issuerReportRow['IssueStatus'] = 'ISSUED';
     $issuerReportRow['DisplayReceivedQty'] = report_received_value($issuerReportRow, 'ReceivedQty');
+    $issuerReportRow['QtyVariance'] = issuer_report_qty_variance($issuerReportRow['Quantity'] ?? '', $issuerReportRow['DisplayReceivedQty']);
     $issuerReportRow['DisplayBarcodeUser'] = report_received_value($issuerReportRow, 'BarcodeUser');
     $issuerReportRow['DisplayReceivedAt'] = report_received_value($issuerReportRow, 'ReceivedAt');
 }
@@ -429,6 +470,10 @@ if ($q !== '') {
     $baseQuery['q'] = $q;
 }
 
+if ($refreshScanPlus) {
+    $baseQuery['refresh_scanplus'] = '1';
+}
+
 function issuer_scan_report_url($query)
 {
     return 'pages/issuer/issuer_scan_report.php?' . http_build_query($query);
@@ -441,6 +486,7 @@ $columns = [
     'Req Qty',
     'Iss Qty',
     'Received Qty (SAP)',
+    'Variance',
     'GRPO Lot No',
     'WH Lot No',
     'ITR/IT',
@@ -490,6 +536,7 @@ if ($export) {
                     <td><?= excel_cell($r['RequestedQty'] ?? '') ?></td>
                     <td><?= excel_cell($r['Quantity'] ?? '') ?></td>
                     <td><?= excel_cell($r['DisplayReceivedQty'] ?? '') ?></td>
+                    <td><?= excel_cell($r['QtyVariance'] ?? '') ?></td>
                     <td><?= excel_cell($r['LotNo'] ?? '') ?></td>
                     <td><?= excel_cell($r['WarehouseLotNo'] ?? '') ?></td>
                     <td><?= excel_cell($r['ITRNumber'] ?? '') ?></td>
@@ -832,6 +879,7 @@ if ($export) {
         .col-item { width: 8%; white-space: nowrap; }
         .col-part { width: 14%; white-space: normal; line-height: 1.25; }
         .col-qty { width: 5%; text-align: right; white-space: nowrap; }
+        .col-variance { width: 5%; text-align: right; white-space: nowrap; }
         .col-lot { width: 7%; white-space: nowrap; }
         .col-wh-lot { width: 7%; white-space: nowrap; }
         .col-itr { width: 6%; white-space: nowrap; }
@@ -1120,6 +1168,7 @@ if ($export) {
                                 <th class="col-qty">Req Qty</th>
                                 <th class="col-qty">Iss Qty</th>
                                 <th class="col-qty">Received Qty (SAP)</th>
+                                <th class="col-variance">Variance</th>
                                 <th class="col-lot">GRPO Lot No</th>
                                 <th class="col-wh-lot">WH Lot No</th>
                                 <th class="col-itr">ITR/IT</th>
@@ -1168,6 +1217,10 @@ if ($export) {
 
                                         <td class="col-qty" title="SAP received qty: <?= h(report_cell($r['DisplayReceivedQty'] ?? '')) ?>">
                                             <?= h(report_cell($r['DisplayReceivedQty'] ?? '')) ?>
+                                        </td>
+
+                                        <td class="col-variance" title="Issued minus SAP received: <?= h(report_cell($r['QtyVariance'] ?? '')) ?>">
+                                            <?= h(report_cell($r['QtyVariance'] ?? '')) ?>
                                         </td>
 
                                         <td class="col-lot" title="<?= h(report_cell($r['LotNo'] ?? '')) ?>">

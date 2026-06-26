@@ -150,72 +150,96 @@ function scanplus_cache_read($conn, array $refs, $ttlSeconds = SCANPLUS_CACHE_TT
     $freshCutoff = date('Y-m-d H:i:s', time() - max(1, (int)$ttlSeconds));
     $result = [];
     $freshKeys = [];
+    $normalizedRefs = [];
 
-    foreach ($refs as $ref) {
+    foreach (array_values($refs) as $idx => $ref) {
         $scanKey = scanplus_key($ref['doc_entry'] ?? 0, $ref['line_num'] ?? null, $ref['item_code'] ?? '');
 
         if ($scanKey === '') {
             continue;
         }
 
-        $scanLotKey = scanplus_lot_key(
-            $ref['doc_entry'] ?? 0,
-            $ref['line_num'] ?? null,
-            $ref['item_code'] ?? '',
-            $ref['lot_no'] ?? ''
-        );
+        $normalizedRefs[$idx] = [
+            'doc_entry' => (int)($ref['doc_entry'] ?? 0),
+            'line_num' => $ref['line_num'] === null || trim((string)$ref['line_num']) === '' ? null : (int)$ref['line_num'],
+            'item_code' => trim((string)($ref['item_code'] ?? '')),
+            'lot_no' => trim((string)($ref['lot_no'] ?? '')),
+            'scan_key' => $scanKey
+        ];
+    }
 
-        $cacheRow = fetch_one(
+    if (empty($normalizedRefs)) {
+        return ['rows' => [], 'fresh_keys' => []];
+    }
+
+    $cacheRows = [];
+
+    foreach (array_chunk(array_keys($normalizedRefs), 350) as $chunkIndexes) {
+        $chunkRows = [];
+        $chunkParams = [];
+
+        foreach ($chunkIndexes as $idx) {
+            $ref = $normalizedRefs[$idx];
+            $chunkRows[] = 'SELECT ? AS RefIdx, ? AS SAP_IT_DocEntry, ? AS SAP_IT_LineNum, ? AS ItemCode, ? AS LotNo';
+            array_push($chunkParams, $idx, $ref['doc_entry'], $ref['line_num'], $ref['item_code'], $ref['lot_no']);
+        }
+
+        $chunkCacheRows = fetch_all(
             $conn,
-            "SELECT TOP 1
+            "WITH Ref AS (
+                " . implode("\nUNION ALL\n", $chunkRows) . "
+             ),
+             RankedCache AS (
+                SELECT
+                    Ref.RefIdx,
+                    C.ScanStatus,
+                    C.ReceivedLotNo,
+                    C.ReceivedQty,
+                    C.BarcodeUser,
+                    CONVERT(varchar(19), C.ReceivedAt, 120) AS ReceivedAt,
+                    CONVERT(varchar(19), C.LastSyncedAt, 120) AS LastSyncedAt,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY Ref.RefIdx
+                        ORDER BY
+                            CASE WHEN ISNULL(C.LotNo, '') = ISNULL(Ref.LotNo, '') THEN 0 ELSE 1 END,
+                            C.LastSyncedAt DESC
+                    ) AS RowNum
+                FROM Ref
+                INNER JOIN dbo.RawmatTraceScanPlusCache C
+                    ON C.SAP_IT_DocEntry = Ref.SAP_IT_DocEntry
+                   AND ISNULL(C.SAP_IT_LineNum, -1) = ISNULL(Ref.SAP_IT_LineNum, -1)
+                   AND C.ItemCode = Ref.ItemCode
+                   AND (
+                        ISNULL(C.LotNo, '') = ISNULL(Ref.LotNo, '')
+                        OR (ISNULL(Ref.LotNo, '') <> '' AND ISNULL(C.LotNo, '') = '')
+                   )
+             )
+             SELECT
+                RefIdx,
                 ScanStatus,
                 ReceivedLotNo,
                 ReceivedQty,
                 BarcodeUser,
-                CONVERT(varchar(19), ReceivedAt, 120) AS ReceivedAt,
-                CONVERT(varchar(19), LastSyncedAt, 120) AS LastSyncedAt
-             FROM dbo.RawmatTraceScanPlusCache
-             WHERE SAP_IT_DocEntry = ?
-               AND ISNULL(SAP_IT_LineNum, -1) = ISNULL(?, -1)
-               AND ItemCode = ?
-               AND ISNULL(LotNo, '') = ISNULL(?, '')
-             ORDER BY LastSyncedAt DESC",
-            [
-                (int)($ref['doc_entry'] ?? 0),
-                $ref['line_num'] === null || trim((string)$ref['line_num']) === '' ? null : (int)$ref['line_num'],
-                trim((string)($ref['item_code'] ?? '')),
-                trim((string)($ref['lot_no'] ?? ''))
-            ]
+                ReceivedAt,
+                LastSyncedAt
+             FROM RankedCache
+             WHERE RowNum = 1",
+            $chunkParams
         );
 
-        if (!$cacheRow && $scanLotKey !== '') {
-            $cacheRow = fetch_one(
-                $conn,
-                "SELECT TOP 1
-                    ScanStatus,
-                    ReceivedLotNo,
-                    ReceivedQty,
-                    BarcodeUser,
-                    CONVERT(varchar(19), ReceivedAt, 120) AS ReceivedAt,
-                    CONVERT(varchar(19), LastSyncedAt, 120) AS LastSyncedAt
-                 FROM dbo.RawmatTraceScanPlusCache
-                 WHERE SAP_IT_DocEntry = ?
-                   AND ISNULL(SAP_IT_LineNum, -1) = ISNULL(?, -1)
-                   AND ItemCode = ?
-                   AND ISNULL(LotNo, '') = ''
-                 ORDER BY LastSyncedAt DESC",
-                [
-                    (int)($ref['doc_entry'] ?? 0),
-                    $ref['line_num'] === null || trim((string)$ref['line_num']) === '' ? null : (int)$ref['line_num'],
-                    trim((string)($ref['item_code'] ?? ''))
-                ]
-            );
+        foreach ($chunkCacheRows as $chunkCacheRow) {
+            $cacheRows[] = $chunkCacheRow;
         }
+    }
 
-        if (!$cacheRow) {
+    foreach ($cacheRows as $cacheRow) {
+        $idx = (int)($cacheRow['RefIdx'] ?? -1);
+
+        if (!isset($normalizedRefs[$idx])) {
             continue;
         }
 
+        $ref = $normalizedRefs[$idx];
         $scan = [
             'scan_status' => trim((string)($cacheRow['ScanStatus'] ?? '')),
             'received_lot_no' => trim((string)($cacheRow['ReceivedLotNo'] ?? '')),
@@ -224,6 +248,8 @@ function scanplus_cache_read($conn, array $refs, $ttlSeconds = SCANPLUS_CACHE_TT
             'received_at' => trim((string)($cacheRow['ReceivedAt'] ?? ''))
         ];
 
+        $scanKey = $ref['scan_key'];
+        $scanLotKey = scanplus_lot_key($ref['doc_entry'], $ref['line_num'], $ref['item_code'], $ref['lot_no']);
         $targetKey = $scanLotKey !== '' ? $scanLotKey : $scanKey;
         $result[$targetKey] = $scan;
 

@@ -870,7 +870,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
                                         <th class="col-wh-lot">WH Lot No</th>
                                         <th class="col-match">Lot Balance</th>
                                         <th class="col-itr">ITR/IT</th>
-                                        <th class="col-action">Action</th>
+                                        <th class="col-action">Remove</th>
                                     </tr>
                                 </thead>
 
@@ -1016,6 +1016,37 @@ $currentRole = strtolower($currentUser['role'] ?? '');
     </div>
 </div>
 
+<div class="modal fade" id="removeItemModal" tabindex="-1" aria-labelledby="removeItemModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold" id="removeItemModalLabel">
+                    Remove Item
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="mb-2 fw-semibold">
+                    Remove this item from the issuance table?
+                </div>
+                <div class="text-muted small">
+                    This will remove the selected row from the current issuance list.
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    Cancel
+                </button>
+                <button type="button" class="btn btn-danger" id="confirmRemoveItemBtn">
+                    Remove
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="assets/app-refresh.js"></script>
 
@@ -1026,6 +1057,7 @@ let openDocuments = [];
 let selectedDocument = null;
 let pendingLoadDocIdx = null;
 let pendingSaveAfterOverQty = false;
+let pendingRemoveItemIdx = null;
 let stockRows = [];
 
 function fmtQty(v) {
@@ -1369,6 +1401,83 @@ function loadDocumentItems(docIdx) {
     loadDocumentItemsConfirmed(docIdx);
 }
 
+function roundIssueQty(value) {
+    return Math.round((Number(value || 0) + Number.EPSILON) * 1000) / 1000;
+}
+
+function buildIssueItemFromRequest(req) {
+    return {
+        item_code: req.item_code,
+        scanned_code: (req.request_no ? req.request_no + ' / ' : '') + 'ITR ' + req.doc_num + ' line ' + req.line_num,
+        part_name: req.part_name || '',
+        quantity: req.remaining_qty,
+        requested_qty: req.requested_qty || req.original_requested_qty || req.request_qty || req.remaining_qty,
+        open_qty: req.open_qty,
+        remaining_qty: req.remaining_qty,
+        warehouse_stock_qty: req.warehouse_stock_qty || 0,
+        stock_whs_code: req.stock_whs_code || '01',
+        requested_lot_no: req.lot_no || '',
+        available_lots: Array.isArray(req.available_lots) ? req.available_lots : [],
+        lot_no: req.lot_no || '',
+        warehouse_lot_no: req.warehouse_lot_no || '',
+        itr_number: req.doc_num,
+        itr_doc_entry: req.doc_entry,
+        itr_doc_num: req.doc_num,
+        itr_line_num: req.line_num,
+        request_id: req.request_id || '',
+        request_line_id: req.request_line_id || '',
+        source_request_line_id: req.request_line_id || (String(req.doc_entry || '') + '-' + String(req.line_num || '') + '-' + String(req.item_code || '')),
+        source_remaining_qty: req.remaining_qty,
+        source_requested_qty: req.requested_qty || req.original_requested_qty || req.request_qty || req.remaining_qty,
+        qty_per_pack: Number(req.qty_per_pack || 0),
+        qty_per_pack_source: req.qty_per_pack_source || '',
+        pack_row_no: 1,
+        pack_row_count: 1,
+        entry_method: 'SCAN',
+        manual_reason: '',
+        match_by: req.request_no ? 'Issue request' : 'SAP ITR request'
+    };
+}
+
+function splitIssueItemByPack(baseItem) {
+    const totalQty = roundIssueQty(baseItem.quantity);
+    const qtyPerPack = roundIssueQty(baseItem.qty_per_pack);
+
+    if (totalQty <= 0 || qtyPerPack <= 0 || totalQty <= qtyPerPack) {
+        return [baseItem];
+    }
+
+    const rows = [];
+    let remainingQty = totalQty;
+
+    while (remainingQty > 0.0005) {
+        const rowQty = roundIssueQty(Math.min(qtyPerPack, remainingQty));
+
+        rows.push({
+            ...baseItem,
+            quantity: rowQty,
+            lot_no: '',
+            warehouse_lot_no: '',
+            pack_row_no: rows.length + 1,
+            pack_row_count: 0,
+            lot_status: '',
+            lot_message: '',
+            lot_received_qty: 0,
+            lot_issued_qty: 0,
+            lot_available_qty: 0,
+            lot_source: ''
+        });
+
+        remainingQty = roundIssueQty(remainingQty - rowQty);
+    }
+
+    return rows.map(row => ({
+        ...row,
+        pack_row_count: rows.length,
+        scanned_code: row.scanned_code + ' pack ' + row.pack_row_no + '/' + rows.length
+    }));
+}
+
 function loadDocumentItemsConfirmed(docIdx) {
     const doc = openDocuments[docIdx];
 
@@ -1380,37 +1489,11 @@ function loadDocumentItemsConfirmed(docIdx) {
 
     items = doc.lines
         .filter(req => Number(req.remaining_qty) > 0)
-        .map(req => ({
-            item_code: req.item_code,
-            scanned_code: (req.request_no ? req.request_no + ' / ' : '') + 'ITR ' + req.doc_num + ' line ' + req.line_num,
-            part_name: req.part_name || '',
-            quantity: req.remaining_qty,
-            requested_qty: req.requested_qty || req.original_requested_qty || req.request_qty || req.remaining_qty,
-            open_qty: req.open_qty,
-            remaining_qty: req.remaining_qty,
-            warehouse_stock_qty: req.warehouse_stock_qty || 0,
-            stock_whs_code: req.stock_whs_code || '01',
-            requested_lot_no: req.lot_no || '',
-            available_lots: Array.isArray(req.available_lots) ? req.available_lots : [],
-            lot_no: req.lot_no || '',
-            warehouse_lot_no: req.warehouse_lot_no || '',
-            itr_number: req.doc_num,
-            itr_doc_entry: req.doc_entry,
-            itr_doc_num: req.doc_num,
-            itr_line_num: req.line_num,
-            request_id: req.request_id || '',
-            request_line_id: req.request_line_id || '',
-            source_request_line_id: req.request_line_id || (String(req.doc_entry || '') + '-' + String(req.line_num || '') + '-' + String(req.item_code || '')),
-            source_remaining_qty: req.remaining_qty,
-            source_requested_qty: req.requested_qty || req.original_requested_qty || req.request_qty || req.remaining_qty,
-            entry_method: 'SCAN',
-            manual_reason: '',
-            match_by: req.request_no ? 'Issue request' : 'SAP ITR request'
-        }));
+        .flatMap(req => splitIssueItemByPack(buildIssueItemFromRequest(req)));
 
     document.getElementById('selectedRequestBox').classList.remove('d-none');
     document.getElementById('selectedRequestTitle').textContent = (doc.request_no || 'Request') + ' / ITR ' + (doc.itr_number || doc.doc_num);
-    document.getElementById('selectedRequestDetails').textContent = doc.line_count + ' item(s), needed ' + (doc.needed_date || doc.doc_date) + ', remaining total ' + fmtQty(doc.remaining_qty);
+    document.getElementById('selectedRequestDetails').textContent = doc.line_count + ' item(s), ' + items.length + ' issue row(s), needed ' + (doc.needed_date || doc.doc_date) + ', remaining total ' + fmtQty(doc.remaining_qty);
 
     renderRequests();
     render();
@@ -1462,49 +1545,7 @@ function remainingToAllocateForLine(it, excludeIdx = -1) {
 }
 
 function canRemoveLine(idx) {
-    if (!items[idx]) {
-        return false;
-    }
-
-    const key = requestLineKey(items[idx]);
-    return items.filter(row => requestLineKey(row) === key).length > 1;
-}
-
-function splitItem(idx) {
-    syncTableItems();
-
-    const it = items[idx];
-
-    if (!it) {
-        return;
-    }
-
-    const remaining = remainingToAllocateForLine(it);
-
-    if (remaining <= 0) {
-        showMessage('No remaining quantity to split for this request line. Reduce Qty to Issue first if you need another lot row.');
-        return;
-    }
-
-    const newRow = {
-        ...it,
-        quantity: remaining,
-        lot_no: it.lot_no || '',
-        warehouse_lot_no: '',
-        scanned_code: (it.request_no ? it.request_no + ' / ' : '') + 'ITR ' + it.itr_number + ' line ' + it.itr_line_num,
-        entry_method: 'MANUAL_SPLIT',
-        manual_reason: 'Split lot row',
-        match_by: 'Split Lot',
-        lot_status: '',
-        lot_message: '',
-        lot_received_qty: 0,
-        lot_issued_qty: 0,
-        lot_available_qty: 0,
-        split_child: true
-    };
-
-    items.splice(idx + 1, 0, newRow);
-    render();
+    return !!items[idx];
 }
 
 function validateIssueTotals(showAlert = true) {
@@ -1578,6 +1619,7 @@ function render() {
                 <td class="col-requested" title="Requested qty: ${fmtQty(it.requested_qty)}">
                     <div class="fw-bold">${fmtQty(it.requested_qty)}</div>
                     ${it.remaining_qty ? `<div class="small text-muted">Remaining ${fmtQty(it.remaining_qty)}</div>` : ''}
+                    ${Number(it.qty_per_pack || 0) > 0 ? `<div class="small text-muted">Pack ${fmtQty(it.qty_per_pack)}${Number(it.pack_row_count || 0) > 1 ? ' | ' + esc(it.pack_row_no) + '/' + esc(it.pack_row_count) : ''}</div>` : ''}
                 </td>
 
                 <td class="col-qty">
@@ -1620,10 +1662,14 @@ function render() {
 
                 <td class="col-action">
                     <div class="d-grid gap-1">
-                        <button class="btn btn-sm btn-outline-primary remove-btn" onclick="splitItem(${idx})" title="Add another lot row for this requested item">
-                            Split
+                        <button
+                            class="btn btn-sm btn-outline-danger remove-btn"
+                            type="button"
+                            onclick="removeItem(${idx})"
+                            title="Remove this item from the issuance table"
+                        >
+                            Remove
                         </button>
-                        ${canRemoveLine(idx) ? `<button class="btn btn-sm btn-outline-danger remove-btn" onclick="removeItem(${idx})">Remove</button>` : `<button class="btn btn-sm btn-outline-secondary remove-btn" disabled>Main</button>`}
                     </div>
                 </td>
             </tr>
@@ -1669,12 +1715,27 @@ function removeItem(i) {
         return;
     }
 
-    if (!canRemoveLine(i)) {
-        showMessage('This is the main request line. Use Clear to remove the loaded request, or split first if needed.');
+    pendingRemoveItemIdx = i;
+
+    const modalEl = document.getElementById('removeItemModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+}
+
+function removeItemConfirmed() {
+    if (pendingRemoveItemIdx === null || !items[pendingRemoveItemIdx]) {
         return;
     }
 
-    items.splice(i, 1);
+    items.splice(pendingRemoveItemIdx, 1);
+    pendingRemoveItemIdx = null;
+
+    if (items.length === 0) {
+        selectedDocument = null;
+        document.getElementById('selectedRequestBox').classList.add('d-none');
+    }
+
+    renderRequests();
     render();
 }
 
@@ -2231,6 +2292,8 @@ if (confirmLoadRequestBtn) {
     });
 }
 
+const confirmRemoveItemBtn = document.getElementById('confirmRemoveItemBtn');
+
 const confirmOverQtyBtn = document.getElementById('confirmOverQtyBtn');
 
 if (confirmOverQtyBtn) {
@@ -2246,6 +2309,16 @@ if (confirmOverQtyBtn) {
 
         pendingSaveAfterOverQty = false;
         saveItems(true);
+    });
+}
+
+if (confirmRemoveItemBtn) {
+    confirmRemoveItemBtn.addEventListener('click', function () {
+        const modalEl = document.getElementById('removeItemModal');
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+
+        modal.hide();
+        removeItemConfirmed();
     });
 }
 

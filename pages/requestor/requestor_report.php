@@ -174,6 +174,18 @@ function request_report_cap_received_qty($sapQty, array $row)
     return rtrim(rtrim(number_format($qty, 3, '.', ''), '0'), '.');
 }
 
+function request_report_qty_variance($issuedQty, $receivedQty)
+{
+    $receivedText = trim((string)($receivedQty ?? ''));
+
+    if (!is_numeric($issuedQty) || $receivedText === '' || !is_numeric($receivedText)) {
+        return '';
+    }
+
+    $variance = (float)$issuedQty - (float)$receivedText;
+    return rtrim(rtrim(number_format($variance, 3, '.', ''), '0'), '.');
+}
+
 function request_report_enrich_scanplus(array &$rows)
 {
     if (empty($rows)) {
@@ -524,6 +536,8 @@ foreach ($rows as &$requestReportRow) {
     } elseif (!isset($requestReportRow['SAPReceivedQty'])) {
         $requestReportRow['SAPReceivedQty'] = '';
     }
+
+    $requestReportRow['QtyVariance'] = request_report_qty_variance($requestReportRow['IssuedQty'] ?? '', $requestReportRow['SAPReceivedQty'] ?? '');
 }
 unset($requestReportRow);
 
@@ -537,6 +551,7 @@ $columns = [
     'Requested Qty',
     'Issued Qty',
     'Received Qty (SAP)',
+    'Variance',
     'Lot',
     'Requested By',
     'Requested At',
@@ -589,6 +604,7 @@ if ($export) {
                     <td><?= request_excel_cell($r['RequestedQty'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['IssuedQty'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['SAPReceivedQty'] ?? '') ?></td>
+                    <td><?= request_excel_cell($r['QtyVariance'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['LotNo'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['RequestedByUsername'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['RequestedAt'] ?? '') ?></td>
@@ -1213,6 +1229,7 @@ if ($export) {
                                 <th class="col-qty">Req Qty</th>
                                 <th class="col-qty">Iss Qty</th>
                                 <th class="col-qty">Received Qty (SAP)</th>
+                                <th class="col-qty">Variance</th>
                                 <th class="col-lot">Lot / Qty</th>
                                 <th class="col-user">Req By</th>
                                 <th class="col-date">Requested At</th>
@@ -1276,6 +1293,10 @@ if ($export) {
 
                                         <td class="col-qty" title="<?= h(request_report_cell($r['SAPReceivedQty'] ?? '')) ?>">
                                             <?= h(request_report_cell($r['SAPReceivedQty'] ?? '')) ?>
+                                        </td>
+
+                                        <td class="col-qty" title="Issued minus SAP received: <?= h(request_report_cell($r['QtyVariance'] ?? '')) ?>">
+                                            <?= h(request_report_cell($r['QtyVariance'] ?? '')) ?>
                                         </td>
 
                                         <td class="col-lot" title="<?= h(request_report_cell($r['LotNo'] ?? '')) ?>">
