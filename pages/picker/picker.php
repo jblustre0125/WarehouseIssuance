@@ -90,8 +90,9 @@ $currentRole = strtolower($currentUser['role'] ?? '');
         .picker-table { width:100%; table-layout:fixed; font-size:11px; margin-bottom:0; }
         .picker-table thead th { position:sticky; top:0; z-index:5; background:#f8fafc; color:#374151; font-size:9px; font-weight:800; text-transform:uppercase; border-bottom:1px solid #d8e0eb; padding:8px 5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .picker-table td { padding:7px 5px; vertical-align:middle; color:#111827; overflow:hidden; text-overflow:ellipsis; }
-        .col-item { width:13%; white-space:nowrap; }
-        .col-part { width:20%; white-space:normal; line-height:1.25; }
+        .col-no { width:5%; text-align:center; white-space:nowrap; }
+        .col-item { width:12%; white-space:nowrap; }
+        .col-part { width:19%; white-space:normal; line-height:1.25; }
         .col-qty { width:12%; }
         .col-uom { width:8%; white-space:nowrap; }
         .col-lot { width:18%; }
@@ -118,6 +119,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             .picker-table { min-width:980px; table-layout:auto; font-size:12px; }
             .picker-table thead th { font-size:10px; padding:8px 6px; }
             .picker-table td { padding:7px 6px; white-space:nowrap; }
+            .col-no { width:auto; min-width:70px; }
             .col-item,.col-part,.col-qty,.col-uom,.col-lot,.col-itr,.col-payload,.col-action { width:auto; min-width:110px; }
             .col-part { min-width:230px; }
             .col-lot { min-width:160px; }
@@ -136,14 +138,16 @@ $currentRole = strtolower($currentUser['role'] ?? '');
         <div class="shell-subtitle">Picker workspace</div>
     </div>
 </header>
+
 <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
 <div class="app-layout">
     <?php app_sidebar('picker'); ?>
 
     <main class="main-content">
         <div class="mobile-topbar">
             <strong>Picker Warehouse</strong>
-            <button class="btn btn-sm btn-primary" type="button" id="sidebarToggle">Menu</button>
+            <button class="btn btn-sm btn-primary" type="button" id="sidebarToggleMobile">Menu</button>
         </div>
 
         <div class="page-header">
@@ -176,6 +180,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
                             <table class="table table-bordered table-striped align-middle picker-table" id="pickTable">
                                 <thead>
                                     <tr>
+                                        <th class="col-no">No.</th>
                                         <th class="col-item">SAP ItemCode</th>
                                         <th class="col-part">Part Name</th>
                                         <th class="col-qty">Qty</th>
@@ -208,6 +213,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
                             </div>
                             <button class="btn btn-sm btn-outline-primary" type="button" onclick="refreshOpenDocuments()">Refresh</button>
                         </div>
+
                         <ul class="nav source-tabs mt-3" id="pickerSourceTabs" role="tablist">
                             <li class="nav-item" role="presentation">
                                 <button class="nav-link active" id="requestsTab" data-bs-toggle="tab" data-bs-target="#requestsPane" type="button" role="tab" aria-controls="requestsPane" aria-selected="true">
@@ -223,12 +229,14 @@ $currentRole = strtolower($currentUser['role'] ?? '');
                             </li>
                         </ul>
                     </div>
+
                     <div class="content-card-body">
                         <div class="tab-content">
                             <div class="tab-pane fade show active" id="requestsPane" role="tabpanel" aria-labelledby="requestsTab" tabindex="0">
                                 <div class="small text-muted mb-2" id="requestStatus">Loading requests...</div>
                                 <div id="requestList" class="request-list"></div>
                             </div>
+
                             <div class="tab-pane fade" id="purchaseOrdersPane" role="tabpanel" aria-labelledby="purchaseOrdersTab" tabindex="0">
                                 <div class="po-toolbar">
                                     <input class="form-control form-control-sm" id="poSearchInput" placeholder="Search PO, vendor, item" oninput="queuePurchaseOrderSearch()">
@@ -252,28 +260,35 @@ $currentRole = strtolower($currentUser['role'] ?? '');
                 <h5 class="modal-title fw-bold" id="breakdownModalTitle">Lot Breakdown</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+
             <div class="modal-body">
                 <div class="alert alert-light border small" id="breakdownLineInfo"></div>
+
                 <div class="row g-2">
                     <div class="col-md-6">
                         <label class="form-label small fw-bold" for="breakdownLot">Lot No</label>
                         <input class="form-control" id="breakdownLot" placeholder="Actual lot">
                     </div>
+
                     <div class="col-md-6">
                         <label class="form-label small fw-bold" for="breakdownTotalQty">Total Qty</label>
                         <input class="form-control" id="breakdownTotalQty" type="number" min="0.001" step="0.001">
                     </div>
+
                     <div class="col-md-6">
                         <label class="form-label small fw-bold" for="breakdownBoxQty">Box Qty</label>
                         <input class="form-control" id="breakdownBoxQty" type="number" min="0" step="0.001" placeholder="Example 1000">
                     </div>
+
                     <div class="col-md-6">
                         <label class="form-label small fw-bold" for="breakdownPackQty">Qty Per Pack / Tag</label>
                         <input class="form-control" id="breakdownPackQty" type="number" min="0.001" step="0.001" placeholder="Example 100">
                     </div>
                 </div>
+
                 <div class="small text-muted mt-2" id="breakdownPreview"></div>
             </div>
+
             <div class="modal-footer">
                 <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Cancel</button>
                 <button class="btn btn-primary" type="button" onclick="applyBreakdown()">Create Tag Lines</button>
@@ -457,13 +472,6 @@ function loadPurchaseOrderDocument(docIdx) {
         return;
     }
 
-    /*
-        For purchase orders, use the visible PO number from doc.doc_num.
-        Do not use doc.doc_entry for the printed/reference PO number.
-        Example:
-            Correct PO No: 120001019
-            Wrong DocEntry/internal number: 470203967
-    */
     const poNumber = String(doc.doc_num || '').trim();
 
     selectedDocument = {
@@ -481,20 +489,9 @@ function loadPurchaseOrderDocument(docIdx) {
             requested_qty: line.ordered_qty,
             remaining_qty: line.open_qty,
             lot_no: '',
-
-            /*
-                This becomes the Reference column and the barcode source.
-                The print file should strip "PO " and barcode only the number.
-            */
             request_no: 'PO ' + poNumber,
-
             request_id: '',
             request_line_id: '',
-
-            /*
-                Keep the full visible PO number here also.
-                Do not use vendor_code or doc_entry for the PO barcode.
-            */
             itr_number: poNumber,
             itr_doc_entry: line.doc_entry || doc.doc_entry || '',
             itr_doc_num: poNumber,
@@ -556,6 +553,7 @@ function renderPickItems() {
     pickItems.forEach((it, idx) => {
         tb.insertAdjacentHTML('beforeend', `
             <tr>
+                <td class="col-no text-center fw-bold">${idx + 1}</td>
                 <td class="col-item" title="${esc(it.item_code)}">${esc(it.item_code)}</td>
                 <td class="col-part" title="${esc(it.part_name)}">${esc(it.part_name)}</td>
                 <td class="col-qty">
@@ -752,19 +750,34 @@ function printTags() {
 }
 
 const sidebar = document.getElementById('sidebar');
-const sidebarToggle = document.getElementById('sidebarToggle');
 const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+const sidebarToggle = document.getElementById('sidebarToggle');
+const sidebarToggleMobile = document.getElementById('sidebarToggleMobile');
+
+function openSidebar() {
+    if (sidebar) {
+        sidebar.classList.add('show');
+    }
+
+    if (sidebarBackdrop) {
+        sidebarBackdrop.classList.add('show');
+    }
+}
 
 if (sidebarToggle) {
-    sidebarToggle.addEventListener('click', function () {
-        sidebar.classList.add('show');
-        sidebarBackdrop.classList.add('show');
-    });
+    sidebarToggle.addEventListener('click', openSidebar);
+}
+
+if (sidebarToggleMobile) {
+    sidebarToggleMobile.addEventListener('click', openSidebar);
 }
 
 if (sidebarBackdrop) {
     sidebarBackdrop.addEventListener('click', function () {
-        sidebar.classList.remove('show');
+        if (sidebar) {
+            sidebar.classList.remove('show');
+        }
+
         sidebarBackdrop.classList.remove('show');
     });
 }
@@ -784,6 +797,7 @@ const pickerRefresh = window.createRefreshController([
 pickerRefresh.scheduleAll();
 
 const purchaseOrdersTab = document.getElementById('purchaseOrdersTab');
+
 if (purchaseOrdersTab) {
     purchaseOrdersTab.addEventListener('shown.bs.tab', function () {
         pickerRefresh.run('pickerPurchaseOrders', loadOpenPurchaseOrders);

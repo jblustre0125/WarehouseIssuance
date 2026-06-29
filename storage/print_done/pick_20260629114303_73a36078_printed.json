@@ -1,0 +1,50 @@
+{
+    "job_id": "20260629114303_73a36078",
+    "status": "PRINTED",
+    "created_at": "2026-06-29 11:43:03",
+    "finished_at": "2026-06-29 11:43:07",
+    "result": {
+        "enabled": true,
+        "ok": true,
+        "printed": 1,
+        "failed": 0,
+        "printer_name": "NITTO DURA-SL-400",
+        "bytes_sent": 4459070,
+        "messages": [
+            "Rendered label sent to NITTO DURA-SL-400 picker printer through Windows driver. Output: Printed image to NITTO DURA-SL-400 Bytes: 4459070"
+        ]
+    },
+    "job": {
+        "job_id": "20260629114303_73a36078",
+        "created_at": "2026-06-29 11:43:03",
+        "created_by": {
+            "username": "admin",
+            "name": "",
+            "role": "admin"
+        },
+        "total_tags": 1,
+        "failed_validation": [],
+        "items": [
+            {
+                "item_code": "00000000227",
+                "part_name": "TERMINAL SPHD-001T-P0.5",
+                "quantity": "960000",
+                "requested_qty": 960000,
+                "remaining_qty": 960000,
+                "lot_no": "050726",
+                "request_no": "PO 120003201",
+                "request_id": "",
+                "request_line_id": "",
+                "itr_number": "120003201",
+                "itr_doc_entry": 3704,
+                "itr_doc_num": "120003201",
+                "itr_line_num": 1,
+                "source_type": "purchase_order",
+                "uom": "pc",
+                "num_per_msr": 1,
+                "qr_payload": "(01)00000000227(17)960000(10)050726",
+                "picked_by": "admin"
+            }
+        ]
+    }
+}

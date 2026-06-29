@@ -1,0 +1,50 @@
+{
+    "job_id": "20260629122317_850ba6eb",
+    "status": "FAILED",
+    "created_at": "2026-06-29 12:23:17",
+    "finished_at": "2026-06-29 12:23:18",
+    "result": {
+        "enabled": true,
+        "ok": false,
+        "printed": 0,
+        "failed": 1,
+        "printer_name": "nitto dura",
+        "bytes_sent": 0,
+        "messages": [
+            "Unable to print rendered label on nitto dura picker printer. PowerShell output: Printer queue is not valid or not available: nitto dura At C:\\Xampp\\htdocs\\WarehouseIssuance\\tools\\print_image_to_windows_printer.ps1:25 char:9 +         throw \"Printer queue is not valid or not available: $PrinterN ... +         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~     + CategoryInfo          : OperationStopped: (Printer queue i...ble: nitto dura:String) [], RuntimeException     + FullyQualifiedErrorId : Printer queue is not valid or not available: nitto dura"
+        ]
+    },
+    "job": {
+        "job_id": "20260629122317_850ba6eb",
+        "created_at": "2026-06-29 12:23:17",
+        "created_by": {
+            "username": "admin",
+            "name": "",
+            "role": "admin"
+        },
+        "total_tags": 1,
+        "failed_validation": [],
+        "items": [
+            {
+                "item_code": "00000000227",
+                "part_name": "TERMINAL SPHD-001T-P0.5",
+                "quantity": "960000",
+                "requested_qty": 960000,
+                "remaining_qty": 960000,
+                "lot_no": "123",
+                "request_no": "PO 120003201",
+                "request_id": "",
+                "request_line_id": "",
+                "itr_number": "120003201",
+                "itr_doc_entry": 3704,
+                "itr_doc_num": "120003201",
+                "itr_line_num": 1,
+                "source_type": "purchase_order",
+                "uom": "pc",
+                "num_per_msr": 1,
+                "qr_payload": "(01)00000000227(17)960000(10)123",
+                "picked_by": "admin"
+            }
+        ]
+    }
+}

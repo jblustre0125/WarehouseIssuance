@@ -1,0 +1,49 @@
+{
+    "job_id": "20260629122659_040e5d42",
+    "status": "PRINTED",
+    "created_at": "2026-06-29 12:26:59",
+    "finished_at": "2026-06-29 12:27:13",
+    "result": {
+        "enabled": true,
+        "ok": true,
+        "printed": 1,
+        "failed": 0,
+        "printer_name": "\\\\Nbcp-lt-042\\NITTO DURA-SL-400",
+        "bytes_sent": 4459070,
+        "messages": [
+            "Rendered label sent to \\\\Nbcp-lt-042\\NITTO DURA-SL-400 picker printer through Windows driver. Output: Printed image to \\\\Nbcp-lt-042\\NITTO DURA-SL-400 Bytes: 4459070"
+        ]
+    },
+    "job": {
+        "job_id": "20260629122659_040e5d42",
+        "created_at": "2026-06-29 12:26:59",
+        "created_by": {
+            "username": "admin",
+            "name": "",
+            "role": "admin"
+        },
+        "total_tags": 1,
+        "failed_validation": [],
+        "items": [
+            {
+                "item_code": "00000011430",
+                "part_name": "Connector PAMURP-02V-K-A",
+                "quantity": "1200",
+                "requested_qty": 1200,
+                "remaining_qty": 1200,
+                "lot_no": "123",
+                "request_no": "REQ-20260626-092023-DF92",
+                "request_id": 33,
+                "request_line_id": 72,
+                "itr_number": "470204037",
+                "itr_doc_entry": 204037,
+                "itr_doc_num": "470204037",
+                "itr_line_num": 56,
+                "uom": "pc",
+                "num_per_msr": 1,
+                "qr_payload": "(01)00000011430(17)1200(10)123",
+                "picked_by": "admin"
+            }
+        ]
+    }
+}

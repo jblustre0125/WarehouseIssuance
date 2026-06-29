@@ -19,6 +19,8 @@ $printEnabled = isset($zebraPrintResult) && (bool)($zebraPrintResult['enabled'] 
 $printOk = isset($zebraPrintResult) && (bool)($zebraPrintResult['ok'] ?? false);
 $printed = isset($zebraPrintResult) ? (int)($zebraPrintResult['printed'] ?? 0) : 0;
 $printFailed = isset($zebraPrintResult) ? (int)($zebraPrintResult['failed'] ?? 0) : 0;
+$printPrinterName = isset($zebraPrintResult) ? trim((string)($zebraPrintResult['printer_name'] ?? 'printer')) : 'printer';
+$printBytesSent = isset($zebraPrintResult) ? (int)($zebraPrintResult['bytes_sent'] ?? 0) : 0;
 $printMessages = isset($zebraPrintResult) && is_array($zebraPrintResult['messages'] ?? null)
     ? $zebraPrintResult['messages']
     : [];
@@ -74,8 +76,8 @@ foreach ($saved as $idx => $s) {
                 <div class="col-md-4"><div class="p-3 bg-light rounded-3"><div class="fw-bold">Failed</div><div class="fs-2 text-danger"><?= number_format(count($failed)) ?></div></div></div>
                 <div class="col-md-4">
                     <div class="print-status <?= $printEnabled ? ($printOk ? 'success' : 'warning') : '' ?>">
-                        <div class="fw-bold"><?= $printEnabled ? ($printOk ? 'Labels sent to Zebra printer.' : 'Some labels failed to print.') : 'Auto-print is disabled.' ?></div>
-                        <div class="small"><?= number_format($printed) ?> printed, <?= number_format($printFailed) ?> failed.</div>
+                        <div class="fw-bold"><?= $printEnabled ? ($printOk ? 'Labels sent to ' . pick_result_h($printPrinterName) . '.' : 'Some labels failed to print on ' . pick_result_h($printPrinterName) . '.') : 'Auto-print is disabled.' ?></div>
+                        <div class="small"><?= number_format($printed) ?> printed, <?= number_format($printFailed) ?> failed<?= $printBytesSent > 0 ? ', ' . number_format($printBytesSent) . ' bytes sent' : '' ?>.</div>
                         <?php if (!empty($printMessages)): ?><div class="small mt-2"><?= pick_result_h(implode(' ', $printMessages)) ?></div><?php endif; ?>
                     </div>
                 </div>
