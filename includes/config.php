@@ -60,8 +60,8 @@ define('PICK_TAG_PRINT_CONNECTION', 'windows_driver');
 define('PICK_TAG_PRINTER_NAME', '\\\\Nbcp-lt-042\\NITTO DURA-SL-400');
 define('PICK_TAG_PRINTER_SHARE', '\\\\Nbcp-lt-042\\NITTO DURA-SL-400');
 
-define('PICK_TAG_WIDTH_HUNDREDTHS', 300);  // 4.00 inches
-define('PICK_TAG_HEIGHT_HUNDREDTHS', 300); // 4.00 inches
+define('PICK_TAG_WIDTH_HUNDREDTHS', 300);  // 3.00 inches
+define('PICK_TAG_HEIGHT_HUNDREDTHS', 300); // 3.00 inches
 
 /*
 | Pause between pick tags so the picker can tear each tag off.

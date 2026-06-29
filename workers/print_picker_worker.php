@@ -75,6 +75,14 @@ flock($lockHandle, LOCK_EX);
 
 try {
     picker_worker_log($logFile, 'START Job ' . $jobId . ' | Tags: ' . count($job['items']));
+    picker_worker_log(
+        $logFile,
+        'ENV Job ' . $jobId
+        . ' | Computer: ' . (getenv('COMPUTERNAME') ?: '')
+        . ' | User: ' . (getenv('USERNAME') ?: '')
+        . ' | Printer: ' . (function_exists('zebra_pick_printer_name') ? zebra_pick_printer_name() : '')
+        . ' | Connection: ' . (function_exists('zebra_pick_print_connection') ? zebra_pick_print_connection() : '')
+    );
 
     $result = zebra_print_picker_tags($job['items']);
 
@@ -115,6 +123,36 @@ try {
 
 } catch (Throwable $e) {
     picker_worker_log($logFile, 'ERROR Job ' . $jobId . ' | ' . $e->getMessage());
+
+    $resultData = [
+        'job_id' => $jobId,
+        'status' => 'FAILED',
+        'created_at' => $job['created_at'] ?? null,
+        'finished_at' => date('Y-m-d H:i:s'),
+        'result' => [
+            'enabled' => true,
+            'ok' => false,
+            'printed' => 0,
+            'failed' => is_array($job['items'] ?? null) ? count($job['items']) : 0,
+            'printer_name' => function_exists('zebra_pick_printer_name') ? zebra_pick_printer_name() : '',
+            'messages' => [
+                'Print worker error: ' . $e->getMessage()
+            ],
+        ],
+        'job' => $job,
+        'exception' => [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
+        ],
+    ];
+
+    file_put_contents(
+        $errorDir . '/pick_' . $jobId . '_failed.json',
+        json_encode($resultData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+        LOCK_EX
+    );
 
     file_put_contents(
         $errorDir . '/pick_' . $jobId . '_error.txt',

@@ -1049,10 +1049,10 @@ function zebra_qr_matrix($text)
     return $matrix;
 }
 
-function zebra_endroid_error_correction_high()
+function zebra_endroid_error_correction_medium()
 {
     if (class_exists('\\Endroid\\QrCode\\ErrorCorrectionLevel')) {
-        foreach (['High', 'HIGH', 'H'] as $name) {
+        foreach (['Medium', 'MEDIUM', 'M', 'Low', 'LOW', 'L'] as $name) {
             $constant = '\\Endroid\\QrCode\\ErrorCorrectionLevel::' . $name;
             if (defined($constant)) {
                 return constant($constant);
@@ -1061,7 +1061,8 @@ function zebra_endroid_error_correction_high()
     }
 
     foreach ([
-        '\\Endroid\\QrCode\\ErrorCorrectionLevel\\ErrorCorrectionLevelH'
+        '\\Endroid\\QrCode\\ErrorCorrectionLevel\\ErrorCorrectionLevelM',
+        '\\Endroid\\QrCode\\ErrorCorrectionLevel\\ErrorCorrectionLevelL'
     ] as $class) {
         if (class_exists($class)) {
             return new $class();
@@ -1094,12 +1095,12 @@ function zebra_endroid_round_block_margin()
     return null;
 }
 
-function zebra_endroid_encoding_iso()
+function zebra_endroid_encoding_utf8()
 {
     $class = '\\Endroid\\QrCode\\Encoding\\Encoding';
 
     if (class_exists($class)) {
-        return new $class('ISO-8859-1');
+        return new $class('UTF-8');
     }
 
     return null;
@@ -1113,8 +1114,8 @@ function zebra_build_endroid_qrcode($text, $sizePx, $margin)
         return null;
     }
 
-    $encoding = zebra_endroid_encoding_iso();
-    $ecc = zebra_endroid_error_correction_high();
+    $encoding = zebra_endroid_encoding_utf8();
+    $ecc = zebra_endroid_error_correction_medium();
     $roundBlockSizeMode = zebra_endroid_round_block_margin();
 
     /*
@@ -1198,7 +1199,7 @@ function zebra_create_standard_qr_png_string($text, $sizePx)
     }
 
     try {
-        $qrCode = zebra_build_endroid_qrcode((string)$text, (int)$sizePx, 10);
+        $qrCode = zebra_build_endroid_qrcode((string)$text, (int)$sizePx, 16);
 
         if ($qrCode === null) {
             return null;
@@ -1267,9 +1268,7 @@ function zebra_pick_label_png(array $item, $path)
     /*
         3 x 3 inches at the NITTO driver resolution shown in your settings:
         16 dots/mm x 76.2 mm = about 1219 dots.
-
-        The previous 609px image was too low for 16 dots/mm printing and Windows
-        could upscale it, making numbers/text look thin or faded.
+        Rendering at native print size keeps QR modules sharper for scanners.
     */
     $width = 1218;
     $height = 1218;
@@ -1359,9 +1358,9 @@ function zebra_pick_label_png(array $item, $path)
 
     /* Part name section. */
     imagesetthickness($image, $p(2));
-    imageline($image, $p(24), $p(575), $p(585), $p(575), $black);
-    zebra_gd_text_heavy($image, $p(24), $p(584), 'PART NAME', 2);
-    zebra_gd_wrapped_text($image, $p(120), $p(584), $p(455), $p(26), $partName, 4, 1, true);
+    imageline($image, $p(24), $p(555), $p(585), $p(555), $black);
+    zebra_gd_text_heavy($image, $p(24), $p(566), 'PART NAME', 2);
+    zebra_gd_wrapped_text($image, $p(120), $p(566), $p(455), $p(24), $partName, 3, 1, true);
 
     $ok = imagepng($image, $path, 0);
     imagedestroy($image);

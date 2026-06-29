@@ -78,15 +78,15 @@ Picker tags are configured separately for the Nitto DURA-SL-400 printer:
 define('PICK_TAG_PRINT_CONNECTION', 'windows_driver');
 define('PICK_TAG_PRINTER_NAME', 'NITTO DURA-SL-400');
 define('PICK_TAG_PRINTER_SHARE', 'NITTO DURA-SL-400');
-define('PICK_TAG_WIDTH_HUNDREDTHS', 400);
-define('PICK_TAG_HEIGHT_HUNDREDTHS', 400);
+define('PICK_TAG_WIDTH_HUNDREDTHS', 300);
+define('PICK_TAG_HEIGHT_HUNDREDTHS', 300);
 define('PICK_TAG_LABEL_DELAY_SECONDS', 2);
 define('PICK_TAG_MAX_LABEL_BYTES', 32768);
 define('PICK_TAG_BATCH_MAX_BYTES', 131072);
 define('PICK_TAG_BATCH_COOLDOWN_SECONDS', 2);
 ```
 
-The picker-tag setup renders each 4 inch by 4 inch Nitto picker tag as a PNG and prints it through the installed Windows printer driver named `NITTO DURA-SL-400`. This applies only to picker tags. Picker printing sends one label at a time and pauses after the configured byte budget to avoid overflowing printer memory.
+The picker-tag setup renders each 3 inch by 3 inch Nitto picker tag as a PNG and prints it through the installed Windows printer driver named `NITTO DURA-SL-400`. This applies only to picker tags. Picker printing sends one label at a time and pauses after the configured byte budget to avoid overflowing printer memory.
 
 If you need to test raw label command printing, `PICK_TAG_PRINT_CONNECTION` can be set to `windows_share`, but that requires a shared printer path such as `\\localhost\NITTO DURA-SL-400` and only works when the printer understands the raw label command language.
 

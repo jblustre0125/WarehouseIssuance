@@ -187,9 +187,10 @@ $errorDir = $storageDir . DIRECTORY_SEPARATOR . 'print_errors';
 
 $printedFile = $doneDir . DIRECTORY_SEPARATOR . 'pick_' . $jobId . '_printed.json';
 $failedFile = $errorDir . DIRECTORY_SEPARATOR . 'pick_' . $jobId . '_failed.json';
+$errorTextFile = $errorDir . DIRECTORY_SEPARATOR . 'pick_' . $jobId . '_error.txt';
 
 $workerOk = is_file($printedFile);
-$workerFailed = is_file($failedFile);
+$workerFailed = is_file($failedFile) || is_file($errorTextFile);
 
 $messages = [];
 
@@ -199,7 +200,9 @@ if ($workerOk) {
 } elseif ($workerFailed) {
     $messages[] = 'Picker tag printing failed.';
     $messages[] = 'Job ID: ' . $jobId;
-    $messages[] = 'Check this file: storage/print_errors/pick_' . $jobId . '_failed.json';
+    $messages[] = is_file($failedFile)
+        ? 'Check this file: storage/print_errors/pick_' . $jobId . '_failed.json'
+        : 'Check this file: storage/print_errors/pick_' . $jobId . '_error.txt';
 } else {
     $messages[] = 'Worker finished but no printed/failed result file was found.';
     $messages[] = 'Job ID: ' . $jobId;

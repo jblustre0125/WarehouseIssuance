@@ -5,8 +5,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$PrinterName,
 
-    [int]$PaperWidthHundredths = 400,
-    [int]$PaperHeightHundredths = 400
+    [int]$PaperWidthHundredths = 300,
+    [int]$PaperHeightHundredths = 300
 )
 
 Add-Type -AssemblyName System.Drawing
@@ -15,11 +15,19 @@ if (-not (Test-Path -LiteralPath $ImagePath)) {
     throw "Image file was not found: $ImagePath"
 }
 
+$identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+$visiblePrinters = [System.Drawing.Printing.PrinterSettings]::InstalledPrinters
+Write-Output "Computer: $env:COMPUTERNAME"
+Write-Output "Windows user: $identity"
+Write-Output "Target printer: $PrinterName"
+Write-Output ("Visible printers: " + (($visiblePrinters | ForEach-Object { $_ }) -join " | "))
+
 $image = [System.Drawing.Image]::FromFile($ImagePath)
 $doc = New-Object System.Drawing.Printing.PrintDocument
 
 try {
     $doc.PrinterSettings.PrinterName = $PrinterName
+    Write-Output "Printer valid for this user: $($doc.PrinterSettings.IsValid)"
 
     if (-not $doc.PrinterSettings.IsValid) {
         throw "Printer queue is not valid or not available: $PrinterName"
