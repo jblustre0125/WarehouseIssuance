@@ -25,7 +25,7 @@ foreach ($items as $item) {
     if ($itemCode === '' || $qty === '' || $lotNo === '') {
         $failed[] = [
             'item' => $item,
-            'reason' => 'Missing item, qty, or lot.'
+            'reason' => 'Missing item, qty, or lot.',
         ];
         continue;
     }
@@ -33,7 +33,7 @@ foreach ($items as $item) {
     if (!is_numeric($qty) || (float)$qty <= 0) {
         $failed[] = [
             'item' => $item,
-            'reason' => 'Quantity must be greater than zero.'
+            'reason' => 'Quantity must be greater than zero.',
         ];
         continue;
     }
@@ -53,7 +53,9 @@ if (count($saved) === 0) {
 }
 
 /*
-    Root folders.
+|--------------------------------------------------------------------------
+| Root folders
+|--------------------------------------------------------------------------
 */
 $rootDir = dirname(__DIR__);
 $storageDir = $rootDir . DIRECTORY_SEPARATOR . 'storage';
@@ -61,7 +63,9 @@ $jobDir = $storageDir . DIRECTORY_SEPARATOR . 'print_jobs';
 $logDir = $storageDir . DIRECTORY_SEPARATOR . 'print_logs';
 
 /*
-    Create required folders.
+|--------------------------------------------------------------------------
+| Create required folders
+|--------------------------------------------------------------------------
 */
 foreach ([$storageDir, $jobDir, $logDir] as $dir) {
     if (!is_dir($dir)) {
@@ -76,8 +80,11 @@ foreach ([$storageDir, $jobDir, $logDir] as $dir) {
 }
 
 /*
-    Save print job file.
-    The scheduled task will process this file.
+|--------------------------------------------------------------------------
+| Save print job file
+|--------------------------------------------------------------------------
+| The web system only creates the JSON job.
+| The Windows Scheduled Task will process the job instantly.
 */
 $jobId = date('YmdHis') . '_' . bin2hex(random_bytes(4));
 $jobFile = $jobDir . DIRECTORY_SEPARATOR . 'pick_' . $jobId . '.json';
@@ -114,7 +121,9 @@ if ($jobFileReal === false || !is_file($jobFileReal)) {
 }
 
 /*
-    Queue log.
+|--------------------------------------------------------------------------
+| Log queued job
+|--------------------------------------------------------------------------
 */
 $queueLog = $logDir . DIRECTORY_SEPARATOR . 'worker_start_' . date('Ymd') . '.log';
 
@@ -129,19 +138,17 @@ file_put_contents(
 );
 
 /*
-    Trigger the Windows Scheduled Task immediately.
-
-    The task should already exist:
-    Warehouse Picker Print Queue
-
-    This avoids Apache printing directly.
-    The scheduled task runs as the Windows user that can print manually.
+|--------------------------------------------------------------------------
+| Instant print trigger
+|--------------------------------------------------------------------------
+| This triggers the Windows Scheduled Task immediately.
+| The Scheduled Task runs as the Windows user that can access the printer.
 */
 $taskName = 'Warehouse Picker Print Queue';
+$taskCmd = 'schtasks /Run /TN "' . $taskName . '"';
+
 $taskOutput = [];
 $taskExitCode = 0;
-
-$taskCmd = 'schtasks /Run /TN "' . $taskName . '"';
 
 exec($taskCmd . ' 2>&1', $taskOutput, $taskExitCode);
 
@@ -155,21 +162,25 @@ file_put_contents(
 );
 
 /*
-    Show queued result only.
-    Do not check printed/failed immediately because the scheduled task processes it separately.
+|--------------------------------------------------------------------------
+| Return queued result
+|--------------------------------------------------------------------------
+| Do not check printed/failed immediately here.
+| The Scheduled Task processes the print job separately.
 */
 $pageTitle = 'Pick Tags Queued';
 $backUrl = 'pages/picker/picker.php';
 
 $messages = [
     count($saved) . ' picker tag(s) queued for printing.',
-    'The Windows print queue service will process the tag shortly.',
+    'The print task was triggered and should print shortly.',
     'Job ID: ' . $jobId,
     'You may return to the picker page and continue working.',
 ];
 
 if ($taskExitCode !== 0) {
-    $messages[] = 'Note: The print task was queued, but the scheduled task trigger returned an error. Check storage/print_logs/worker_start_' . date('Ymd') . '.log';
+    $messages[] = 'Warning: The print job was saved, but the scheduled task trigger returned an error.';
+    $messages[] = 'Check storage/print_logs/worker_start_' . date('Ymd') . '.log';
 }
 
 if (count($failed) > 0) {
