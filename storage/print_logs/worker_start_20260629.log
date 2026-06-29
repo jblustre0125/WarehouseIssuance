@@ -106,3 +106,12 @@ CMD: cmd /c start "" /B "C:\Xampp\php\php.exe" "C:\Xampp\htdocs\WarehouseIssuanc
 Exit code: 0
 Output: 
 --------------------------------------------------------------------------------
+[2026-06-29 12:51:14] Preparing worker
+Job ID: 20260629125114_8e65b12f
+PHP: C:\Xampp\php\php.exe
+Worker: C:\Xampp\htdocs\WarehouseIssuance\workers\print_picker_worker.php
+Job file: C:\Xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260629125114_8e65b12f.json
+CMD: cmd /c start "" /B "C:\Xampp\php\php.exe" "C:\Xampp\htdocs\WarehouseIssuance\workers\print_picker_worker.php" "C:\Xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260629125114_8e65b12f.json"
+Exit code: 0
+Output: 
+--------------------------------------------------------------------------------

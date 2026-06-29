@@ -104,8 +104,14 @@ if ($jobSaved === false) {
     app_error('Unable to save print job file.', 500);
 }
 
+$jobFileReal = realpath($jobFile);
+
+if ($jobFileReal === false || !is_file($jobFileReal)) {
+    app_error('Print job file was saved but cannot be found.', 500);
+}
+
 /*
-    Locate background worker.
+    Locate worker.
 */
 $workerFile = realpath($rootDir . DIRECTORY_SEPARATOR . 'workers' . DIRECTORY_SEPARATOR . 'print_picker_worker.php');
 
@@ -131,9 +137,10 @@ if (!is_file($phpBinary)) {
 }
 
 /*
-    Worker start log.
+    Logs.
 */
 $startLog = $logDir . DIRECTORY_SEPARATOR . 'worker_start_' . date('Ymd') . '.log';
+$autoLog = $logDir . DIRECTORY_SEPARATOR . 'auto_worker_' . date('Ymd') . '.log';
 
 file_put_contents(
     $startLog,
@@ -141,75 +148,81 @@ file_put_contents(
     'Job ID: ' . $jobId . PHP_EOL .
     'PHP: ' . $phpBinary . PHP_EOL .
     'Worker: ' . $workerFile . PHP_EOL .
-    'Job file: ' . $jobFile . PHP_EOL,
+    'Job file: ' . $jobFileReal . PHP_EOL,
     FILE_APPEND | LOCK_EX
 );
 
 /*
-    Start background worker.
+    IMPORTANT FIX:
+    Do not use cmd /c start /B for now.
 
-    IMPORTANT:
-    Use cmd start instead of PowerShell Start-Process.
-    PowerShell quoting caused:
-    "A positional parameter cannot be found..."
+    We run the worker directly so automatic printing really executes.
+    The page will wait until the worker finishes, but this is the safest
+    way to confirm automatic printing works.
 */
-if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-    $cmd =
-        'cmd /c start "" /B '
-        . '"' . $phpBinary . '" '
-        . '"' . $workerFile . '" '
-        . '"' . $jobFile . '"';
+$cmd =
+    '"' . $phpBinary . '" ' .
+    '"' . $workerFile . '" ' .
+    '"' . $jobFileReal . '"';
 
-    $output = [];
-    $exitCode = 0;
+$output = [];
+$exitCode = 0;
 
-    exec($cmd . ' 2>&1', $output, $exitCode);
+exec($cmd . ' >> "' . $autoLog . '" 2>&1', $output, $exitCode);
 
-    file_put_contents(
-        $startLog,
-        'CMD: ' . $cmd . PHP_EOL .
-        'Exit code: ' . $exitCode . PHP_EOL .
-        'Output: ' . implode(' ', $output) . PHP_EOL .
-        str_repeat('-', 80) . PHP_EOL,
-        FILE_APPEND | LOCK_EX
-    );
+file_put_contents(
+    $startLog,
+    'CMD: ' . $cmd . PHP_EOL .
+    'Exit code: ' . $exitCode . PHP_EOL .
+    'Output: ' . implode(PHP_EOL, $output) . PHP_EOL .
+    str_repeat('-', 80) . PHP_EOL,
+    FILE_APPEND | LOCK_EX
+);
+
+/*
+    Check final result files.
+*/
+$doneDir = $storageDir . DIRECTORY_SEPARATOR . 'print_done';
+$errorDir = $storageDir . DIRECTORY_SEPARATOR . 'print_errors';
+
+$printedFile = $doneDir . DIRECTORY_SEPARATOR . 'pick_' . $jobId . '_printed.json';
+$failedFile = $errorDir . DIRECTORY_SEPARATOR . 'pick_' . $jobId . '_failed.json';
+
+$workerOk = is_file($printedFile);
+$workerFailed = is_file($failedFile);
+
+$messages = [];
+
+if ($workerOk) {
+    $messages[] = count($saved) . ' picker tag(s) were printed successfully.';
+    $messages[] = 'Job ID: ' . $jobId;
+} elseif ($workerFailed) {
+    $messages[] = 'Picker tag printing failed.';
+    $messages[] = 'Job ID: ' . $jobId;
+    $messages[] = 'Check this file: storage/print_errors/pick_' . $jobId . '_failed.json';
 } else {
-    $cmd =
-        escapeshellarg($phpBinary) . ' ' .
-        escapeshellarg($workerFile) . ' ' .
-        escapeshellarg($jobFile) .
-        ' > /dev/null 2>&1 &';
+    $messages[] = 'Worker finished but no printed/failed result file was found.';
+    $messages[] = 'Job ID: ' . $jobId;
+    $messages[] = 'Check storage/print_logs/auto_worker_' . date('Ymd') . '.log';
+}
 
-    exec($cmd);
-
-    file_put_contents(
-        $startLog,
-        'CMD: ' . $cmd . PHP_EOL .
-        str_repeat('-', 80) . PHP_EOL,
-        FILE_APPEND | LOCK_EX
-    );
+if (count($failed) > 0) {
+    $messages[] = count($failed) . ' item(s) failed validation before printing.';
 }
 
 /*
-    Return immediately.
-    Actual printing continues in the background worker.
+    Show result page.
 */
-$pageTitle = 'Pick Tags Queued';
+$pageTitle = $workerOk ? 'Pick Tags Printed' : 'Pick Tags Print Result';
 $backUrl = 'pages/picker/picker.php';
 
 $zebraPrintResult = [
     'enabled' => true,
-    'ok' => true,
-    'printed' => 0,
-    'failed' => count($failed),
+    'ok' => $workerOk,
+    'printed' => $workerOk ? count($saved) : 0,
+    'failed' => $workerOk ? count($failed) : count($saved),
     'printer_name' => zebra_pick_printer_name(),
-    'messages' => [
-        count($saved) . ' picker tag(s) were queued for background printing.',
-        'You may return to the picker page and continue working.',
-        'The worker will print the tags one by one.',
-        'Job ID: ' . $jobId,
-        'Check storage/print_logs for worker result.'
-    ],
+    'messages' => $messages,
 ];
 
 include __DIR__ . '/../pages/results/print_pick_result.php';
