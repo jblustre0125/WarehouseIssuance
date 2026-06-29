@@ -77,17 +77,20 @@ foreach ([$storageDir, $jobDir, $logDir] as $dir) {
 
 /*
     Save print job file.
+    The scheduled task will process this file.
 */
 $jobId = date('YmdHis') . '_' . bin2hex(random_bytes(4));
 $jobFile = $jobDir . DIRECTORY_SEPARATOR . 'pick_' . $jobId . '.json';
+
+$currentUser = current_user();
 
 $jobData = [
     'job_id' => $jobId,
     'created_at' => date('Y-m-d H:i:s'),
     'created_by' => [
-        'username' => current_user()['username'] ?? '',
-        'name' => current_user()['name'] ?? '',
-        'role' => current_user()['role'] ?? '',
+        'username' => $currentUser['username'] ?? '',
+        'name' => $currentUser['name'] ?? '',
+        'role' => $currentUser['role'] ?? '',
     ],
     'total_tags' => count($saved),
     'failed_validation' => $failed,
@@ -111,122 +114,77 @@ if ($jobFileReal === false || !is_file($jobFileReal)) {
 }
 
 /*
-    Locate worker.
+    Queue log.
 */
-$workerFile = realpath($rootDir . DIRECTORY_SEPARATOR . 'workers' . DIRECTORY_SEPARATOR . 'print_picker_worker.php');
-
-if ($workerFile === false || !is_file($workerFile)) {
-    app_error('Print worker file was not found: workers/print_picker_worker.php', 500);
-}
-
-/*
-    Locate XAMPP PHP CLI.
-*/
-$phpBinary = 'C:\\Xampp\\php\\php.exe';
-
-if (!is_file($phpBinary)) {
-    $phpBinary = 'C:\\xampp\\php\\php.exe';
-}
-
-if (!is_file($phpBinary)) {
-    $phpBinary = PHP_BINARY;
-}
-
-if (!is_file($phpBinary)) {
-    app_error('PHP CLI executable was not found.', 500);
-}
-
-/*
-    Logs.
-*/
-$startLog = $logDir . DIRECTORY_SEPARATOR . 'worker_start_' . date('Ymd') . '.log';
-$autoLog = $logDir . DIRECTORY_SEPARATOR . 'auto_worker_' . date('Ymd') . '.log';
+$queueLog = $logDir . DIRECTORY_SEPARATOR . 'worker_start_' . date('Ymd') . '.log';
 
 file_put_contents(
-    $startLog,
-    '[' . date('Y-m-d H:i:s') . '] Preparing worker' . PHP_EOL .
+    $queueLog,
+    '[' . date('Y-m-d H:i:s') . '] Picker tag queued' . PHP_EOL .
     'Job ID: ' . $jobId . PHP_EOL .
-    'PHP: ' . $phpBinary . PHP_EOL .
-    'Worker: ' . $workerFile . PHP_EOL .
-    'Job file: ' . $jobFileReal . PHP_EOL,
+    'Job file: ' . $jobFileReal . PHP_EOL .
+    'Queued by: ' . ($currentUser['username'] ?? '') . PHP_EOL .
+    'Printer: ' . zebra_pick_printer_name() . PHP_EOL,
     FILE_APPEND | LOCK_EX
 );
 
 /*
-    IMPORTANT FIX:
-    Do not use cmd /c start /B for now.
+    Trigger the Windows Scheduled Task immediately.
 
-    We run the worker directly so automatic printing really executes.
-    The page will wait until the worker finishes, but this is the safest
-    way to confirm automatic printing works.
+    The task should already exist:
+    Warehouse Picker Print Queue
+
+    This avoids Apache printing directly.
+    The scheduled task runs as the Windows user that can print manually.
 */
-$cmd =
-    '"' . $phpBinary . '" ' .
-    '"' . $workerFile . '" ' .
-    '"' . $jobFileReal . '"';
+$taskName = 'Warehouse Picker Print Queue';
+$taskOutput = [];
+$taskExitCode = 0;
 
-$output = [];
-$exitCode = 0;
+$taskCmd = 'schtasks /Run /TN "' . $taskName . '"';
 
-exec($cmd . ' >> "' . $autoLog . '" 2>&1', $output, $exitCode);
+exec($taskCmd . ' 2>&1', $taskOutput, $taskExitCode);
 
 file_put_contents(
-    $startLog,
-    'CMD: ' . $cmd . PHP_EOL .
-    'Exit code: ' . $exitCode . PHP_EOL .
-    'Output: ' . implode(PHP_EOL, $output) . PHP_EOL .
+    $queueLog,
+    'Trigger CMD: ' . $taskCmd . PHP_EOL .
+    'Trigger Exit code: ' . $taskExitCode . PHP_EOL .
+    'Trigger Output: ' . implode(PHP_EOL, $taskOutput) . PHP_EOL .
     str_repeat('-', 80) . PHP_EOL,
     FILE_APPEND | LOCK_EX
 );
 
 /*
-    Check final result files.
+    Show queued result only.
+    Do not check printed/failed immediately because the scheduled task processes it separately.
 */
-$doneDir = $storageDir . DIRECTORY_SEPARATOR . 'print_done';
-$errorDir = $storageDir . DIRECTORY_SEPARATOR . 'print_errors';
+$pageTitle = 'Pick Tags Queued';
+$backUrl = 'pages/picker/picker.php';
 
-$printedFile = $doneDir . DIRECTORY_SEPARATOR . 'pick_' . $jobId . '_printed.json';
-$failedFile = $errorDir . DIRECTORY_SEPARATOR . 'pick_' . $jobId . '_failed.json';
-$errorTextFile = $errorDir . DIRECTORY_SEPARATOR . 'pick_' . $jobId . '_error.txt';
+$messages = [
+    count($saved) . ' picker tag(s) queued for printing.',
+    'The Windows print queue service will process the tag shortly.',
+    'Job ID: ' . $jobId,
+    'You may return to the picker page and continue working.',
+];
 
-$workerOk = is_file($printedFile);
-$workerFailed = is_file($failedFile) || is_file($errorTextFile);
-
-$messages = [];
-
-if ($workerOk) {
-    $messages[] = count($saved) . ' picker tag(s) were printed successfully.';
-    $messages[] = 'Job ID: ' . $jobId;
-} elseif ($workerFailed) {
-    $messages[] = 'Picker tag printing failed.';
-    $messages[] = 'Job ID: ' . $jobId;
-    $messages[] = is_file($failedFile)
-        ? 'Check this file: storage/print_errors/pick_' . $jobId . '_failed.json'
-        : 'Check this file: storage/print_errors/pick_' . $jobId . '_error.txt';
-} else {
-    $messages[] = 'Worker finished but no printed/failed result file was found.';
-    $messages[] = 'Job ID: ' . $jobId;
-    $messages[] = 'Check storage/print_logs/auto_worker_' . date('Ymd') . '.log';
+if ($taskExitCode !== 0) {
+    $messages[] = 'Note: The print task was queued, but the scheduled task trigger returned an error. Check storage/print_logs/worker_start_' . date('Ymd') . '.log';
 }
 
 if (count($failed) > 0) {
     $messages[] = count($failed) . ' item(s) failed validation before printing.';
 }
 
-/*
-    Show result page.
-*/
-$pageTitle = $workerOk ? 'Pick Tags Printed' : 'Pick Tags Print Result';
-$backUrl = 'pages/picker/picker.php';
-
 $zebraPrintResult = [
     'enabled' => true,
-    'ok' => $workerOk,
-    'printed' => $workerOk ? count($saved) : 0,
-    'failed' => $workerOk ? count($failed) : count($saved),
+    'ok' => true,
+    'printed' => 0,
+    'failed' => count($failed),
     'printer_name' => zebra_pick_printer_name(),
     'messages' => $messages,
 ];
 
 include __DIR__ . '/../pages/results/print_pick_result.php';
+exit;
 ?>
