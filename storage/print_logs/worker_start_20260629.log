@@ -106,6 +106,7 @@ CMD: cmd /c start "" /B "C:\Xampp\php\php.exe" "C:\Xampp\htdocs\WarehouseIssuanc
 Exit code: 0
 Output: 
 --------------------------------------------------------------------------------
+<<<<<<< Updated upstream
 [2026-06-29 12:51:14] Preparing worker
 Job ID: 20260629125114_8e65b12f
 PHP: C:\Xampp\php\php.exe
@@ -149,5 +150,32 @@ Worker: C:\xampp\htdocs\WarehouseIssuance\workers\print_picker_worker.php
 Job file: C:\xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260629082940_c20ef6c4.json
 CMD: "C:\Xampp\php\php.exe" "C:\xampp\htdocs\WarehouseIssuance\workers\print_picker_worker.php" "C:\xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260629082940_c20ef6c4.json"
 Exit code: 1
+=======
+[2026-06-29 06:43:15] Preparing worker
+Job ID: 20260629064315_f140b832
+PHP: C:\Xampp\php\php.exe
+Worker: C:\xampp\htdocs\WarehouseIssuance\workers\print_picker_worker.php
+Job file: C:\xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260629064315_f140b832.json
+CMD: cmd /c start "" /B "C:\Xampp\php\php.exe" "C:\xampp\htdocs\WarehouseIssuance\workers\print_picker_worker.php" "C:\xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260629064315_f140b832.json"
+Exit code: 0
+Output: 
+--------------------------------------------------------------------------------
+[2026-06-29 06:51:37] Preparing worker
+Job ID: 20260629065137_eacd77fd
+PHP: C:\Xampp\php\php.exe
+Worker: C:\xampp\htdocs\WarehouseIssuance\workers\print_picker_worker.php
+Job file: C:\xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260629065137_eacd77fd.json
+CMD: cmd /c start "" /B "C:\Xampp\php\php.exe" "C:\xampp\htdocs\WarehouseIssuance\workers\print_picker_worker.php" "C:\xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260629065137_eacd77fd.json"
+Exit code: 0
+Output: 
+--------------------------------------------------------------------------------
+[2026-06-29 06:51:44] Preparing worker
+Job ID: 20260629065144_b0c07a9a
+PHP: C:\Xampp\php\php.exe
+Worker: C:\xampp\htdocs\WarehouseIssuance\workers\print_picker_worker.php
+Job file: C:\xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260629065144_b0c07a9a.json
+CMD: cmd /c start "" /B "C:\Xampp\php\php.exe" "C:\xampp\htdocs\WarehouseIssuance\workers\print_picker_worker.php" "C:\xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260629065144_b0c07a9a.json"
+Exit code: 0
+>>>>>>> Stashed changes
 Output: 
 --------------------------------------------------------------------------------
