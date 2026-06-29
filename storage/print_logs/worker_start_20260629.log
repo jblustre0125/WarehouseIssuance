@@ -124,3 +124,30 @@ CMD: "C:\Xampp\php\php.exe" "C:\xampp\htdocs\WarehouseIssuance\workers\print_pic
 Exit code: 1
 Output: 
 --------------------------------------------------------------------------------
+[2026-06-29 08:25:54] Preparing worker
+Job ID: 20260629082554_f9c28876
+PHP: C:\Xampp\php\php.exe
+Worker: C:\xampp\htdocs\WarehouseIssuance\workers\print_picker_worker.php
+Job file: C:\xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260629082554_f9c28876.json
+CMD: "C:\Xampp\php\php.exe" "C:\xampp\htdocs\WarehouseIssuance\workers\print_picker_worker.php" "C:\xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260629082554_f9c28876.json"
+Exit code: 1
+Output: 
+--------------------------------------------------------------------------------
+[2026-06-29 08:26:04] Preparing worker
+Job ID: 20260629082604_44339b20
+PHP: C:\Xampp\php\php.exe
+Worker: C:\xampp\htdocs\WarehouseIssuance\workers\print_picker_worker.php
+Job file: C:\xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260629082604_44339b20.json
+CMD: "C:\Xampp\php\php.exe" "C:\xampp\htdocs\WarehouseIssuance\workers\print_picker_worker.php" "C:\xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260629082604_44339b20.json"
+Exit code: 1
+Output: 
+--------------------------------------------------------------------------------
+[2026-06-29 08:29:40] Preparing worker
+Job ID: 20260629082940_c20ef6c4
+PHP: C:\Xampp\php\php.exe
+Worker: C:\xampp\htdocs\WarehouseIssuance\workers\print_picker_worker.php
+Job file: C:\xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260629082940_c20ef6c4.json
+CMD: "C:\Xampp\php\php.exe" "C:\xampp\htdocs\WarehouseIssuance\workers\print_picker_worker.php" "C:\xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260629082940_c20ef6c4.json"
+Exit code: 1
+Output: 
+--------------------------------------------------------------------------------
