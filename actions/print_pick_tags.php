@@ -141,22 +141,39 @@ file_put_contents(
 |--------------------------------------------------------------------------
 | Instant print trigger
 |--------------------------------------------------------------------------
-| This triggers the Windows Scheduled Task immediately.
-| The Scheduled Task runs as the Windows user that can access the printer.
+| Start the print worker immediately for this job.
+| If the direct launch fails, fall back to the Windows Scheduled Task.
 */
 $taskName = 'Warehouse Picker Print Queue';
 $taskCmd = 'schtasks /Run /TN "' . $taskName . '"';
+$phpExe = PHP_BINDIR . DIRECTORY_SEPARATOR . 'php.exe';
+$workerFile = $rootDir . DIRECTORY_SEPARATOR . 'workers' . DIRECTORY_SEPARATOR . 'print_picker_worker.php';
+$directCmd = 'cmd /c start "" /B '
+    . escapeshellarg($phpExe) . ' '
+    . escapeshellarg($workerFile) . ' '
+    . escapeshellarg($jobFileReal);
 
+$directOutput = [];
+$directExitCode = 0;
 $taskOutput = [];
-$taskExitCode = 0;
+$taskExitCode = null;
 
-exec($taskCmd . ' 2>&1', $taskOutput, $taskExitCode);
+exec($directCmd . ' 2>&1', $directOutput, $directExitCode);
+
+if ($directExitCode !== 0) {
+    exec($taskCmd . ' 2>&1', $taskOutput, $taskExitCode);
+}
 
 file_put_contents(
     $queueLog,
-    'Trigger CMD: ' . $taskCmd . PHP_EOL .
-    'Trigger Exit code: ' . $taskExitCode . PHP_EOL .
-    'Trigger Output: ' . implode(PHP_EOL, $taskOutput) . PHP_EOL .
+    'Direct CMD: ' . $directCmd . PHP_EOL .
+    'Direct Exit code: ' . $directExitCode . PHP_EOL .
+    'Direct Output: ' . implode(PHP_EOL, $directOutput) . PHP_EOL .
+    ($taskExitCode !== null
+        ? 'Fallback Task CMD: ' . $taskCmd . PHP_EOL .
+          'Fallback Task Exit code: ' . $taskExitCode . PHP_EOL .
+          'Fallback Task Output: ' . implode(PHP_EOL, $taskOutput) . PHP_EOL
+        : 'Fallback Task: not needed' . PHP_EOL) .
     str_repeat('-', 80) . PHP_EOL,
     FILE_APPEND | LOCK_EX
 );
@@ -173,13 +190,15 @@ $backUrl = 'pages/picker/picker.php';
 
 $messages = [
     count($saved) . ' picker tag(s) queued for printing.',
-    'The print task was triggered and should print shortly.',
+    $directExitCode === 0
+        ? 'The print worker was started immediately.'
+        : 'The direct print worker launch failed, so the scheduled task was triggered.',
     'Job ID: ' . $jobId,
     'You may return to the picker page and continue working.',
 ];
 
-if ($taskExitCode !== 0) {
-    $messages[] = 'Warning: The print job was saved, but the scheduled task trigger returned an error.';
+if ($directExitCode !== 0 && $taskExitCode !== 0) {
+    $messages[] = 'Warning: The print job was saved, but both print triggers returned an error.';
     $messages[] = 'Check storage/print_logs/worker_start_' . date('Ymd') . '.log';
 }
 

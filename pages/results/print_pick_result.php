@@ -79,7 +79,7 @@ foreach ($saved as $idx => $s) {
                 <div class="col-md-4">
                     <div class="print-status <?= $printEnabled ? ($printOk ? 'success' : 'warning') : '' ?>">
                         <div class="fw-bold"><?= $printEnabled ? ($printQueued ? number_format($printQueuedCount) . ' tag(s) queued for ' . pick_result_h($printPrinterName) . '.' : ($printOk ? 'Labels sent to ' . pick_result_h($printPrinterName) . '.' : 'Some labels failed to print on ' . pick_result_h($printPrinterName) . '.')) : 'Auto-print is disabled.' ?></div>
-                        <div class="small"><?= $printQueued ? 'The Windows print task will process this job shortly.' : (number_format($printed) . ' printed, ' . number_format($printFailed) . ' failed' . ($printBytesSent > 0 ? ', ' . number_format($printBytesSent) . ' bytes sent' : '') . '.') ?></div>
+                        <div class="small"><?= $printQueued ? 'The print worker will process this job shortly.' : (number_format($printed) . ' printed, ' . number_format($printFailed) . ' failed' . ($printBytesSent > 0 ? ', ' . number_format($printBytesSent) . ' bytes sent' : '') . '.') ?></div>
                         <?php if (!empty($printMessages)): ?><div class="small mt-2"><?= pick_result_h(implode(' ', $printMessages)) ?></div><?php endif; ?>
                     </div>
                 </div>
