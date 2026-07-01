@@ -32,7 +32,8 @@ function picker_po_dt($value)
 $search = trim((string)($_GET['q'] ?? ''));
 $whp = get_whpokayoke_connection();
 $cacheKey = sap_cache_make_key('sap.picker.open_purchase_orders', [
-    'search' => $search
+    'search' => $search,
+    'sort' => 'recent_docdate_docnum_desc'
 ]);
 
 if (!sap_cache_should_refresh()) {
@@ -144,7 +145,7 @@ $rows = fetch_all(
      INNER JOIN POR1 L ON L.DocEntry = H.DocEntry
      LEFT JOIN OITM I ON I.ItemCode = L.ItemCode
      WHERE " . implode(' AND ', $where) . "
-     ORDER BY {$dueDateExpr} ASC, H.DocDate ASC, H.DocNum ASC, L.LineNum ASC",
+     ORDER BY H.DocDate DESC, H.DocNum DESC, H.DocEntry DESC, L.LineNum ASC",
     $params
 );
 
