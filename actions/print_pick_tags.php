@@ -161,15 +161,37 @@ file_put_contents(
 |--------------------------------------------------------------------------
 | Return to picker immediately
 |--------------------------------------------------------------------------
-| Do not start the worker in this request. The picker page triggers it
-| separately without waiting, so operators can continue picking immediately.
+| Start the detached launcher, then return immediately.
+| The launcher exits after handing the job file to the background worker.
 */
+$launcherFile = $rootDir . DIRECTORY_SEPARATOR . 'tools' . DIRECTORY_SEPARATOR . 'run_picker_print_queue_hidden.vbs';
+$directCmd = 'wscript.exe //B ' . zebra_cmd_arg($launcherFile) . ' ' . zebra_cmd_arg($jobFileReal);
+$directStarted = false;
+
+if (function_exists('popen')) {
+    $handle = @popen($directCmd, 'r');
+
+    if (is_resource($handle)) {
+        @pclose($handle);
+        $directStarted = true;
+    }
+}
+
+file_put_contents(
+    $queueLog,
+    'Detached CMD: ' . $directCmd . PHP_EOL .
+    'Detached Started: ' . ($directStarted ? 'YES' : 'NO') . PHP_EOL .
+    str_repeat('-', 80) . PHP_EOL,
+    FILE_APPEND | LOCK_EX
+);
+
 $payload = [
     'ok' => true,
     'queued' => count($saved),
     'job_id' => $jobId,
-    'trigger_message' => 'The print job was queued.',
-    'trigger_url' => app_path('actions/trigger_picker_print.php'),
+    'trigger_message' => $directStarted
+        ? 'The print worker was started.'
+        : 'The print job was queued, but the print worker could not be started automatically.',
     'failed_validation' => count($failed),
 ];
 
@@ -182,7 +204,7 @@ if ($wantsJson) {
 $query = http_build_query([
     'print_queued' => count($saved),
     'print_job' => $jobId,
-    'print_trigger' => 'The print job was queued.'
+    'print_trigger' => $payload['trigger_message']
 ]);
 
 header('Location: ' . app_path('pages/picker/picker.php?' . $query));

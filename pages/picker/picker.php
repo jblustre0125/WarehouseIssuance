@@ -759,30 +759,6 @@ function showPrintQueueMessage(message, isError = false) {
     alertBox.textContent = message;
 }
 
-function triggerQueuedPrint(data) {
-    if (!data || !data.job_id) {
-        return;
-    }
-
-    const url = data.trigger_url || 'actions/trigger_picker_print.php';
-    const body = new FormData();
-    body.append('job_id', data.job_id);
-
-    if (navigator.sendBeacon && navigator.sendBeacon(url, body)) {
-        return;
-    }
-
-    fetch(url, {
-        method: 'POST',
-        body,
-        keepalive: true,
-        headers: {
-            'Accept': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-    }).catch(() => {});
-}
-
 async function printTags() {
     syncPickItems();
 
@@ -848,8 +824,6 @@ async function printTags() {
         if (!res.ok || !data.ok) {
             throw new Error(data.message || 'Unable to queue pick tags.');
         }
-
-        triggerQueuedPrint(data);
 
         showPrintQueueMessage(
             data.queued + ' picker tag(s) queued. ' +
