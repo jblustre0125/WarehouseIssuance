@@ -322,6 +322,29 @@ function pickPayload(it) {
     return '(01)' + String(it.item_code || '').trim() + '(17)' + String(it.quantity || '').trim() + '(10)' + String(it.lot_no || '').trim();
 }
 
+function isPurchaseOrderPickItem(it) {
+    return String(it.source_type || '').toLowerCase() === 'purchase_order'
+        || String(selectedDocument?.request_id || '').startsWith('PO-');
+}
+
+function readyPickItemCount() {
+    if (!selectedDocument || !String(selectedDocument.request_id || '').startsWith('PO-')) {
+        return pickItems.length;
+    }
+
+    return pickItems.filter(it => String(it.lot_no || '').trim() !== '').length;
+}
+
+function refreshPickControls() {
+    const readyCount = readyPickItemCount();
+    const countText = selectedDocument && String(selectedDocument.request_id || '').startsWith('PO-')
+        ? readyCount + ' ready / ' + pickItems.length + ' line(s)'
+        : pickItems.length + ' tag(s)';
+
+    document.getElementById('countBadge').textContent = countText;
+    document.getElementById('printBtn').disabled = readyCount === 0;
+}
+
 async function loadOpenRequests() {
     const status = document.getElementById('requestStatus');
     status.textContent = 'Refreshing requests...';
@@ -576,8 +599,7 @@ function renderPickItems() {
         `);
     });
 
-    document.getElementById('countBadge').textContent = pickItems.length + ' tag(s)';
-    document.getElementById('printBtn').disabled = pickItems.length === 0;
+    refreshPickControls();
 }
 
 function updatePickItem(idx, key, value) {
@@ -591,6 +613,8 @@ function updatePickItem(idx, key, value) {
     if (payload) {
         payload.textContent = pickPayload(pickItems[idx]);
     }
+
+    refreshPickControls();
 }
 
 function syncPickItems() {
@@ -717,6 +741,15 @@ function printTags() {
     for (let idx = 0; idx < pickItems.length; idx++) {
         const it = pickItems[idx];
 
+        if (!it.lot_no) {
+            if (isPurchaseOrderPickItem(it)) {
+                continue;
+            }
+
+            alert('Line ' + (idx + 1) + ' actual lot number is required.');
+            return;
+        }
+
         if (!it.quantity || Number(it.quantity) <= 0) {
             alert('Line ' + (idx + 1) + ' quantity must be greater than zero.');
             return;
@@ -727,12 +760,13 @@ function printTags() {
             return;
         }
 
-        if (!it.lot_no) {
-            alert('Line ' + (idx + 1) + ' actual lot number is required.');
-            return;
-        }
-
         printable.push(Object.assign({}, it, { qr_payload: pickPayload(it) }));
+    }
+
+    if (printable.length === 0) {
+        alert('Enter an actual lot number for at least one delivered PO item before printing.');
+        refreshPickControls();
+        return;
     }
 
     const f = document.createElement('form');
