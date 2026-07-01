@@ -16,7 +16,7 @@ define('DB_NAME_WHP', 'WHPOKAYOKE');
 define('DB_HOST_ERP', 'erpserver');
 define('DB_USER_ERP', 'sa');
 define('DB_PASS_ERP', '1q2w#E$R');
-define('DB_NAME_ERP', 'TESTDB_NBCP_Final_Live');
+define('DB_NAME_ERP', 'NBCP_Final_Live');
 
 /*
 |--------------------------------------------------------------------------
