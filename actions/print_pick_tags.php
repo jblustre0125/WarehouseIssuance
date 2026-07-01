@@ -108,6 +108,7 @@ foreach ([$storageDir, $jobDir, $logDir] as $dir) {
 */
 $jobId = date('YmdHis') . '_' . bin2hex(random_bytes(4));
 $jobFile = $jobDir . DIRECTORY_SEPARATOR . 'pick_' . $jobId . '.json';
+$jobTempFile = $jobDir . DIRECTORY_SEPARATOR . 'pick_' . $jobId . '.tmp';
 
 $currentUser = current_user();
 
@@ -124,13 +125,16 @@ $jobData = [
     'items' => $saved,
 ];
 
-$jobSaved = file_put_contents(
-    $jobFile,
-    json_encode($jobData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-    LOCK_EX
-);
+$jobJson = json_encode($jobData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
-if ($jobSaved === false) {
+if ($jobJson === false) {
+    picker_print_fail('Unable to encode print job JSON.', 500);
+}
+
+$jobSaved = file_put_contents($jobTempFile, $jobJson, LOCK_EX);
+
+if ($jobSaved === false || !@rename($jobTempFile, $jobFile)) {
+    @unlink($jobTempFile);
     picker_print_fail('Unable to save print job file.', 500);
 }
 

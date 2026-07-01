@@ -46,6 +46,13 @@ function picker_worker_log(string $logFile, string $message): void
     );
 }
 
+function picker_worker_job_id_from_file(string $jobFile): string
+{
+    $baseName = basename($jobFile, '.json');
+
+    return preg_replace('/^pick_/', '', $baseName) ?: $baseName;
+}
+
 function picker_worker_process_job(
     string $jobFile,
     string $storageDir,
@@ -54,7 +61,7 @@ function picker_worker_process_job(
     string $logDir
 ): bool {
     $job = null;
-    $jobId = basename($jobFile, '.json');
+    $jobId = picker_worker_job_id_from_file($jobFile);
     $logFile = $logDir . '/picker_print_' . date('Ymd') . '.log';
     $lockHandle = null;
 
@@ -77,14 +84,31 @@ function picker_worker_process_job(
             Load job first so even if config/print code fails,
             we can still create a proper failed JSON result.
         */
-        $rawJob = (string)file_get_contents($jobFile);
-        $job = json_decode($rawJob, true);
+        $rawJob = '';
+        $jsonError = 'No JSON was read.';
 
-        if (!is_array($job) || empty($job['items']) || !is_array($job['items'])) {
-            throw new RuntimeException('Invalid print job file.');
+        for ($attempt = 1; $attempt <= 5; $attempt++) {
+            clearstatcache(true, $jobFile);
+            $rawJob = (string)file_get_contents($jobFile);
+            $job = json_decode($rawJob, true);
+            $jsonError = json_last_error_msg();
+
+            if (is_array($job) && !empty($job['items']) && is_array($job['items'])) {
+                break;
+            }
+
+            if ($attempt < 5) {
+                usleep(200000);
+            }
         }
 
-        $jobId = (string)($job['job_id'] ?? basename($jobFile, '.json'));
+        if (!is_array($job) || empty($job['items']) || !is_array($job['items'])) {
+            throw new RuntimeException(
+                'Invalid print job file. Bytes: ' . strlen($rawJob) . '. JSON: ' . $jsonError
+            );
+        }
+
+        $jobId = (string)($job['job_id'] ?? picker_worker_job_id_from_file($jobFile));
 
         picker_worker_log($logFile, 'START Job ' . $jobId . ' | Tags: ' . count($job['items']));
 
