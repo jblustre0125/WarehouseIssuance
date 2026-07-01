@@ -5,6 +5,9 @@ require_role([ROLE_PICKER, ROLE_ADMIN]);
 
 $currentUser = current_user();
 $currentRole = strtolower($currentUser['role'] ?? '');
+$queuedPrintCount = isset($_GET['print_queued']) ? max(0, (int)$_GET['print_queued']) : 0;
+$queuedPrintJob = trim((string)($_GET['print_job'] ?? ''));
+$queuedPrintTrigger = trim((string)($_GET['print_trigger'] ?? ''));
 ?>
 <!doctype html>
 <html lang="en">
@@ -157,6 +160,18 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             </div>
             <span class="badge bg-primary rounded-pill px-3 py-2" id="countBadge">0 tag(s)</span>
         </div>
+
+        <?php if ($queuedPrintCount > 0): ?>
+            <div class="alert alert-success d-flex justify-content-between align-items-start gap-2">
+                <div>
+                    <strong><?= h($queuedPrintCount) ?> picker tag(s) queued.</strong>
+                    <?= h($queuedPrintTrigger ?: 'The print worker was started.') ?>
+                    <?php if ($queuedPrintJob !== ''): ?><span class="small text-muted">Job <?= h($queuedPrintJob) ?></span><?php endif; ?>
+                </div>
+                <a class="btn btn-sm btn-outline-success" href="<?= h(app_path('pages/picker/picker.php')) ?>">Dismiss</a>
+            </div>
+        <?php endif; ?>
+        <div class="alert alert-success d-none" id="printQueueAlert"></div>
 
         <div class="row g-3">
             <div class="col-xl-8">
@@ -733,10 +748,46 @@ function clearSelectedRequest() {
     renderPickItems();
 }
 
-function printTags() {
+function showPrintQueueMessage(message, isError = false) {
+    const alertBox = document.getElementById('printQueueAlert');
+
+    if (!alertBox) {
+        return;
+    }
+
+    alertBox.className = 'alert ' + (isError ? 'alert-danger' : 'alert-success');
+    alertBox.textContent = message;
+}
+
+function triggerQueuedPrint(data) {
+    if (!data || !data.job_id) {
+        return;
+    }
+
+    const url = data.trigger_url || 'actions/trigger_picker_print.php';
+    const body = new FormData();
+    body.append('job_id', data.job_id);
+
+    if (navigator.sendBeacon && navigator.sendBeacon(url, body)) {
+        return;
+    }
+
+    fetch(url, {
+        method: 'POST',
+        body,
+        keepalive: true,
+        headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    }).catch(() => {});
+}
+
+async function printTags() {
     syncPickItems();
 
     const printable = [];
+    const printableIndexes = [];
 
     for (let idx = 0; idx < pickItems.length; idx++) {
         const it = pickItems[idx];
@@ -761,6 +812,7 @@ function printTags() {
         }
 
         printable.push(Object.assign({}, it, { qr_payload: pickPayload(it) }));
+        printableIndexes.push(idx);
     }
 
     if (printable.length === 0) {
@@ -769,18 +821,62 @@ function printTags() {
         return;
     }
 
-    const f = document.createElement('form');
-    f.method = 'post';
-    f.action = 'actions/print_pick_tags.php';
+    const printBtn = document.getElementById('printBtn');
+    const originalText = printBtn ? printBtn.textContent : '';
+    const queuedRequestId = selectedDocument ? String(selectedDocument.request_id || '') : '';
 
-    const i = document.createElement('input');
-    i.type = 'hidden';
-    i.name = 'batch_items';
-    i.value = JSON.stringify(printable);
+    if (printBtn) {
+        printBtn.disabled = true;
+        printBtn.textContent = 'Queueing...';
+    }
 
-    f.appendChild(i);
-    document.body.appendChild(f);
-    f.submit();
+    try {
+        const body = new FormData();
+        body.append('batch_items', JSON.stringify(printable));
+
+        const res = await fetch('actions/print_pick_tags.php', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.ok) {
+            throw new Error(data.message || 'Unable to queue pick tags.');
+        }
+
+        triggerQueuedPrint(data);
+
+        showPrintQueueMessage(
+            data.queued + ' picker tag(s) queued. ' +
+            (data.trigger_message || 'You can continue picking.') +
+            (data.job_id ? ' Job ' + data.job_id + '.' : '')
+        );
+
+        if (queuedRequestId === String(selectedDocument?.request_id || '')) {
+            printableIndexes
+                .sort((a, b) => b - a)
+                .forEach(idx => pickItems.splice(idx, 1));
+
+            if (pickItems.length === 0) {
+                clearSelectedRequest();
+            } else {
+                renderPickItems();
+            }
+        }
+    } catch (e) {
+        showPrintQueueMessage(e.message || 'Unable to queue pick tags.', true);
+        refreshPickControls();
+    } finally {
+        if (printBtn) {
+            printBtn.textContent = originalText || 'Print Pick Tags';
+            refreshPickControls();
+        }
+    }
 }
 
 const sidebar = document.getElementById('sidebar');

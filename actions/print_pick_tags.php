@@ -7,10 +7,30 @@ require_once __DIR__ . '/../includes/zebra_print.php';
 
 require_role([ROLE_PICKER, ROLE_ADMIN]);
 
+$wantsJson = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest'
+    || stripos((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json') !== false;
+
+function picker_print_fail(string $message, int $code = 400): void
+{
+    global $wantsJson;
+
+    if ($wantsJson) {
+        http_response_code($code);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok' => false,
+            'message' => $message,
+        ]);
+        exit;
+    }
+
+    app_error($message, $code);
+}
+
 $items = json_decode($_POST['batch_items'] ?? '[]', true);
 
 if (!is_array($items) || count($items) === 0) {
-    app_error('No pick tags to print.', 400);
+    picker_print_fail('No pick tags to print.', 400);
 }
 
 $saved = [];
@@ -49,7 +69,7 @@ foreach ($items as $item) {
 }
 
 if (count($saved) === 0) {
-    app_error('No valid pick tags to print.', 400);
+    picker_print_fail('No valid pick tags to print.', 400);
 }
 
 /*
@@ -70,12 +90,12 @@ $logDir = $storageDir . DIRECTORY_SEPARATOR . 'print_logs';
 foreach ([$storageDir, $jobDir, $logDir] as $dir) {
     if (!is_dir($dir)) {
         if (!mkdir($dir, 0775, true) && !is_dir($dir)) {
-            app_error('Unable to create folder: ' . $dir, 500);
+            picker_print_fail('Unable to create folder: ' . $dir, 500);
         }
     }
 
     if (!is_writable($dir)) {
-        app_error('Folder is not writable: ' . $dir, 500);
+        picker_print_fail('Folder is not writable: ' . $dir, 500);
     }
 }
 
@@ -111,13 +131,13 @@ $jobSaved = file_put_contents(
 );
 
 if ($jobSaved === false) {
-    app_error('Unable to save print job file.', 500);
+    picker_print_fail('Unable to save print job file.', 500);
 }
 
 $jobFileReal = realpath($jobFile);
 
 if ($jobFileReal === false || !is_file($jobFileReal)) {
-    app_error('Print job file was saved but cannot be found.', 500);
+    picker_print_fail('Print job file was saved but cannot be found.', 500);
 }
 
 /*
@@ -139,84 +159,32 @@ file_put_contents(
 
 /*
 |--------------------------------------------------------------------------
-| Instant print trigger
+| Return to picker immediately
 |--------------------------------------------------------------------------
-| Start the print worker immediately for this job.
-| If the direct launch fails, fall back to the Windows Scheduled Task.
+| Do not start the worker in this request. The picker page triggers it
+| separately without waiting, so operators can continue picking immediately.
 */
-$taskName = 'Warehouse Picker Print Queue';
-$taskCmd = 'schtasks /Run /TN "' . $taskName . '"';
-$phpExe = PHP_BINDIR . DIRECTORY_SEPARATOR . 'php.exe';
-$workerFile = $rootDir . DIRECTORY_SEPARATOR . 'workers' . DIRECTORY_SEPARATOR . 'print_picker_worker.php';
-$directCmd = 'cmd /c start "" /B '
-    . escapeshellarg($phpExe) . ' '
-    . escapeshellarg($workerFile) . ' '
-    . escapeshellarg($jobFileReal);
-
-$directOutput = [];
-$directExitCode = 0;
-$taskOutput = [];
-$taskExitCode = null;
-
-exec($directCmd . ' 2>&1', $directOutput, $directExitCode);
-
-if ($directExitCode !== 0) {
-    exec($taskCmd . ' 2>&1', $taskOutput, $taskExitCode);
-}
-
-file_put_contents(
-    $queueLog,
-    'Direct CMD: ' . $directCmd . PHP_EOL .
-    'Direct Exit code: ' . $directExitCode . PHP_EOL .
-    'Direct Output: ' . implode(PHP_EOL, $directOutput) . PHP_EOL .
-    ($taskExitCode !== null
-        ? 'Fallback Task CMD: ' . $taskCmd . PHP_EOL .
-          'Fallback Task Exit code: ' . $taskExitCode . PHP_EOL .
-          'Fallback Task Output: ' . implode(PHP_EOL, $taskOutput) . PHP_EOL
-        : 'Fallback Task: not needed' . PHP_EOL) .
-    str_repeat('-', 80) . PHP_EOL,
-    FILE_APPEND | LOCK_EX
-);
-
-/*
-|--------------------------------------------------------------------------
-| Return queued result
-|--------------------------------------------------------------------------
-| Do not check printed/failed immediately here.
-| The Scheduled Task processes the print job separately.
-*/
-$pageTitle = 'Pick Tags Queued';
-$backUrl = 'pages/picker/picker.php';
-
-$messages = [
-    count($saved) . ' picker tag(s) queued for printing.',
-    $directExitCode === 0
-        ? 'The print worker was started immediately.'
-        : 'The direct print worker launch failed, so the scheduled task was triggered.',
-    'Job ID: ' . $jobId,
-    'You may return to the picker page and continue working.',
-];
-
-if ($directExitCode !== 0 && $taskExitCode !== 0) {
-    $messages[] = 'Warning: The print job was saved, but both print triggers returned an error.';
-    $messages[] = 'Check storage/print_logs/worker_start_' . date('Ymd') . '.log';
-}
-
-if (count($failed) > 0) {
-    $messages[] = count($failed) . ' item(s) failed validation before printing.';
-}
-
-$zebraPrintResult = [
-    'enabled' => true,
+$payload = [
     'ok' => true,
-    'queued' => true,
-    'queued_count' => count($saved),
-    'printed' => 0,
-    'failed' => count($failed),
-    'printer_name' => zebra_pick_printer_name(),
-    'messages' => $messages,
+    'queued' => count($saved),
+    'job_id' => $jobId,
+    'trigger_message' => 'The print job was queued.',
+    'trigger_url' => app_path('actions/trigger_picker_print.php'),
+    'failed_validation' => count($failed),
 ];
 
-include __DIR__ . '/../pages/results/print_pick_result.php';
+if ($wantsJson) {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($payload);
+    exit;
+}
+
+$query = http_build_query([
+    'print_queued' => count($saved),
+    'print_job' => $jobId,
+    'print_trigger' => 'The print job was queued.'
+]);
+
+header('Location: ' . app_path('pages/picker/picker.php?' . $query));
 exit;
 ?>
