@@ -90,6 +90,15 @@ The picker-tag setup renders each 3 inch by 3 inch Nitto picker tag as a PNG and
 
 If you need to test raw label command printing, `PICK_TAG_PRINT_CONNECTION` can be set to `windows_share`, but that requires a shared printer path such as `\\localhost\NITTO DURA-SL-400` and only works when the printer understands the raw label command language.
 
+Create the picker print task with this exact task name, because `actions/print_pick_tags.php` triggers it after queueing a job:
+
+- Task name: `Warehouse Picker Print Queue`
+- Program/script: `wscript.exe`
+- Arguments: `"C:\Xampp\htdocs\WarehouseIssuance\tools\run_picker_print_queue_hidden.vbs"`
+- Start in: `C:\Xampp\htdocs\WarehouseIssuance`
+
+Run the task as a Windows user that can print to the configured Nitto printer. If a command window appears, the task is probably running `php.exe` directly; switch it to the `wscript.exe` launcher above. Print results and errors are written to `storage/print_done`, `storage/print_errors`, and `storage/print_logs`.
+
 For a USB/Windows shared Zebra printer, use:
 
 ```php
