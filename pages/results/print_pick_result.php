@@ -17,6 +17,8 @@ $pageTitle = $pageTitle ?? 'Pick Tags Ready';
 $backUrl = $backUrl ?? 'pages/picker/picker.php';
 $printEnabled = isset($zebraPrintResult) && (bool)($zebraPrintResult['enabled'] ?? false);
 $printOk = isset($zebraPrintResult) && (bool)($zebraPrintResult['ok'] ?? false);
+$printQueued = isset($zebraPrintResult) && (bool)($zebraPrintResult['queued'] ?? false);
+$printQueuedCount = isset($zebraPrintResult) ? (int)($zebraPrintResult['queued_count'] ?? 0) : 0;
 $printed = isset($zebraPrintResult) ? (int)($zebraPrintResult['printed'] ?? 0) : 0;
 $printFailed = isset($zebraPrintResult) ? (int)($zebraPrintResult['failed'] ?? 0) : 0;
 $printPrinterName = isset($zebraPrintResult) ? trim((string)($zebraPrintResult['printer_name'] ?? 'printer')) : 'printer';
@@ -76,8 +78,8 @@ foreach ($saved as $idx => $s) {
                 <div class="col-md-4"><div class="p-3 bg-light rounded-3"><div class="fw-bold">Failed</div><div class="fs-2 text-danger"><?= number_format(count($failed)) ?></div></div></div>
                 <div class="col-md-4">
                     <div class="print-status <?= $printEnabled ? ($printOk ? 'success' : 'warning') : '' ?>">
-                        <div class="fw-bold"><?= $printEnabled ? ($printOk ? 'Labels sent to ' . pick_result_h($printPrinterName) . '.' : 'Some labels failed to print on ' . pick_result_h($printPrinterName) . '.') : 'Auto-print is disabled.' ?></div>
-                        <div class="small"><?= number_format($printed) ?> printed, <?= number_format($printFailed) ?> failed<?= $printBytesSent > 0 ? ', ' . number_format($printBytesSent) . ' bytes sent' : '' ?>.</div>
+                        <div class="fw-bold"><?= $printEnabled ? ($printQueued ? number_format($printQueuedCount) . ' tag(s) queued for ' . pick_result_h($printPrinterName) . '.' : ($printOk ? 'Labels sent to ' . pick_result_h($printPrinterName) . '.' : 'Some labels failed to print on ' . pick_result_h($printPrinterName) . '.')) : 'Auto-print is disabled.' ?></div>
+                        <div class="small"><?= $printQueued ? 'The Windows print task will process this job shortly.' : (number_format($printed) . ' printed, ' . number_format($printFailed) . ' failed' . ($printBytesSent > 0 ? ', ' . number_format($printBytesSent) . ' bytes sent' : '') . '.') ?></div>
                         <?php if (!empty($printMessages)): ?><div class="small mt-2"><?= pick_result_h(implode(' ', $printMessages)) ?></div><?php endif; ?>
                     </div>
                 </div>

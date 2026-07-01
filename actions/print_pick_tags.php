@@ -190,6 +190,8 @@ if (count($failed) > 0) {
 $zebraPrintResult = [
     'enabled' => true,
     'ok' => true,
+    'queued' => true,
+    'queued_count' => count($saved),
     'printed' => 0,
     'failed' => count($failed),
     'printer_name' => zebra_pick_printer_name(),
