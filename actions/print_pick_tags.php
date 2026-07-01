@@ -165,26 +165,26 @@ file_put_contents(
 |--------------------------------------------------------------------------
 | Return to picker immediately
 |--------------------------------------------------------------------------
-| Start the detached launcher, then return immediately.
-| The launcher exits after handing the job file to the background worker.
+| Trigger the printer-capable Windows Scheduled Task, then return immediately.
+| The task runs the background worker under the configured Windows user.
 */
-$launcherFile = $rootDir . DIRECTORY_SEPARATOR . 'tools' . DIRECTORY_SEPARATOR . 'run_picker_print_queue_hidden.vbs';
-$directCmd = 'wscript.exe //B ' . zebra_cmd_arg($launcherFile) . ' ' . zebra_cmd_arg($jobFileReal);
-$directStarted = false;
+$taskName = 'Warehouse Picker Print Queue';
+$taskCmd = 'schtasks /Run /TN "' . $taskName . '"';
+$taskStarted = false;
 
 if (function_exists('popen')) {
-    $handle = @popen($directCmd, 'r');
+    $handle = @popen($taskCmd, 'r');
 
     if (is_resource($handle)) {
         @pclose($handle);
-        $directStarted = true;
+        $taskStarted = true;
     }
 }
 
 file_put_contents(
     $queueLog,
-    'Detached CMD: ' . $directCmd . PHP_EOL .
-    'Detached Started: ' . ($directStarted ? 'YES' : 'NO') . PHP_EOL .
+    'Task CMD: ' . $taskCmd . PHP_EOL .
+    'Task Started: ' . ($taskStarted ? 'YES' : 'NO') . PHP_EOL .
     str_repeat('-', 80) . PHP_EOL,
     FILE_APPEND | LOCK_EX
 );
@@ -193,9 +193,9 @@ $payload = [
     'ok' => true,
     'queued' => count($saved),
     'job_id' => $jobId,
-    'trigger_message' => $directStarted
-        ? 'The print worker was started.'
-        : 'The print job was queued, but the print worker could not be started automatically.',
+    'trigger_message' => $taskStarted
+        ? 'The print task was triggered.'
+        : 'The print job was queued, but the print task could not be started automatically.',
     'failed_validation' => count($failed),
 ];
 
