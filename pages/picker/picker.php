@@ -128,9 +128,537 @@ $queuedPrintTrigger = trim((string)($_GET['print_trigger'] ?? ''));
             .col-lot { min-width:160px; }
             .col-payload { min-width:220px; }
         }
+
+
+        /* FINAL CLEAN COLLAPSIBLE SIDEBAR / ICON RAIL FIX
+           - Sidebar is collapsed by default.
+           - Only centered icons are visible when collapsed.
+           - Full sidebar automatically appears on hover/focus.
+           - Main content uses the freed width.
+        */
+        :root {
+            --sidebar-full-width: 250px;
+            --sidebar-rail-width: 68px;
+        }
+
+        @media (min-width: 901px) {
+            body.sidebar-rail-mode .sidebar {
+                width: var(--sidebar-rail-width) !important;
+                min-width: var(--sidebar-rail-width) !important;
+                max-width: var(--sidebar-rail-width) !important;
+                overflow-x: hidden !important;
+                transition: width .18s ease, min-width .18s ease, max-width .18s ease, box-shadow .18s ease;
+            }
+
+            body.sidebar-rail-mode .main-content {
+                margin-left: var(--sidebar-rail-width) !important;
+                width: calc(100% - var(--sidebar-rail-width)) !important;
+                max-width: calc(100% - var(--sidebar-rail-width)) !important;
+                transition: margin-left .18s ease, width .18s ease;
+            }
+
+            body.sidebar-rail-mode .sidebar:hover,
+            body.sidebar-rail-mode .sidebar:focus-within {
+                width: var(--sidebar-full-width) !important;
+                min-width: var(--sidebar-full-width) !important;
+                max-width: var(--sidebar-full-width) !important;
+                z-index: 1050;
+                box-shadow: 12px 0 34px rgba(15,23,42,.22);
+            }
+
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .sidebar-brand {
+                justify-content: center !important;
+                padding: 14px 8px !important;
+                gap: 0 !important;
+            }
+
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .sidebar-logo {
+                width: 38px !important;
+                height: 38px !important;
+                margin: 0 auto !important;
+            }
+
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .sidebar-title,
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .sidebar-subtitle,
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .sidebar-section,
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .user-name,
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .user-role,
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .user-box,
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .logout-link {
+                display: none !important;
+            }
+
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .sidebar-menu {
+                padding: 12px 6px !important;
+                overflow-x: hidden !important;
+            }
+
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .sidebar-footer {
+                display: none !important;
+            }
+
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .sidebar-link,
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .nav-link,
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) a {
+                width: 48px !important;
+                min-width: 48px !important;
+                height: 48px !important;
+                min-height: 48px !important;
+                padding: 0 !important;
+                margin: 0 auto 8px !important;
+                justify-content: center !important;
+                align-items: center !important;
+                gap: 0 !important;
+                font-size: 0 !important;
+                line-height: 0 !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-indent: 0 !important;
+            }
+
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .sidebar-icon,
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .sidebar-link i,
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .sidebar-link svg,
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .nav-link i,
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) .nav-link svg,
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) a i,
+            body.sidebar-rail-mode .sidebar:not(:hover):not(:focus-within) a svg {
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                width: 24px !important;
+                min-width: 24px !important;
+                height: 24px !important;
+                margin: 0 !important;
+                font-size: 18px !important;
+                line-height: 1 !important;
+                text-indent: 0 !important;
+            }
+
+            body.sidebar-rail-mode .sidebar:hover .sidebar-link,
+            body.sidebar-rail-mode .sidebar:focus-within .sidebar-link,
+            body.sidebar-rail-mode .sidebar:hover .nav-link,
+            body.sidebar-rail-mode .sidebar:focus-within .nav-link,
+            body.sidebar-rail-mode .sidebar:hover a,
+            body.sidebar-rail-mode .sidebar:focus-within a {
+                font-size: 14px !important;
+                line-height: normal !important;
+            }
+
+            /* Let the picker table use the full available screen width. */
+            .row.g-3 > .col-xl-8,
+            .row.g-3 > .col-xl-4 {
+                flex: 0 0 100% !important;
+                max-width: 100% !important;
+                width: 100% !important;
+            }
+
+            #requestList,
+            #poList {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+                gap: 12px;
+                max-height: 420px;
+            }
+
+            #requestList .request-card,
+            #poList .request-card {
+                margin-bottom: 0 !important;
+            }
+        }
+
+        /* Keep table actions visible and stop Split/Remove from being cut. */
+        .picker-table-wrap {
+            overflow-x: auto !important;
+            overflow-y: auto !important;
+            scrollbar-width: thin;
+        }
+
+        .picker-table {
+            min-width: 1260px !important;
+        }
+
+        .col-action {
+            width: 170px !important;
+            min-width: 170px !important;
+            white-space: nowrap !important;
+        }
+
+        .col-action .d-flex {
+            flex-wrap: nowrap !important;
+            justify-content: center !important;
+            gap: 6px !important;
+        }
+
+        .col-action .btn {
+            min-width: 64px !important;
+            padding-left: 8px !important;
+            padding-right: 8px !important;
+        }
+
+        .col-payload {
+            width: 180px !important;
+            min-width: 180px !important;
+        }
+
+        @media (max-width: 900px) {
+            body.sidebar-rail-mode .sidebar {
+                width: 58px !important;
+                min-width: 58px !important;
+                max-width: 58px !important;
+                transform: none !important;
+                overflow-x: hidden !important;
+            }
+
+            body.sidebar-rail-mode .main-content {
+                margin-left: 58px !important;
+                width: calc(100% - 58px) !important;
+                max-width: calc(100% - 58px) !important;
+                padding: 12px !important;
+            }
+
+            body.sidebar-rail-mode .sidebar .sidebar-title,
+            body.sidebar-rail-mode .sidebar .sidebar-subtitle,
+            body.sidebar-rail-mode .sidebar .sidebar-section,
+            body.sidebar-rail-mode .sidebar .user-box,
+            body.sidebar-rail-mode .sidebar .logout-link {
+                display: none !important;
+            }
+
+            body.sidebar-rail-mode .sidebar .sidebar-brand {
+                justify-content: center !important;
+                padding: 10px 6px !important;
+            }
+
+            body.sidebar-rail-mode .sidebar .sidebar-menu {
+                padding: 10px 5px !important;
+            }
+
+            body.sidebar-rail-mode .sidebar .sidebar-link,
+            body.sidebar-rail-mode .sidebar a {
+                width: 44px !important;
+                height: 44px !important;
+                min-height: 44px !important;
+                padding: 0 !important;
+                margin: 0 auto 7px !important;
+                justify-content: center !important;
+                font-size: 0 !important;
+                overflow: hidden !important;
+            }
+
+            .picker-table {
+                min-width: 1180px !important;
+            }
+        }
+
+
+
+        /* RIGHT-SIDE OPEN DOCUMENTS LAYOUT FIX
+           Keep Open Documents on the right side while still allowing
+           the Pick Tag table to scroll horizontally inside its own card.
+        */
+        @media (min-width: 901px) {
+            .main-content > .row.g-3 {
+                display: grid !important;
+                grid-template-columns: minmax(0, 1fr) clamp(340px, 24vw, 420px) !important;
+                align-items: start !important;
+                gap: 16px !important;
+            }
+
+            .main-content > .row.g-3 > .col-xl-8,
+            .main-content > .row.g-3 > .col-xl-4 {
+                width: auto !important;
+                max-width: none !important;
+                flex: none !important;
+            }
+
+            .main-content > .row.g-3 > .col-xl-8 {
+                grid-column: 1 !important;
+                min-width: 0 !important;
+            }
+
+            .main-content > .row.g-3 > .col-xl-4 {
+                grid-column: 2 !important;
+                min-width: 0 !important;
+            }
+
+            #requestList,
+            #poList {
+                display: block !important;
+                grid-template-columns: none !important;
+                max-height: calc(100vh - 285px) !important;
+                overflow-y: auto !important;
+                padding-right: 4px !important;
+            }
+
+            #requestList .request-card,
+            #poList .request-card {
+                display: block !important;
+                width: 100% !important;
+                margin-bottom: 10px !important;
+            }
+        }
+
+        @media (min-width: 901px) and (max-width: 1280px) {
+            .main-content > .row.g-3 {
+                grid-template-columns: minmax(0, 1fr) 350px !important;
+                gap: 12px !important;
+            }
+
+            .content-card-header,
+            .content-card-body {
+                padding: 14px !important;
+            }
+
+            .request-card {
+                padding: 12px !important;
+            }
+        }
+
+
+        /* TABLET LANDSCAPE FIT MODE
+           Keep Open Documents on the right, but make the Pick Tag table fit
+           without left-right scrolling on tablet landscape / small laptops.
+        */
+        @media (min-width: 901px) and (max-width: 1180px) and (orientation: landscape) {
+            body.sidebar-rail-mode .main-content {
+                padding: 10px 12px !important;
+            }
+
+            .page-header {
+                margin-bottom: 10px !important;
+                align-items: center !important;
+            }
+
+            .page-title {
+                font-size: 20px !important;
+                margin-bottom: 2px !important;
+            }
+
+            .page-subtitle,
+            .content-card-subtitle {
+                font-size: 12px !important;
+            }
+
+            .main-content > .row.g-3 {
+                grid-template-columns: minmax(0, 1fr) 300px !important;
+                gap: 10px !important;
+            }
+
+            .content-card {
+                border-radius: 12px !important;
+            }
+
+            .content-card-header {
+                padding: 10px 12px !important;
+            }
+
+            .content-card-body {
+                padding: 10px 12px 12px !important;
+            }
+
+            #selectedRequestBox {
+                padding: 10px 12px !important;
+                margin-bottom: 10px !important;
+                font-size: 12px !important;
+            }
+
+            .picker-table-wrap {
+                overflow-x: hidden !important;
+                max-height: calc(100vh - 295px) !important;
+            }
+
+            .picker-table {
+                width: 100% !important;
+                min-width: 0 !important;
+                table-layout: fixed !important;
+                font-size: 9.5px !important;
+            }
+
+            .picker-table thead th {
+                font-size: 8px !important;
+                padding: 5px 4px !important;
+                white-space: normal !important;
+                line-height: 1.1 !important;
+            }
+
+            .picker-table td {
+                padding: 5px 4px !important;
+                white-space: normal !important;
+                line-height: 1.15 !important;
+                overflow-wrap: anywhere !important;
+                word-break: break-word !important;
+            }
+
+            .col-no {
+                width: 34px !important;
+                min-width: 34px !important;
+            }
+
+            .col-item {
+                width: 86px !important;
+                min-width: 86px !important;
+            }
+
+            .col-part {
+                width: 150px !important;
+                min-width: 150px !important;
+            }
+
+            .col-qty {
+                width: 82px !important;
+                min-width: 82px !important;
+            }
+
+            .col-uom {
+                width: 45px !important;
+                min-width: 45px !important;
+            }
+
+            .col-lot {
+                width: 115px !important;
+                min-width: 115px !important;
+            }
+
+            .col-itr {
+                width: 95px !important;
+                min-width: 95px !important;
+            }
+
+            .col-action {
+                width: 92px !important;
+                min-width: 92px !important;
+            }
+
+            .col-payload {
+                display: none !important;
+                width: 0 !important;
+                min-width: 0 !important;
+            }
+
+            .table-input {
+                height: 32px !important;
+                min-height: 32px !important;
+                font-size: 10px !important;
+                padding: 4px 5px !important;
+                border-radius: 7px !important;
+            }
+
+            .col-action .d-flex {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 4px !important;
+            }
+
+            .col-action .btn {
+                min-width: 0 !important;
+                width: 100% !important;
+                padding: 4px 5px !important;
+                font-size: 10px !important;
+                line-height: 1.1 !important;
+            }
+
+            .d-flex.justify-content-end.gap-2.mt-3 {
+                margin-top: 10px !important;
+            }
+
+            .d-flex.justify-content-end.gap-2.mt-3 .btn {
+                padding: 7px 10px !important;
+                font-size: 12px !important;
+            }
+
+            #requestList,
+            #poList {
+                max-height: calc(100vh - 245px) !important;
+            }
+
+            .request-card {
+                padding: 10px !important;
+                border-radius: 12px !important;
+            }
+
+            .request-title {
+                font-size: 13px !important;
+            }
+
+            .request-meta {
+                font-size: 11px !important;
+            }
+
+            .qty-grid {
+                gap: 5px !important;
+                margin-top: 8px !important;
+            }
+
+            .qty-box {
+                padding: 6px !important;
+            }
+
+            .qty-box .label {
+                font-size: 8px !important;
+            }
+
+            .qty-box .value {
+                font-size: 11px !important;
+            }
+
+            .source-tabs .nav-link {
+                padding: 7px 8px !important;
+                font-size: 12px !important;
+            }
+        }
+
+        /* Smaller tablet landscape: keep right card but give more room to the table. */
+        @media (min-width: 901px) and (max-width: 1050px) and (orientation: landscape) {
+            .main-content > .row.g-3 {
+                grid-template-columns: minmax(0, 1fr) 280px !important;
+            }
+
+            .content-card-header,
+            .content-card-body {
+                padding-left: 9px !important;
+                padding-right: 9px !important;
+            }
+
+            .col-part {
+                width: 130px !important;
+                min-width: 130px !important;
+            }
+
+            .col-lot {
+                width: 105px !important;
+                min-width: 105px !important;
+            }
+
+            .col-itr {
+                width: 84px !important;
+                min-width: 84px !important;
+            }
+
+            .col-action {
+                width: 78px !important;
+                min-width: 78px !important;
+            }
+        }
+
+
+        /* JB FIX: Hide only the QR Payload column in tablet landscape.
+           This is placed at the end so it overrides earlier table width rules. */
+        @media (orientation: landscape) and (min-width: 700px) and (max-width: 1366px) and (max-height: 900px) {
+            #pickTable th.col-payload,
+            #pickTable td.col-payload {
+                display: none !important;
+                width: 0 !important;
+                min-width: 0 !important;
+                max-width: 0 !important;
+                padding: 0 !important;
+                border: 0 !important;
+            }
+        }
+
     </style>
 </head>
-<body>
+<body class="sidebar-rail-mode">
 <header class="sap-shellbar">
     <button class="shell-menu-btn" type="button" id="sidebarToggle" aria-label="Open navigation">&#9776;</button>
     <div class="shell-logo" aria-hidden="true">
@@ -312,6 +840,12 @@ $queuedPrintTrigger = trim((string)($_GET['print_trigger'] ?? ''));
     </div>
 </div>
 
+
+<script>
+(function () {
+    document.body.classList.add('sidebar-rail-mode');
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="assets/app-refresh.js"></script>
 <script>

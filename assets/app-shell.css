@@ -17,6 +17,8 @@
     --sap-warning-bg: #fff8e6;
     --sap-warning: #b06000;
     --side-width: 17rem;
+    --side-expanded-width: 17rem;
+    --side-rail-width: 4.5rem;
     --sidebar-width: 17rem;
     --topbar-height: 3.25rem;
 }
@@ -109,7 +111,9 @@ body {
 .sap-side-nav {
     position: fixed !important;
     inset: var(--topbar-height) auto 0 0 !important;
-    width: var(--side-width) !important;
+    width: var(--side-expanded-width) !important;
+    min-width: var(--side-expanded-width) !important;
+    max-width: var(--side-expanded-width) !important;
     z-index: 1035 !important;
     background: #fff !important;
     color: var(--sap-text) !important;
@@ -117,6 +121,10 @@ body {
     display: flex !important;
     flex-direction: column !important;
     box-shadow: .125rem 0 .5rem rgba(0, 0, 0, .08) !important;
+    clip-path: inset(0 calc(var(--side-expanded-width) - var(--side-rail-width)) 0 0) !important;
+    overflow-x: hidden !important;
+    transition: clip-path .26s cubic-bezier(.22, .61, .36, 1), box-shadow .26s ease, transform .26s ease !important;
+    will-change: clip-path;
 }
 
 .sidebar-brand,
@@ -126,6 +134,7 @@ body {
     border-bottom: 1px solid var(--sap-border-soft) !important;
     background: #fff !important;
     color: var(--sap-text) !important;
+    transition: height .18s ease, min-height .18s ease, padding .18s ease, border-color .18s ease !important;
 }
 
 .side-nav-heading {
@@ -175,6 +184,7 @@ body {
     text-transform: uppercase;
     padding: .875rem .625rem .375rem !important;
     letter-spacing: .045em !important;
+    transition: height .18s ease, margin .18s ease, padding .18s ease, opacity .12s ease !important;
 }
 
 .sidebar-link,
@@ -264,6 +274,7 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    transition: width .18s ease, opacity .12s ease, visibility .12s ease;
 }
 
 .sidebar-footer,
@@ -271,6 +282,7 @@ body {
     padding: .75rem !important;
     border-top: 1px solid var(--sap-border-soft) !important;
     background: #fbfbfb !important;
+    transition: padding .18s ease !important;
 }
 
 .user-box,
@@ -284,6 +296,7 @@ body {
     background: #fff !important;
     border-radius: .5rem !important;
     min-width: 0;
+    transition: gap .18s ease, padding .18s ease, margin .18s ease, border-color .18s ease, background-color .18s ease !important;
 }
 
 .side-user-avatar {
@@ -336,6 +349,7 @@ body {
     border-radius: .375rem !important;
     font-size: .875rem !important;
     font-weight: 700 !important;
+    transition: width .18s ease, min-height .18s ease, padding .18s ease, margin .18s ease, gap .18s ease, background-color .15s ease, border-color .15s ease, color .15s ease, font-size .12s ease !important;
 }
 
 .logout-link:hover {
@@ -353,8 +367,8 @@ body {
 }
 
 .main-content {
-    margin-left: var(--side-width) !important;
-    width: calc(100% - var(--side-width)) !important;
+    margin-left: var(--side-rail-width) !important;
+    width: calc(100% - var(--side-rail-width)) !important;
     min-height: calc(100vh - var(--topbar-height));
     padding: 0 !important;
     overflow-x: hidden;
@@ -453,9 +467,107 @@ body {
     background: rgba(0, 0, 0, .38);
 }
 
+@media (min-width: 0) {
+    .sidebar:hover,
+    .sidebar:focus-within,
+    .sidebar.show,
+    .sap-side-nav:hover,
+    .sap-side-nav:focus-within,
+    .sap-side-nav.show {
+        clip-path: inset(0 0 0 0) !important;
+        z-index: 1038 !important;
+        box-shadow: .5rem 0 1.5rem rgba(0, 0, 0, .16) !important;
+    }
+
+    .sidebar:not(.show):not(:hover):not(:focus-within) .sidebar-brand,
+    .sap-side-nav:not(.show):not(:hover):not(:focus-within) .side-nav-header {
+        min-height: 0 !important;
+        height: 0 !important;
+        padding: 0 !important;
+        border-bottom: 0 !important;
+        overflow: hidden !important;
+    }
+
+    .sidebar:not(.show):not(:hover):not(:focus-within) .sidebar-menu,
+    .sap-side-nav:not(.show):not(:hover):not(:focus-within) .sap-nav-menu {
+        padding: .5rem .375rem !important;
+    }
+
+    .sidebar:not(.show):not(:hover):not(:focus-within) .sidebar-section,
+    .sap-side-nav:not(.show):not(:hover):not(:focus-within) .sap-nav-section {
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        opacity: 0 !important;
+        overflow: hidden !important;
+    }
+
+    .sidebar:not(.show):not(:hover):not(:focus-within) .sap-nav-label,
+    .sap-side-nav:not(.show):not(:hover):not(:focus-within) .sap-nav-label {
+        opacity: 0 !important;
+        visibility: hidden !important;
+    }
+
+    .sidebar:not(.show):not(:hover):not(:focus-within) .sap-nav-link.active::before,
+    .sap-side-nav:not(.show):not(:hover):not(:focus-within) .sap-nav-link.active::before {
+        left: -.25rem !important;
+    }
+
+    .sidebar:not(.show):not(:hover):not(:focus-within) .sidebar-footer,
+    .sap-side-nav:not(.show):not(:hover):not(:focus-within) .sap-side-footer {
+        padding: .5rem .375rem !important;
+    }
+
+    .sidebar:not(.show):not(:hover):not(:focus-within) .user-box,
+    .sidebar:not(.show):not(:hover):not(:focus-within) .side-user-card,
+    .sap-side-nav:not(.show):not(:hover):not(:focus-within) .user-box,
+    .sap-side-nav:not(.show):not(:hover):not(:focus-within) .side-user-card {
+        display: none !important;
+        justify-content: center !important;
+        gap: 0 !important;
+        padding: .25rem !important;
+        margin-bottom: .5rem !important;
+        border-color: transparent !important;
+        background: transparent !important;
+    }
+
+    .sidebar:not(.show):not(:hover):not(:focus-within) .user-name,
+    .sidebar:not(.show):not(:hover):not(:focus-within) .user-role,
+    .sidebar:not(.show):not(:hover):not(:focus-within) .side-user-details,
+    .sap-side-nav:not(.show):not(:hover):not(:focus-within) .user-name,
+    .sap-side-nav:not(.show):not(:hover):not(:focus-within) .user-role,
+    .sap-side-nav:not(.show):not(:hover):not(:focus-within) .side-user-details {
+        display: none !important;
+    }
+
+    .sidebar:not(.show):not(:hover):not(:focus-within) .side-user-avatar,
+    .sap-side-nav:not(.show):not(:hover):not(:focus-within) .side-user-avatar {
+        width: 2rem !important;
+        height: 2rem !important;
+    }
+
+    .sidebar:not(.show):not(:hover):not(:focus-within) .logout-link,
+    .sap-side-nav:not(.show):not(:hover):not(:focus-within) .logout-link {
+        width: calc(var(--side-rail-width) - .75rem) !important;
+        min-height: 2.5rem !important;
+        padding: 0 !important;
+        margin: 0 .375rem !important;
+        gap: 0 !important;
+        border-color: transparent !important;
+        font-size: 0 !important;
+    }
+
+    .sidebar:not(.show):not(:hover):not(:focus-within) .logout-link span:not(.logout-icon),
+    .sap-side-nav:not(.show):not(:hover):not(:focus-within) .logout-link span:not(.logout-icon) {
+        display: none !important;
+    }
+}
+
 @media (max-width: 991.98px) {
     :root {
         --side-width: 16rem;
+        --side-expanded-width: 16rem;
+        --side-rail-width: 4rem;
         --sidebar-width: 16rem;
     }
 
@@ -467,12 +579,15 @@ body {
 
     .sidebar,
     .sap-side-nav {
-        transform: translateX(-105%) !important;
-        transition: transform .2s ease !important;
+        width: var(--side-expanded-width) !important;
+        min-width: var(--side-expanded-width) !important;
+        max-width: var(--side-expanded-width) !important;
+        transform: translateX(0) !important;
     }
 
     .sidebar.show,
     .sap-side-nav.show {
+        clip-path: inset(0 0 0 0) !important;
         transform: translateX(0) !important;
     }
 
@@ -481,8 +596,8 @@ body {
     }
 
     .main-content {
-        margin-left: 0 !important;
-        width: 100% !important;
+        margin-left: var(--side-rail-width) !important;
+        width: calc(100% - var(--side-rail-width)) !important;
     }
 
     .page-header,
@@ -496,6 +611,51 @@ body {
     .main-content > .content-card {
         margin-left: 1rem !important;
         margin-right: 1rem !important;
+    }
+}
+
+@media (hover: none), (pointer: coarse) {
+    :root {
+        --side-expanded-width: 16rem;
+        --side-rail-width: 4rem;
+        --sidebar-width: 16rem;
+    }
+
+    .sap-shellbar .shell-menu-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+
+    .sidebar,
+    .sap-side-nav {
+        width: var(--side-expanded-width) !important;
+        min-width: var(--side-expanded-width) !important;
+        max-width: var(--side-expanded-width) !important;
+        transform: translateX(0) !important;
+    }
+
+    .sidebar.show,
+    .sap-side-nav.show {
+        clip-path: inset(0 0 0 0) !important;
+        transform: translateX(0) !important;
+    }
+
+    .sidebar-backdrop.show {
+        display: block !important;
+    }
+
+    .main-content {
+        margin-left: var(--side-rail-width) !important;
+        width: calc(100% - var(--side-rail-width)) !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sidebar,
+    .sap-side-nav,
+    .sap-nav-label {
+        transition: none !important;
     }
 }
 

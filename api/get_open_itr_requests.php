@@ -56,8 +56,27 @@ $sectionWarehouseMap = [
     'kitting' => ['KIT'],
 ];
 
-$monthStart = date('Y-m-01');
-$monthEnd = date('Y-m-d', strtotime($monthStart . ' +1 month'));
+/*
+    ITR visibility rule:
+    - Always show current month ITRs.
+    - Also show previous month ITRs only during the first 7 days
+      of the current month.
+    - From the 8th day onward, previous month ITRs are automatically hidden.
+*/
+$currentMonthStart = date('Y-m-01');
+$currentMonthEnd = date('Y-m-d', strtotime($currentMonthStart . ' +1 month'));
+$lastMonthStart = date('Y-m-01', strtotime($currentMonthStart . ' -1 month'));
+$graceDays = isset($_GET['last_month_grace_days'])
+    ? max(0, (int)$_GET['last_month_grace_days'])
+    : 7;
+$todayDay = (int)date('j');
+$includeLastMonth = $graceDays > 0 && $todayDay <= $graceDays;
+
+$monthStart = $includeLastMonth ? $lastMonthStart : $currentMonthStart;
+$monthEnd = $currentMonthEnd;
+$displayMonthStart = $monthStart;
+$displayMonthEnd = date('Y-m-d', strtotime($currentMonthEnd . ' -1 day'));
+$lastMonthCutoffDate = date('Y-m-d', strtotime($currentMonthStart . ' +' . $graceDays . ' days'));
 
 $whp = get_whpokayoke_connection();
 $erp = get_erp_connection();
@@ -286,8 +305,11 @@ $cacheKey = sap_cache_make_key('sap.open_itr_requests', [
     'role' => $currentRole,
     'section' => $currentSection,
     'warehouses' => implode(',', $allowedWarehouses),
-    'month' => date('Y-m'),
-    'version' => 'quantity-as-open-v3-pack-size',
+    'period_start' => $monthStart,
+    'period_end' => $monthEnd,
+    'include_last_month' => $includeLastMonth ? 'yes' : 'no',
+    'last_month_grace_days' => $graceDays,
+    'version' => 'quantity-as-open-v4-last-month-grace-pack-size',
     'pack_sizes' => itr_pack_sizes_cache_token()
 ]);
 
@@ -300,7 +322,7 @@ if (!sap_cache_should_refresh()) {
 }
 
 $sql = "
-SELECT TOP 200
+SELECT
     H.DocEntry,
     H.DocNum,
     H.DocDate,
@@ -506,9 +528,14 @@ foreach ($rows as $r) {
 
 $payload = [
     'ok' => true,
-    'month_start' => $monthStart,
-    'month_end' => date('Y-m-t'),
-    'filter' => 'SAP ITR From Warehouse = 01',
+    'month_start' => $displayMonthStart,
+    'month_end' => $displayMonthEnd,
+    'current_month_start' => $currentMonthStart,
+    'current_month_end' => date('Y-m-d', strtotime($currentMonthEnd . ' -1 day')),
+    'include_last_month' => $includeLastMonth,
+    'last_month_grace_days' => $graceDays,
+    'last_month_cutoff_date' => $lastMonthCutoffDate,
+    'filter' => 'SAP ITR From Warehouse = 01 | ' . ($includeLastMonth ? 'Current month plus previous month until day ' . $graceDays : 'Current month only'),
     'section_filter' => $sectionFilterText,
     'current_role' => $currentRole,
     'current_section' => $currentRole === ROLE_REQUESTOR ? $currentSection : '',
@@ -523,6 +550,9 @@ $payload = [
     'debug_sap_rows_after_sql' => count($rows),
     'debug_requests_after_remaining_filter' => count($requests),
     'debug_qty_source' => 'WTQ1.Quantity',
+    'debug_limit_note' => 'No SELECT TOP 200 line cap. Documents are no longer cut off by line count.',
+    'debug_visible_period_start' => $monthStart,
+    'debug_visible_period_end_exclusive' => $monthEnd,
 
     'requests' => $requests,
     'documents' => array_values($documents)

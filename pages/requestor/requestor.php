@@ -983,7 +983,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
                 <div>
                     <h5 class="modal-title" id="itrSelectTitle">Select SAP ITR</h5>
                     <div class="text-muted" id="requestStatus">Loading ITRs...</div>
-                    <div class="text-muted small" id="requestMonth">Current month</div>
+                    <div class="text-muted small" id="requestMonth">Current month + previous month until day 7</div>
                 </div>
 
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -1200,12 +1200,38 @@ function findWarehouseStock(itemCode, whsCode) {
     return available > 0 ? available : onHand;
 }
 
+function getItrRequestUrl() {
+    const today = new Date();
+    const includeLastMonth = today.getDate() <= 7;
+    const params = new URLSearchParams();
+
+    params.set('scope', includeLastMonth ? 'current_and_last_month' : 'current_month');
+    params.set('last_month_grace_days', '7');
+
+    return 'api/get_open_itr_requests.php?' + params.toString();
+}
+
+function getItrRangeText(data) {
+    if (data && data.range_label) {
+        return data.range_label;
+    }
+
+    if (data && data.month_start && data.month_end) {
+        return data.month_start + ' to ' + data.month_end;
+    }
+
+    const today = new Date();
+    return today.getDate() <= 7
+        ? 'Current month and previous month ITRs. Previous month is shown until the 7th day only.'
+        : 'Current month ITRs only.';
+}
+
 async function loadOpenItrs() {
     const status = document.getElementById('requestStatus');
     status.textContent = 'Refreshing ITRs...';
 
     try {
-        const res = await fetch('api/get_open_itr_requests.php', { cache: 'no-store' });
+        const res = await fetch(getItrRequestUrl(), { cache: 'no-store' });
         const data = await res.json();
 
         if (!data.ok) {
@@ -1218,7 +1244,7 @@ async function loadOpenItrs() {
 
         openDocuments = data.documents || [];
         document.getElementById('openItrCount').textContent = openDocuments.length;
-        document.getElementById('requestMonth').textContent = (data.month_start || '') + ' to ' + (data.month_end || '');
+        document.getElementById('requestMonth').textContent = getItrRangeText(data);
 
         renderItrs();
 
@@ -1600,7 +1626,7 @@ function renderItrs() {
     list.innerHTML = '';
 
     if (openDocuments.length === 0) {
-        list.innerHTML = '<div class="alert alert-light border info-box">No open current-month ITRs from warehouse 01 found.</div>';
+        list.innerHTML = '<div class="alert alert-light border info-box">No open current/allowed previous-month ITRs from warehouse 01 found.</div>';
         return;
     }
 

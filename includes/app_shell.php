@@ -27,7 +27,7 @@ function app_sidebar_link($active, $key, $href, $icon, $label)
 {
     $isActive = $active === $key;
     ?>
-    <a class="sap-nav-link <?= $isActive ? 'active' : '' ?>" href="<?= h(app_path($href)) ?>" <?= $isActive ? 'aria-current="page"' : '' ?>>
+    <a class="sap-nav-link <?= $isActive ? 'active' : '' ?>" href="<?= h(app_path($href)) ?>" title="<?= h($label) ?>" <?= $isActive ? 'aria-current="page"' : '' ?>>
         <span class="sap-nav-icon"><?= app_sidebar_icon($icon) ?></span>
         <span class="sap-nav-label"><?= h($label) ?></span>
     </a>
