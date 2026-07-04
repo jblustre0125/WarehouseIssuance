@@ -33,6 +33,9 @@ if (!is_array($items) || count($items) === 0) {
     picker_print_fail('No pick tags to print.', 400);
 }
 
+$printerKey = zebra_pick_printer_key($_POST['pick_printer'] ?? null);
+$printerName = zebra_pick_printer_label_for_key($printerKey);
+
 $saved = [];
 $failed = [];
 
@@ -121,6 +124,8 @@ $jobData = [
         'role' => $currentUser['role'] ?? '',
     ],
     'total_tags' => count($saved),
+    'printer_key' => $printerKey,
+    'printer_name' => $printerName,
     'failed_validation' => $failed,
     'items' => $saved,
 ];
@@ -157,7 +162,7 @@ file_put_contents(
     'Job ID: ' . $jobId . PHP_EOL .
     'Job file: ' . $jobFileReal . PHP_EOL .
     'Queued by: ' . ($currentUser['username'] ?? '') . PHP_EOL .
-    'Printer: ' . zebra_pick_printer_name() . PHP_EOL,
+    'Printer: ' . $printerName . ' (' . $printerKey . ')' . PHP_EOL,
     FILE_APPEND | LOCK_EX
 );
 
@@ -165,14 +170,26 @@ file_put_contents(
 |--------------------------------------------------------------------------
 | Return to picker immediately
 |--------------------------------------------------------------------------
-| Trigger the printer-capable Windows Scheduled Task, then return immediately.
-| The task runs the background worker under the configured Windows user.
+| Start the hidden print worker with this exact job file, then return immediately.
+| If direct startup fails, fall back to the legacy Windows Scheduled Task.
 */
 $taskName = 'Warehouse Picker Print Queue';
+$launcherFile = $rootDir . DIRECTORY_SEPARATOR . 'tools' . DIRECTORY_SEPARATOR . 'run_picker_print_queue_hidden.vbs';
+$directCmd = 'wscript.exe //B ' . zebra_cmd_arg($launcherFile) . ' ' . zebra_cmd_arg($jobFileReal);
 $taskCmd = 'schtasks /Run /TN "' . $taskName . '"';
+$directStarted = false;
 $taskStarted = false;
 
-if (function_exists('popen')) {
+if (is_file($launcherFile) && function_exists('popen')) {
+    $handle = @popen($directCmd, 'r');
+
+    if (is_resource($handle)) {
+        @pclose($handle);
+        $directStarted = true;
+    }
+}
+
+if (!$directStarted && function_exists('popen')) {
     $handle = @popen($taskCmd, 'r');
 
     if (is_resource($handle)) {
@@ -183,7 +200,9 @@ if (function_exists('popen')) {
 
 file_put_contents(
     $queueLog,
-    'Task CMD: ' . $taskCmd . PHP_EOL .
+    'Direct CMD: ' . $directCmd . PHP_EOL .
+    'Direct Started: ' . ($directStarted ? 'YES' : 'NO') . PHP_EOL .
+    'Fallback Task CMD: ' . $taskCmd . PHP_EOL .
     'Task Started: ' . ($taskStarted ? 'YES' : 'NO') . PHP_EOL .
     str_repeat('-', 80) . PHP_EOL,
     FILE_APPEND | LOCK_EX
@@ -193,9 +212,13 @@ $payload = [
     'ok' => true,
     'queued' => count($saved),
     'job_id' => $jobId,
-    'trigger_message' => $taskStarted
-        ? 'The print task was triggered.'
-        : 'The print job was queued, but the print task could not be started automatically.',
+    'printer_key' => $printerKey,
+    'printer_name' => $printerName,
+    'trigger_message' => $directStarted
+        ? 'The print worker was started.'
+        : ($taskStarted
+            ? 'The print task was triggered.'
+            : 'The print job was queued, but the print task could not be started automatically.'),
     'failed_validation' => count($failed),
 ];
 
@@ -208,6 +231,7 @@ if ($wantsJson) {
 $query = http_build_query([
     'print_queued' => count($saved),
     'print_job' => $jobId,
+    'print_printer' => $printerName,
     'print_trigger' => $payload['trigger_message']
 ]);
 

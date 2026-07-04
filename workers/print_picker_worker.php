@@ -126,14 +126,14 @@ function picker_worker_process_job(
             'ENV Job ' . $jobId
             . ' | Computer: ' . (getenv('COMPUTERNAME') ?: '')
             . ' | User: ' . (getenv('USERNAME') ?: '')
-            . ' | Printer: ' . (function_exists('zebra_pick_printer_name') ? zebra_pick_printer_name() : '')
+            . ' | Printer: ' . (function_exists('zebra_pick_printer_label_for_key') ? zebra_pick_printer_label_for_key($job['printer_key'] ?? null) : '')
         );
 
         if (!function_exists('zebra_print_picker_tags')) {
             throw new RuntimeException('Function zebra_print_picker_tags() does not exist. Check includes/zebra_print.php.');
         }
 
-        $result = zebra_print_picker_tags($job['items']);
+        $result = zebra_print_picker_tags($job['items'], $job['printer_key'] ?? null);
 
         $ok = !empty($result['ok']);
         $status = $ok ? 'PRINTED' : 'FAILED';
@@ -183,7 +183,9 @@ function picker_worker_process_job(
         }
 
         $printerName = '';
-        if (function_exists('zebra_pick_printer_name')) {
+        if (function_exists('zebra_pick_printer_label_for_key')) {
+            $printerName = zebra_pick_printer_label_for_key(is_array($job) ? ($job['printer_key'] ?? null) : null);
+        } elseif (function_exists('zebra_pick_printer_name')) {
             $printerName = zebra_pick_printer_name();
         }
 

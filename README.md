@@ -72,10 +72,18 @@ define('ZEBRA_PRINTER_PORT', 6101);
 
 The XAMPP server must be able to reach the printer over the network.
 
-Picker tags are configured separately for the Nitto DURA-SL-400 printer:
+Picker tags can be sent to either the Nitto DURA-SL-400 or the Zebra QLn320 from the picker screen.
+The default selected picker-tag printer is controlled by:
+
+```php
+define('PICK_TAG_DEFAULT_PRINTER', 'nitto'); // nitto or zebra
+```
+
+Nitto picker tags are configured separately:
 
 ```php
 define('PICK_TAG_PRINT_CONNECTION', 'windows_driver');
+define('PICK_TAG_DEFAULT_PRINTER', 'nitto');
 define('PICK_TAG_PRINTER_NAME', 'NITTO DURA-SL-400');
 define('PICK_TAG_PRINTER_SHARE', 'NITTO DURA-SL-400');
 define('PICK_TAG_WIDTH_HUNDREDTHS', 300);
@@ -86,18 +94,18 @@ define('PICK_TAG_BATCH_MAX_BYTES', 131072);
 define('PICK_TAG_BATCH_COOLDOWN_SECONDS', 2);
 ```
 
-The picker-tag setup renders each 3 inch by 3 inch Nitto picker tag as a PNG and prints it through the installed Windows printer driver named `NITTO DURA-SL-400`. This applies only to picker tags. Picker printing sends one label at a time and pauses after the configured byte budget to avoid overflowing printer memory.
+When Nitto is selected, the picker-tag setup renders each 3 inch by 3 inch tag as a PNG and prints it through the installed Windows printer driver named `NITTO DURA-SL-400`. When Zebra QLn320 is selected, the same picker tag data is printed as raw ZPL through the normal `ZEBRA_PRINT_CONNECTION` settings. Picker printing sends one label at a time and pauses after the configured byte budget to avoid overflowing printer memory.
 
 If you need to test raw label command printing, `PICK_TAG_PRINT_CONNECTION` can be set to `windows_share`, but that requires a shared printer path such as `\\localhost\NITTO DURA-SL-400` and only works when the printer understands the raw label command language.
 
-Create the picker print task with this exact task name, because `actions/print_pick_tags.php` triggers it after queueing a job:
+By default, `actions/print_pick_tags.php` starts `tools/run_picker_print_queue_hidden.vbs` directly after queueing a job, so Nitto and Zebra jobs print automatically under the same Windows user running XAMPP. You can still create this scheduled task as a fallback:
 
 - Task name: `Warehouse Picker Print Queue`
 - Program/script: `wscript.exe`
 - Arguments: `"C:\Xampp\htdocs\WarehouseIssuance\tools\run_picker_print_queue_hidden.vbs"`
 - Start in: `C:\Xampp\htdocs\WarehouseIssuance`
 
-Run the task as a Windows user that can print to the configured Nitto printer. If a command window appears, the task is probably running `php.exe` directly; switch it to the `wscript.exe` launcher above. Print results and errors are written to `storage/print_done`, `storage/print_errors`, and `storage/print_logs`.
+Run the fallback task as a Windows user that can print to the configured Nitto printer. If a command window appears, the task is probably running `php.exe` directly; switch it to the `wscript.exe` launcher above. Print results and errors are written to `storage/print_done`, `storage/print_errors`, and `storage/print_logs`.
 
 For a USB/Windows shared Zebra printer, use:
 

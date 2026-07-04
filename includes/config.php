@@ -57,6 +57,7 @@ define('ZEBRA_TEAR_OFF_DOTS', 80);
 */
 
 define('PICK_TAG_PRINT_CONNECTION', 'windows_driver');
+define('PICK_TAG_DEFAULT_PRINTER', 'nitto'); // nitto or zebra
 define('PICK_TAG_PRINTER_NAME', '\\\\Nbcp-lt-042\\NITTO DURA-SL-400');
 define('PICK_TAG_PRINTER_SHARE', '\\\\Nbcp-lt-042\\NITTO DURA-SL-400');
 

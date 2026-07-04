@@ -163,6 +163,28 @@ function zebra_pick_height_hundredths()
     return defined('PICK_TAG_HEIGHT_HUNDREDTHS') ? max(1, (int)PICK_TAG_HEIGHT_HUNDREDTHS) : 300;
 }
 
+function zebra_pick_printer_key($value = null)
+{
+    $key = strtolower(trim((string)($value ?? '')));
+
+    if ($key === '' && defined('PICK_TAG_DEFAULT_PRINTER')) {
+        $key = strtolower(trim((string)PICK_TAG_DEFAULT_PRINTER));
+    }
+
+    if (in_array($key, ['zebra', 'qln320', 'qnl320', 'zebra_qln320'], true)) {
+        return 'zebra';
+    }
+
+    return 'nitto';
+}
+
+function zebra_pick_printer_label_for_key($printerKey = null)
+{
+    return zebra_pick_printer_key($printerKey) === 'zebra'
+        ? 'Zebra QLn320'
+        : zebra_pick_printer_name();
+}
+
 function zebra_cmd_arg($value)
 {
     $value = (string)$value;
@@ -1801,20 +1823,23 @@ function zebra_print_receive_labels($traceNo, array $items)
     ];
 }
 
-function zebra_print_pick_labels_to_target(array $items, $usePickerPrinter)
+function zebra_print_pick_labels_to_target(array $items, $usePickerPrinter, $printerKey = null)
 {
     $usePickerPrinter = (bool)$usePickerPrinter;
-    $printerName = $usePickerPrinter ? zebra_pick_printer_name() : 'Zebra printer';
+    $printerKey = $usePickerPrinter ? zebra_pick_printer_key($printerKey) : 'zebra';
+    $useNittoPicker = $usePickerPrinter && $printerKey === 'nitto';
+    $printerName = $useNittoPicker ? zebra_pick_printer_name() : 'Zebra QLn320';
 
-    if ($usePickerPrinter ? !zebra_pick_print_enabled() : !zebra_print_enabled()) {
+    if ($useNittoPicker ? !zebra_pick_print_enabled() : !zebra_print_enabled()) {
         return [
             'enabled' => false,
             'ok' => false,
             'printed' => 0,
             'failed' => 0,
             'printer_name' => $printerName,
+            'printer_key' => $printerKey,
             'messages' => [
-                $usePickerPrinter ? 'Picker tag auto-print is disabled.' : 'Zebra auto-print is disabled.'
+                $useNittoPicker ? 'Picker tag auto-print is disabled.' : 'Zebra auto-print is disabled.'
             ]
         ];
     }
@@ -1824,10 +1849,10 @@ function zebra_print_pick_labels_to_target(array $items, $usePickerPrinter)
     $messages = [];
     $bytesSent = 0;
     $batchBytes = 0;
-    $maxLabelBytes = $usePickerPrinter ? zebra_pick_max_label_bytes() : 0;
-    $batchMaxBytes = $usePickerPrinter ? zebra_pick_batch_max_bytes() : 0;
-    $batchCooldownSeconds = $usePickerPrinter ? zebra_pick_batch_cooldown_seconds() : 0;
-    $useWindowsDriver = $usePickerPrinter && zebra_pick_print_connection() === 'windows_driver';
+    $maxLabelBytes = $useNittoPicker ? zebra_pick_max_label_bytes() : 0;
+    $batchMaxBytes = $useNittoPicker ? zebra_pick_batch_max_bytes() : 0;
+    $batchCooldownSeconds = $useNittoPicker ? zebra_pick_batch_cooldown_seconds() : 0;
+    $useWindowsDriver = $useNittoPicker && zebra_pick_print_connection() === 'windows_driver';
 
     $totalItems = count($items);
 
@@ -1880,7 +1905,7 @@ function zebra_print_pick_labels_to_target(array $items, $usePickerPrinter)
             $result = zebra_send_pick_label_image($imagePath);
             @unlink($imagePath);
         } else {
-            $result = $usePickerPrinter ? zebra_send_pick_label($zpl) : zebra_send_label($zpl);
+            $result = $useNittoPicker ? zebra_send_pick_label($zpl) : zebra_send_label($zpl);
         }
 
         if ($result['ok']) {
@@ -1906,6 +1931,7 @@ function zebra_print_pick_labels_to_target(array $items, $usePickerPrinter)
         'printed' => $printed,
         'failed' => $failed,
         'printer_name' => $printerName,
+        'printer_key' => $printerKey,
         'bytes_sent' => $bytesSent,
         'messages' => array_values(array_unique($messages))
     ];
@@ -1913,12 +1939,12 @@ function zebra_print_pick_labels_to_target(array $items, $usePickerPrinter)
 
 function zebra_print_pick_labels(array $items)
 {
-    return zebra_print_pick_labels_to_target($items, false);
+    return zebra_print_pick_labels_to_target($items, false, 'zebra');
 }
 
-function zebra_print_picker_tags(array $items)
+function zebra_print_picker_tags(array $items, $printerKey = null)
 {
-    return zebra_print_pick_labels_to_target($items, true);
+    return zebra_print_pick_labels_to_target($items, true, $printerKey);
 }
 
 function zebra_print_test_label()

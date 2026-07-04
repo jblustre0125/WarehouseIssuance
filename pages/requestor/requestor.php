@@ -24,11 +24,11 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             --shell2: #354f68;
             --accent: #0a6ed1;
             --accent-dark: #085caf;
-            --bg: #f3f6fb;
+            --bg: #f4f7fb;
             --card: #ffffff;
-            --border: #d9e4f2;
-            --soft: #edf2f7;
-            --text: #1f2937;
+            --border: #dbe5f0;
+            --soft: #f1f5f9;
+            --text: #172033;
             --muted: #64748b;
             --success: #047857;
             --danger: #b91c1c;
@@ -37,9 +37,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             --topbar-height: 3.5rem;
         }
 
-        * {
-            box-sizing: border-box;
-        }
+        * { box-sizing: border-box; }
 
         body {
             min-height: 100vh;
@@ -47,11 +45,12 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             background: var(--bg);
             color: var(--text);
             font-family: "Segoe UI", Arial, Helvetica, sans-serif;
-            font-size: 16px;
+            font-size: 15px;
             line-height: 1.45;
             overflow-x: hidden;
         }
 
+        /* NAVBAR AND SIDEBAR ARE KEPT AS YOUR ORIGINAL STRUCTURE */
         .sap-shellbar {
             position: fixed;
             inset: 0 0 auto 0;
@@ -91,41 +90,12 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             padding: 3px;
         }
 
-        .shell-logo img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            display: block;
-        }
+        .shell-logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
+        .shell-title-wrap { min-width: 0; flex: 1; }
+        .shell-title { font-size: 16px; font-weight: 900; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .shell-subtitle { font-size: 12px; color: rgba(255,255,255,.86); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 
-        .shell-title-wrap {
-            min-width: 0;
-            flex: 1;
-        }
-
-        .shell-title {
-            font-size: 16px;
-            font-weight: 900;
-            line-height: 1.15;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .shell-subtitle {
-            font-size: 12px;
-            color: rgba(255, 255, 255, .86);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            margin-top: 2px;
-        }
-
-        .app-layout {
-            display: flex;
-            min-height: 100vh;
-            padding-top: var(--topbar-height);
-        }
+        .app-layout { display: flex; min-height: 100vh; padding-top: var(--topbar-height); }
 
         .sidebar,
         .sap-side-nav {
@@ -147,554 +117,6 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             overflow-x: hidden;
         }
 
-        .page-header {
-            background: linear-gradient(135deg, #eaf4ff, #f8fbff);
-            border-bottom: 1px solid var(--border);
-            padding: 24px 28px;
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 18px;
-        }
-
-        .page-title {
-            margin: 0;
-            font-size: 30px;
-            font-weight: 950;
-            letter-spacing: -0.03em;
-        }
-
-        .page-subtitle {
-            margin-top: 6px;
-            color: var(--muted);
-            font-size: 16px;
-        }
-
-        .line-count-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 40px;
-            padding: 8px 18px;
-            border-radius: 999px;
-            background: #e8f3ff;
-            color: #074f91;
-            border: 1px solid #93c5fd;
-            font-size: 15px;
-            font-weight: 950;
-            white-space: nowrap;
-        }
-
-        .page-body {
-            padding: 24px 28px 28px;
-        }
-
-        .guide-grid {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 14px;
-            margin-bottom: 20px;
-        }
-
-        .guide-card {
-            background: #fff;
-            border: 1px solid var(--border);
-            border-radius: 18px;
-            padding: 16px;
-            display: flex;
-            gap: 14px;
-            align-items: flex-start;
-            box-shadow: 0 6px 18px rgba(15, 23, 42, .05);
-        }
-
-        .guide-no {
-            width: 36px;
-            height: 36px;
-            border-radius: 999px;
-            background: var(--accent);
-            color: #fff;
-            font-weight: 950;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex: 0 0 auto;
-        }
-
-        .guide-title {
-            font-size: 16px;
-            font-weight: 950;
-        }
-
-        .guide-text {
-            margin-top: 3px;
-            color: var(--muted);
-            font-size: 14px;
-        }
-
-        .content-card {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            box-shadow: 0 12px 30px rgba(15, 23, 42, .08);
-            overflow: hidden;
-            margin-bottom: 22px;
-        }
-
-        .content-card-header {
-            padding: 20px 22px;
-            border-bottom: 1px solid var(--soft);
-            background: #fff;
-        }
-
-        .content-card-title {
-            margin: 0;
-            color: var(--text);
-            font-size: 21px;
-            font-weight: 950;
-        }
-
-        .content-card-subtitle {
-            margin-top: 4px;
-            color: var(--muted);
-            font-size: 15px;
-        }
-
-        .content-card-body {
-            padding: 22px;
-        }
-
-        .form-label {
-            color: var(--text);
-            font-size: 15px;
-            font-weight: 950;
-            margin-bottom: 7px;
-        }
-
-        .form-control,
-        .form-select {
-            min-height: 50px;
-            border-radius: 14px;
-            border-color: #b6c2d1;
-            color: var(--text);
-            font-size: 16px;
-            background-color: #fff;
-        }
-
-        .form-control-lg {
-            min-height: 52px;
-            font-size: 16px;
-        }
-
-        .form-control-sm {
-            min-height: 46px;
-            font-size: 15px;
-        }
-
-        .form-control:focus,
-        .form-select:focus {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 4px rgba(10, 110, 209, .16);
-        }
-
-        .btn {
-            min-height: 48px;
-            border-radius: 14px;
-            font-size: 16px;
-            font-weight: 950;
-            padding-left: 18px;
-            padding-right: 18px;
-        }
-
-        .btn-primary,
-        .btn-success {
-            background: var(--accent);
-            border-color: var(--accent);
-        }
-
-        .btn-primary:hover,
-        .btn-success:hover,
-        .btn-primary:focus,
-        .btn-success:focus {
-            background: var(--accent-dark);
-            border-color: var(--accent-dark);
-        }
-
-        .btn-sm {
-            min-height: 42px;
-            font-size: 15px;
-            padding: 8px 14px;
-        }
-
-        .big-action-row {
-            display: grid;
-            grid-template-columns: 1.4fr 1fr 1fr;
-            gap: 14px;
-            margin-bottom: 18px;
-        }
-
-        .big-action {
-            border: 1px solid var(--border);
-            background: #fff;
-            border-radius: 18px;
-            padding: 18px;
-            text-align: left;
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            box-shadow: 0 6px 18px rgba(15, 23, 42, .05);
-            transition: .15s ease;
-            width: 100%;
-        }
-
-        .big-action:hover {
-            border-color: #93c5fd;
-            background: #f8fbff;
-            transform: translateY(-1px);
-        }
-
-        .big-action.primary {
-            background: linear-gradient(135deg, #0a6ed1, #2563eb);
-            border-color: #0a6ed1;
-            color: #fff;
-        }
-
-        .big-action.primary .action-subtitle {
-            color: rgba(255, 255, 255, .86);
-        }
-
-        .action-icon {
-            width: 54px;
-            height: 54px;
-            border-radius: 18px;
-            background: rgba(10, 110, 209, .12);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 26px;
-            flex: 0 0 auto;
-        }
-
-        .big-action.primary .action-icon {
-            background: rgba(255, 255, 255, .18);
-        }
-
-        .action-title {
-            font-size: 18px;
-            font-weight: 950;
-            line-height: 1.15;
-        }
-
-        .action-subtitle {
-            margin-top: 4px;
-            color: var(--muted);
-            font-size: 14px;
-        }
-
-        .info-box {
-            border-radius: 16px;
-            font-size: 16px;
-            border-color: var(--soft);
-            padding: 16px 18px;
-        }
-
-        .request-table-wrap {
-            max-height: 58vh;
-            overflow: auto;
-            border: 1px solid var(--border);
-            border-radius: 18px;
-            background: #fff;
-        }
-
-        .request-table {
-            margin: 0;
-            min-width: 1180px;
-            table-layout: fixed;
-            font-size: 15px;
-        }
-
-        .request-table thead th {
-            position: sticky;
-            top: 0;
-            z-index: 5;
-            background: #f8fafc;
-            color: #334155;
-            border-bottom: 1px solid var(--border);
-            font-weight: 950;
-            padding: 15px 14px;
-            white-space: nowrap;
-            vertical-align: middle;
-            text-transform: uppercase;
-            font-size: 13px;
-            letter-spacing: .03em;
-        }
-
-        .request-table td {
-            padding: 15px 14px;
-            color: var(--text);
-            vertical-align: middle;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            border-color: #edf1f7;
-        }
-
-        .request-table tbody tr:hover {
-            background: #f5f9ff;
-        }
-
-        .col-item {
-            width: 14%;
-            white-space: nowrap;
-            font-weight: 950;
-        }
-
-        .col-part {
-            width: 22%;
-            white-space: normal;
-            line-height: 1.35;
-        }
-
-        .col-line {
-            width: 11%;
-            white-space: nowrap;
-        }
-
-        .col-requested,
-        .col-remaining,
-        .col-stock {
-            width: 12%;
-            text-align: right;
-            white-space: nowrap;
-            font-weight: 850;
-        }
-
-        .col-qty {
-            width: 13%;
-            white-space: nowrap;
-        }
-
-        .col-action {
-            width: 10%;
-            text-align: center;
-            white-space: nowrap;
-        }
-
-        .table-input {
-            width: 100%;
-            min-width: 0;
-            height: 50px;
-            font-size: 18px;
-            padding: 9px 12px;
-            border-radius: 14px;
-            font-weight: 950;
-            text-align: right;
-        }
-
-        .remove-btn {
-            min-height: 42px;
-            font-size: 15px;
-            padding: 8px 12px;
-            border-radius: 12px;
-        }
-
-        #saveBtn {
-            min-width: 280px;
-            min-height: 56px;
-            font-size: 18px;
-        }
-
-        .pending-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 14px;
-        }
-
-        .requests-panel {
-            max-height: 430px;
-            overflow-y: auto;
-            padding-right: 4px;
-        }
-
-        .itr-card,
-        .stock-card {
-            background: #fff;
-            border: 1px solid var(--soft);
-            border-radius: 18px;
-            margin-bottom: 12px;
-            color: var(--text);
-            overflow: hidden;
-            box-shadow: 0 6px 18px rgba(15, 23, 42, .06);
-            transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
-        }
-
-        .stock-card {
-            padding: 16px;
-        }
-
-        .itr-card:hover,
-        .stock-card:hover {
-            transform: translateY(-1px);
-            border-color: #93c5fd;
-            box-shadow: 0 8px 20px rgba(10, 110, 209, .13);
-        }
-
-        .itr-card.active {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 4px rgba(10, 110, 209, .16);
-        }
-
-        .itr-header {
-            width: 100%;
-            border: 0;
-            background: #fff;
-            text-align: left;
-            padding: 18px;
-        }
-
-        .itr-header:hover {
-            background: #f8fbff;
-        }
-
-        .request-title,
-        .stock-code {
-            font-size: 18px;
-            font-weight: 950;
-            color: var(--text);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .request-meta,
-        .stock-name {
-            font-size: 15px;
-            color: var(--muted);
-            margin-top: 3px;
-            line-height: 1.35;
-        }
-
-        .request-meta strong {
-            color: #334155;
-        }
-
-        .warehouse-route {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-top: 8px;
-            font-size: 15px;
-            font-weight: 850;
-        }
-
-        .warehouse-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            border-radius: 999px;
-            padding: 5px 10px;
-            background: #eff6ff;
-            color: #075985;
-            border: 1px solid #bfdbfe;
-        }
-
-        .warehouse-arrow {
-            color: #64748b;
-            font-weight: 950;
-        }
-
-        .request-actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 14px;
-        }
-
-        .request-actions .btn {
-            flex: 1;
-            min-height: 42px;
-            font-size: 15px;
-            padding: 8px 12px;
-        }
-
-        .qty-grid,
-        .stock-metrics {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 10px;
-            margin-top: 14px;
-        }
-
-        .qty-box,
-        .stock-metric {
-            background: #f8fafc;
-            border: 1px solid var(--soft);
-            border-radius: 14px;
-            padding: 13px;
-            min-width: 0;
-        }
-
-        .qty-box .label,
-        .stock-metric .label {
-            font-size: 13px;
-            color: var(--muted);
-            font-weight: 850;
-        }
-
-        .qty-box .value,
-        .stock-metric .value {
-            font-size: 18px;
-            font-weight: 950;
-            color: var(--text);
-            margin-top: 3px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .badge.text-bg-primary,
-        .badge.bg-primary {
-            background: var(--accent) !important;
-        }
-
-        .badge.text-bg-success {
-            background: var(--success) !important;
-        }
-
-        .badge.text-bg-warning {
-            background: #fff7ed !important;
-            color: var(--warning) !important;
-            border: 1px solid #fed7aa;
-        }
-
-        .modal-content {
-            border-radius: 20px;
-            border-color: var(--border);
-        }
-
-        .modal-header,
-        .modal-footer {
-            padding: 18px 20px;
-        }
-
-        .modal-body {
-            padding: 20px;
-            font-size: 16px;
-        }
-
-        .modal-title {
-            font-size: 22px;
-            font-weight: 950;
-        }
-
-        .modal-xl {
-            --bs-modal-width: 1180px;
-        }
-
-        .modal-search-row {
-            display: grid;
-            grid-template-columns: 1fr auto;
-            gap: 12px;
-            margin-bottom: 14px;
-        }
-
         .sidebar-backdrop {
             display: none;
             position: fixed;
@@ -703,101 +125,782 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             background: rgba(15, 23, 42, .45);
         }
 
-        .small,
-        small {
+        /* NEW PAGE LAYOUT ONLY */
+        .request-page {
+            min-height: calc(100vh - var(--topbar-height));
+            padding: 22px;
+        }
+
+        .request-board {
+            display: grid;
+            grid-template-columns: minmax(250px, 330px) minmax(0, 1fr) minmax(280px, 360px);
+            gap: 18px;
+            align-items: start;
+        }
+
+        .request-left,
+        .request-center,
+        .request-right {
+            min-width: 0;
+        }
+
+        .request-left {
+            position: sticky;
+            top: calc(var(--topbar-height) + 22px);
+        }
+
+        .page-intro-card,
+        .setup-panel,
+        .items-panel,
+        .pending-panel {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            box-shadow: 0 8px 22px rgba(15, 23, 42, .06);
+        }
+
+        .page-intro-card {
+            overflow: hidden;
+            margin-bottom: 14px;
+        }
+
+        .intro-top {
+            padding: 18px;
+            background: linear-gradient(135deg, #123b63, #0a6ed1);
+            color: #fff;
+        }
+
+        .intro-kicker {
+            font-size: 12px;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            font-weight: 850;
+            opacity: .9;
+        }
+
+        .page-title {
+            margin: 6px 0 0;
+            font-size: clamp(24px, 3vw, 34px);
+            line-height: 1.05;
+            font-weight: 950;
+            letter-spacing: -.04em;
+        }
+
+        .page-subtitle {
+            margin-top: 9px;
+            color: rgba(255,255,255,.88);
+            font-size: 14px;
+        }
+
+        .intro-bottom {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 12px 14px;
+            background: #fff;
+        }
+
+        .line-count-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 34px;
+            padding: 7px 13px;
+            border-radius: 999px;
+            background: #eff6ff;
+            color: #075985;
+            border: 1px solid #bfdbfe;
+            font-size: 13px;
+            font-weight: 950;
+            white-space: nowrap;
+        }
+
+        .setup-panel { padding: 15px; }
+        .panel-title { font-size: 15px; font-weight: 950; margin-bottom: 12px; }
+        .panel-divider { height: 1px; background: var(--border); margin: 14px 0; }
+
+        .form-label { color: #1e293b; font-size: 13px; font-weight: 900; margin-bottom: 6px; }
+        .form-control,
+        .form-select {
+            min-height: 46px;
+            border-radius: 12px;
+            border-color: #b9c7d7;
+            color: var(--text);
+            font-size: 15px;
+            background-color: #fff;
+        }
+        .form-control-lg { min-height: 48px; font-size: 15px; }
+        .form-control-sm { min-height: 42px; font-size: 14px; }
+        .form-control:focus,
+        .form-select:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(10,110,209,.14); }
+
+        .btn {
+            min-height: 44px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 900;
+            padding-left: 15px;
+            padding-right: 15px;
+        }
+        .btn-primary,
+        .btn-success { background: var(--accent); border-color: var(--accent); }
+        .btn-primary:hover,
+        .btn-success:hover,
+        .btn-primary:focus,
+        .btn-success:focus { background: var(--accent-dark); border-color: var(--accent-dark); }
+        .btn-sm { min-height: 38px; font-size: 13px; padding: 7px 11px; }
+
+        .tool-stack { display: grid; gap: 10px; }
+        .tool-button {
+            width: 100%;
+            border: 1px solid var(--border);
+            background: #fff;
+            color: var(--text);
+            border-radius: 14px;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-align: left;
+            transition: .15s ease;
+        }
+        .tool-button:hover { border-color: #93c5fd; background: #f8fbff; transform: translateY(-1px); }
+        .tool-button.primary { background: #0a6ed1; color: #fff; border-color: #0a6ed1; }
+        .tool-button.primary:hover { background: #085caf; }
+        .tool-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 12px;
+            background: #e8f3ff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            font-size: 18px;
+        }
+        .tool-button.primary .tool-icon { background: rgba(255,255,255,.18); }
+        .tool-title { font-size: 15px; font-weight: 950; line-height: 1.1; }
+        .tool-subtitle { font-size: 12px; opacity: .8; margin-top: 2px; }
+
+        .info-box {
+            border-radius: 13px;
+            font-size: 14px;
+            border-color: var(--border);
+            padding: 13px 14px;
+            margin-bottom: 0;
+        }
+
+        #saveBtn { width: 100%; min-height: 50px; font-size: 16px; }
+
+        .items-panel { overflow: hidden; }
+        .items-header {
+            padding: 16px 18px;
+            border-bottom: 1px solid var(--border);
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(220px, 360px);
+            gap: 14px;
+            align-items: center;
+        }
+        .items-title { font-size: 20px; font-weight: 950; margin: 0; letter-spacing: -.02em; }
+        .items-subtitle { color: var(--muted); font-size: 13px; margin-top: 3px; }
+        .items-body { padding: 16px 18px 18px; }
+
+        .request-table-wrap {
+            width: 100%;
+            overflow-x: hidden;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: #fff;
+        }
+
+        .request-table {
+            width: 100%;
+            min-width: 0 !important;
+            margin: 0;
+            table-layout: fixed;
+            font-size: clamp(11px, .8vw, 13px);
+        }
+
+        .request-table thead th {
+            background: #f8fafc;
+            color: #334155;
+            border-bottom: 1px solid var(--border);
+            font-weight: 950;
+            padding: 11px 8px;
+            vertical-align: middle;
+            text-transform: uppercase;
+            font-size: clamp(10px, .68vw, 12px);
+            letter-spacing: .02em;
+            white-space: normal;
+            line-height: 1.2;
+        }
+
+        .request-table td {
+            padding: 10px 8px;
+            color: var(--text);
+            vertical-align: middle;
+            border-color: #edf1f7;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            line-height: 1.25;
+        }
+
+        .request-table tbody tr:hover { background: #f8fbff; }
+        .col-item { width: 15%; font-weight: 950; }
+        .col-part { width: 20%; }
+        .col-line { width: 12%; }
+        .col-requested,
+        .col-remaining,
+        .col-stock { width: 12%; text-align: right; font-weight: 850; }
+        .col-qty { width: 12%; }
+        .col-action { width: 9%; text-align: center; }
+
+        .table-input {
+            width: 100%;
+            min-width: 0;
+            height: 40px;
+            font-size: 15px;
+            padding: 7px 8px;
+            border-radius: 10px;
+            font-weight: 900;
+            text-align: right;
+        }
+        .remove-btn { width: 100%; min-height: 36px; font-size: 12px; padding: 6px; border-radius: 10px; }
+
+        .pending-panel { overflow: hidden; }
+        .pending-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        .pending-title { margin: 0; font-size: 18px; font-weight: 950; letter-spacing: -.02em; }
+        .pending-status { color: var(--muted); font-size: 13px; margin-top: 3px; }
+        .pending-body { padding: 14px; }
+        .pending-grid { display: grid; gap: 12px; }
+        .requests-panel { max-height: calc(100vh - 250px); overflow-y: auto; padding-right: 3px; }
+
+        .itr-card,
+        .stock-card {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            margin-bottom: 12px;
+            color: var(--text);
+            overflow: hidden;
+            box-shadow: 0 4px 14px rgba(15,23,42,.05);
+            transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+        }
+        .stock-card { padding: 14px; }
+        .itr-card:hover,
+        .stock-card:hover { transform: translateY(-1px); border-color: #93c5fd; box-shadow: 0 8px 20px rgba(10,110,209,.12); }
+        .itr-card.active { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(10,110,209,.14); }
+        .itr-header { width: 100%; border: 0; background: #fff; text-align: left; padding: 15px; }
+        .itr-header:hover { background: #f8fbff; }
+        .request-title,
+        .stock-code { font-size: 15px; font-weight: 950; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .request-meta,
+        .stock-name { font-size: 13px; color: var(--muted); margin-top: 3px; line-height: 1.35; }
+        .request-meta strong { color: #334155; }
+        .warehouse-route { display: inline-flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-top: 8px; font-size: 13px; font-weight: 850; }
+        .warehouse-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 9px; background: #eff6ff; color: #075985; border: 1px solid #bfdbfe; }
+        .warehouse-arrow { color: #64748b; font-weight: 950; }
+        .request-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+        .request-actions .btn { min-height: 38px; font-size: 13px; padding: 7px 10px; }
+        .qty-grid,
+        .stock-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+        .qty-box,
+        .stock-metric { background: #f8fafc; border: 1px solid #edf1f7; border-radius: 12px; padding: 10px; min-width: 0; }
+        .qty-box .label,
+        .stock-metric .label { font-size: 11px; color: var(--muted); font-weight: 850; }
+        .qty-box .value,
+        .stock-metric .value { font-size: 15px; font-weight: 950; color: var(--text); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; }
+
+        .badge.text-bg-primary,
+        .badge.bg-primary { background: var(--accent) !important; }
+        .badge.text-bg-success { background: var(--success) !important; }
+        .badge.text-bg-warning { background: #fff7ed !important; color: var(--warning) !important; border: 1px solid #fed7aa; }
+
+        .modal-content { border-radius: 18px; border-color: var(--border); }
+        .modal-header,
+        .modal-footer { padding: 16px 18px; }
+        .modal-body { padding: 18px; font-size: 15px; }
+        .modal-title { font-size: 20px; font-weight: 950; }
+        .modal-xl { --bs-modal-width: 1180px; }
+        .modal-search-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; margin-bottom: 14px; }
+        .small, small { font-size: 12px !important; }
+
+        @media (max-width: 1500px) {
+            .request-board { grid-template-columns: 300px minmax(0, 1fr); }
+            .request-right { grid-column: 1 / -1; }
+            .requests-panel { max-height: 420px; }
+            #myRequestList.pending-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+        }
+
+        @media (max-width: 991.98px) {
+            :root { --side-width: 16rem; }
+            .shell-menu-btn { display: inline-flex; align-items: center; justify-content: center; }
+            .sidebar,
+            .sap-side-nav { transform: translateX(-105%); transition: transform .2s ease; }
+            .sidebar.show,
+            .sap-side-nav.show { transform: translateX(0); }
+            .sidebar-backdrop.show { display: block; }
+            .main-content { margin-left: 0; width: 100%; }
+            .request-page { padding: 15px; }
+            .request-board { grid-template-columns: 1fr; }
+            .request-left { position: static; }
+            .items-header { grid-template-columns: 1fr; }
+            .modal-search-row { grid-template-columns: 1fr; }
+        }
+
+        @media (max-width: 767.98px) {
+            .request-table-wrap { border: 0; background: transparent; }
+            .request-table,
+            .request-table thead,
+            .request-table tbody,
+            .request-table th,
+            .request-table td,
+            .request-table tr { display: block; width: 100%; }
+            .request-table thead { display: none; }
+            .request-table tbody tr {
+                background: #fff;
+                border: 1px solid var(--border);
+                border-radius: 14px;
+                padding: 10px;
+                margin-bottom: 10px;
+                box-shadow: 0 4px 12px rgba(15,23,42,.05);
+            }
+            .request-table td {
+                border: 0;
+                padding: 8px 0;
+                display: grid;
+                grid-template-columns: 42% minmax(0, 1fr);
+                gap: 10px;
+                text-align: left !important;
+                font-size: 14px;
+            }
+            .request-table td::before {
+                content: '';
+                color: var(--muted);
+                font-size: 11px;
+                font-weight: 950;
+                text-transform: uppercase;
+                letter-spacing: .03em;
+            }
+            .request-table td:nth-child(1)::before { content: 'SAP ItemCode'; }
+            .request-table td:nth-child(2)::before { content: 'Part Name'; }
+            .request-table td:nth-child(3)::before { content: 'ITR/Line'; }
+            .request-table td:nth-child(4)::before { content: 'Already Req.'; }
+            .request-table td:nth-child(5)::before { content: 'Remaining'; }
+            .request-table td:nth-child(6)::before { content: 'WH Stock'; }
+            .request-table td:nth-child(7)::before { content: 'Qty'; }
+            .request-table td:nth-child(8)::before { content: 'Action'; }
+            .table-input { height: 42px; }
+            .remove-btn { width: auto; }
+            .pending-header { flex-direction: column; }
+            .pending-header .btn { width: 100%; }
+        }
+
+        @media (max-width: 575.98px) {
+            .request-page { padding: 10px; }
+            .intro-bottom { align-items: flex-start; flex-direction: column; }
+            .setup-panel,
+            .items-body,
+            .pending-body { padding: 12px; }
+            .items-header { padding: 14px; }
+            .qty-grid,
+            .stock-metrics { grid-template-columns: 1fr; }
+            .request-actions { grid-template-columns: 1fr; }
+        }
+
+
+        /* RIGHT-SIDE TABBED CARD REDESIGN */
+        .request-board {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(340px, 410px);
+            gap: 20px;
+            align-items: start;
+        }
+
+        .request-main { min-width: 0; }
+
+        .compact-hero { margin-bottom: 18px; }
+        .compact-hero .intro-top { padding: 20px 22px; }
+        .hero-metrics {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-start;
+            gap: 10px;
+        }
+        .soft-badge {
+            background: #f8fafc;
+            color: #334155;
+            border-color: #dbe5f0;
+        }
+
+        .request-right {
+            position: sticky;
+            top: calc(var(--topbar-height) + 22px);
+            min-width: 0;
+        }
+
+        .request-tabs-card {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            overflow: hidden;
+            box-shadow: 0 10px 28px rgba(15, 23, 42, .08);
+        }
+
+        .tabs-card-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 18px;
+            background: linear-gradient(135deg, #f8fbff, #eef6ff);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tabs-kicker {
+            font-size: 11px;
+            font-weight: 950;
+            letter-spacing: .09em;
+            text-transform: uppercase;
+            color: #0a6ed1;
+        }
+
+        .tabs-title {
+            margin: 3px 0 0;
+            font-size: 22px;
+            line-height: 1.1;
+            font-weight: 950;
+            letter-spacing: -.03em;
+            color: var(--text);
+        }
+
+        .request-tabs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            padding: 12px;
+            background: #fff;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .request-tabs .nav-item { min-width: 0; }
+        .request-tabs .nav-link {
+            width: 100%;
+            min-height: 42px;
+            border-radius: 12px;
+            color: #475569;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            font-size: 13px;
+            font-weight: 950;
+        }
+        .request-tabs .nav-link.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+            box-shadow: 0 8px 16px rgba(10,110,209,.18);
+        }
+
+        .request-tab-content { padding: 16px; }
+        .tab-section-title {
+            color: #1e293b;
+            font-size: 13px;
+            font-weight: 950;
+            letter-spacing: .03em;
+            text-transform: uppercase;
+            margin-bottom: 11px;
+        }
+
+        .compact-tools { gap: 9px; }
+        .compact-tools .tool-button { padding: 11px; }
+        .compact-tools .tool-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 11px;
+        }
+
+        .pending-tab-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .tabbed-request-list {
+            max-height: calc(100vh - 325px);
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        .tabbed-request-list.pending-grid { grid-template-columns: 1fr; }
+        .tabbed-request-list .itr-card:last-child { margin-bottom: 0; }
+
+        .request-table-wrap { overflow-x: hidden; }
+
+        @media (max-width: 1199.98px) {
+            .request-board { grid-template-columns: 1fr; }
+            .request-right { position: static; }
+            .tabbed-request-list { max-height: 430px; }
+        }
+
+        @media (max-width: 575.98px) {
+            .tabs-card-head,
+            .pending-tab-head { flex-direction: column; }
+            .tabs-card-head .btn,
+            .pending-tab-head .btn { width: 100%; }
+            .request-tabs { grid-template-columns: 1fr; }
+        }
+
+
+        /* V2 BALANCED RIGHT-TABBED LAYOUT FIX
+           Purpose: keep setup/queue as one card on the right, but remove the heavy blue banner feel. */
+        .request-page {
+            padding: 16px;
+            background: #f5f7fb;
+        }
+
+        .request-board {
+            grid-template-columns: minmax(0, 1fr) minmax(380px, 430px) !important;
+            gap: 16px !important;
+            align-items: start;
+        }
+
+        .request-main {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .compact-hero {
+            margin-bottom: 0 !important;
+            border-radius: 16px;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, .05);
+        }
+
+        .compact-hero .intro-top {
+            padding: 14px 16px !important;
+            background: #ffffff !important;
+            color: var(--text) !important;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .compact-hero .intro-kicker {
+            color: #0a6ed1;
+            opacity: 1;
+            font-size: 11px;
+        }
+
+        .compact-hero .page-title {
+            margin-top: 3px;
+            font-size: clamp(22px, 1.7vw, 28px) !important;
+            letter-spacing: -.03em;
+        }
+
+        .compact-hero .page-subtitle {
+            margin-top: 5px;
+            color: #64748b !important;
+            font-size: 13px;
+        }
+
+        .compact-hero .intro-bottom {
+            padding: 10px 14px !important;
+            background: #f8fafc !important;
+        }
+
+        .hero-metrics {
+            gap: 8px !important;
+        }
+
+        .line-count-badge {
+            min-height: 30px;
+            padding: 5px 11px;
+            font-size: 12px;
+            background: #eff6ff;
+        }
+
+        .items-panel {
+            border-radius: 16px;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, .05);
+        }
+
+        .items-header {
+            padding: 14px 16px !important;
+            grid-template-columns: minmax(0, 1fr) minmax(220px, 330px) !important;
+        }
+
+        .items-title {
+            font-size: 19px !important;
+        }
+
+        .items-subtitle {
+            font-size: 12px !important;
+        }
+
+        .items-body {
+            padding: 12px 16px 16px !important;
+        }
+
+        .request-table {
+            font-size: 12px !important;
+        }
+
+        .request-table thead th {
+            padding: 10px 8px !important;
+            font-size: 11px !important;
+        }
+
+        .request-table td {
+            padding: 8px 8px !important;
+        }
+
+        .table-input {
+            height: 36px !important;
+            min-height: 36px !important;
+            font-size: 14px !important;
+        }
+
+        .remove-btn {
+            min-height: 34px !important;
+            font-size: 11px !important;
+        }
+
+        .request-right {
+            position: sticky;
+            top: calc(var(--topbar-height) + 16px) !important;
+        }
+
+        .request-tabs-card {
+            border-radius: 16px !important;
+            box-shadow: 0 8px 22px rgba(15, 23, 42, .07) !important;
+        }
+
+        .tabs-card-head {
+            padding: 14px 16px !important;
+            background: #ffffff !important;
+        }
+
+        .tabs-title {
+            font-size: 20px !important;
+        }
+
+        .request-tabs {
+            padding: 10px !important;
+            gap: 8px !important;
+            background: #f8fafc !important;
+        }
+
+        .request-tabs .nav-link {
+            min-height: 40px !important;
             font-size: 13px !important;
         }
 
+        .request-tab-content {
+            padding: 14px !important;
+        }
+
+        .form-control,
+        .form-select {
+            min-height: 42px !important;
+        }
+
+        .btn {
+            min-height: 40px !important;
+        }
+
+        #saveBtn {
+            min-height: 46px !important;
+        }
+
+        .compact-tools .tool-button {
+            padding: 10px 12px !important;
+        }
+
+        .info-box {
+            padding: 11px 13px !important;
+            font-size: 13px !important;
+        }
+
+        .tabbed-request-list {
+            max-height: calc(100vh - 270px) !important;
+        }
+
+        @media (max-width: 1366px) {
+            .request-board {
+                grid-template-columns: minmax(0, 1fr) 390px !important;
+            }
+        }
+
         @media (max-width: 1199.98px) {
-            .guide-grid,
-            .big-action-row {
-                grid-template-columns: 1fr;
+            .request-board {
+                grid-template-columns: 1fr !important;
             }
 
-            .request-table {
-                min-width: 1080px;
-                font-size: 14px;
+            .request-right {
+                position: static !important;
+                order: -1;
             }
         }
 
         @media (max-width: 991.98px) {
-            :root {
-                --side-width: 16rem;
-            }
-
-            .shell-menu-btn {
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-            }
-
-            .sidebar,
-            .sap-side-nav {
-                transform: translateX(-105%);
-                transition: transform .2s ease;
-            }
-
-            .sidebar.show,
-            .sap-side-nav.show {
-                transform: translateX(0);
-            }
-
-            .sidebar-backdrop.show {
-                display: block;
-            }
-
-            .main-content {
-                margin-left: 0;
-                width: 100%;
-            }
-
-            .page-header {
-                flex-direction: column;
-                padding-left: 18px;
-                padding-right: 18px;
-            }
-
-            .page-body {
-                padding-left: 16px;
-                padding-right: 16px;
-            }
-
-            .modal-search-row {
-                grid-template-columns: 1fr;
+            .items-header {
+                grid-template-columns: 1fr !important;
             }
         }
 
-        @media (max-width: 575.98px) {
-            .page-title {
-                font-size: 24px;
-            }
 
-            .page-subtitle {
-                font-size: 14px;
-            }
+        /* SCROLLABLE LOADED ITEMS TABLE
+           Keeps the right tab card visible while the item list scrolls inside the table area. */
+        .items-panel {
+            min-height: 0;
+        }
 
-            .big-action {
-                padding: 14px;
-            }
+        .items-body {
+            min-height: 0;
+        }
 
-            .action-icon {
-                display: none;
-            }
+        .request-table-wrap {
+            max-height: calc(100vh - 305px);
+            overflow: auto !important;
+            scrollbar-gutter: stable;
+        }
 
-            .qty-grid,
-            .stock-metrics {
-                grid-template-columns: 1fr;
-            }
+        .request-table {
+            min-width: 980px !important;
+        }
 
-            #saveBtn,
-            .btn {
-                width: 100%;
-            }
+        .request-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            box-shadow: inset 0 -1px 0 var(--border);
+        }
 
-            .request-actions .btn {
-                width: auto;
+        @media (max-width: 1199.98px) {
+            .request-table-wrap {
+                max-height: 520px;
             }
         }
+
+        @media (max-width: 767.98px) {
+            .request-table-wrap {
+                max-height: 560px;
+                overflow-y: auto !important;
+                overflow-x: hidden !important;
+            }
+
+            .request-table {
+                min-width: 0 !important;
+            }
+        }
+
     </style>
 </head>
 
@@ -821,156 +924,147 @@ $currentRole = strtolower($currentUser['role'] ?? '');
     <?php app_sidebar('requestor'); ?>
 
     <main class="main-content">
-        <div class="page-header">
-            <div>
-                <h4 class="page-title">Issue Request</h4>
-                <div class="page-subtitle">
-                    Select SAP ITR, input quantity needed, then submit to Warehouse.
-                </div>
-            </div>
+        <div class="request-page">
+            <div class="request-board">
+                <section class="request-main">
+                    <section class="page-intro-card compact-hero">
+                        <div class="intro-top">
+                            <div class="intro-kicker">Warehouse Request Console</div>
+                            <h1 class="page-title">Issue Request</h1>
+                            <div class="page-subtitle">Load one SAP ITR, enter the needed quantities, then submit the request to Warehouse.</div>
+                        </div>
+                        <div class="intro-bottom hero-metrics">
+                            <span class="line-count-badge" id="countBadge">0 line(s)</span>
+                            <span class="line-count-badge soft-badge"><span id="myRequestCount">0</span> open request(s)</span>
+                            <span class="line-count-badge soft-badge"><span id="stockCount">0</span> stock item(s)</span>
+                            <span class="line-count-badge soft-badge"><span id="sapItCount">0</span> SAP IT</span>
+                        </div>
+                    </section>
 
-            <span class="line-count-badge" id="countBadge">
-                0 line(s)
-            </span>
-        </div>
+                    <section class="items-panel">
+                        <div class="items-header">
+                            <div>
+                                <h2 class="items-title">Loaded Items</h2>
+                                <div class="items-subtitle">Quantity entry is done here. Long item names wrap to fit the table.</div>
+                            </div>
 
-        <div class="page-body">
-            <div class="guide-grid">
-                <div class="guide-card">
-                    <div class="guide-no">1</div>
-                    <div>
-                        <div class="guide-title">Select SAP ITR</div>
-                        <div class="guide-text">Choose the ITR document from SAP.</div>
-                    </div>
-                </div>
-
-                <div class="guide-card">
-                    <div class="guide-no">2</div>
-                    <div>
-                        <div class="guide-title">Enter Qty</div>
-                        <div class="guide-text">Type only the quantity needed.</div>
-                    </div>
-                </div>
-
-                <div class="guide-card">
-                    <div class="guide-no">3</div>
-                    <div>
-                        <div class="guide-title">Submit</div>
-                        <div class="guide-text">Warehouse will process your request.</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="content-card">
-                <div class="content-card-header">
-                    <h5 class="content-card-title">New Issue Request</h5>
-                    <div class="content-card-subtitle">
-                        This is the main request form. SAP IT and stock are available only as reference tools.
-                    </div>
-                </div>
-
-                <div class="content-card-body">
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-3">
-                            <label class="form-label" for="neededDate">Needed Date</label>
-                            <input id="neededDate" class="form-control" type="date" value="<?= h(date('Y-m-d')) ?>">
+                            <input
+                                id="itemSearchInput"
+                                class="form-control form-control-lg"
+                                placeholder="Search SAP code or part name..."
+                                oninput="renderTable()"
+                            >
                         </div>
 
-                        <div class="col-md-9">
-                            <label class="form-label" for="remarksInput">Remarks</label>
-                            <input id="remarksInput" class="form-control" placeholder="Optional note for warehouse">
-                        </div>
-                    </div>
-
-                    <div class="big-action-row">
-                        <button class="big-action primary" type="button" onclick="openItrModal()">
-                            <div class="action-icon">📄</div>
-                            <div>
-                                <div class="action-title">Select SAP ITR</div>
-                                <div class="action-subtitle">Start a new issue request from open ITR</div>
-                            </div>
-                        </button>
-
-                        <button class="big-action" type="button" onclick="openStockModal()">
-                            <div class="action-icon">📦</div>
-                            <div>
-                                <div class="action-title">Check Stock</div>
-                                <div class="action-subtitle"><span id="stockCount">0</span> item(s)</div>
-                            </div>
-                        </button>
-
-                        <button class="big-action" type="button" onclick="openSapItModal()">
-                            <div class="action-icon">✅</div>
-                            <div>
-                                <div class="action-title">View SAP IT</div>
-                                <div class="action-subtitle"><span id="sapItCount">0</span> record(s)</div>
-                            </div>
-                        </button>
-                    </div>
-
-                    <div id="loadedInfo" class="alert alert-secondary info-box">
-                        No ITR loaded. Click <strong>Select SAP ITR</strong> to start.
-                    </div>
-
-                    <input
-                        id="itemSearchInput"
-                        class="form-control form-control-lg mb-3"
-                        placeholder="Search loaded item by SAP code or part name..."
-                        oninput="renderTable()"
-                    >
-
-                    <div class="request-table-wrap">
-                        <table class="table table-bordered table-striped align-middle request-table" id="itemsTable">
-                            <thead>
-                                <tr>
-                                    <th class="col-item">SAP ItemCode</th>
-                                    <th class="col-part">Part Name</th>
-                                    <th class="col-line">ITR/Line</th>
-                                    <th class="col-requested">Already Requested</th>
-                                    <th class="col-remaining">Remaining</th>
-                                    <th class="col-stock">Your WH Stock</th>
-                                    <th class="col-qty">Qty to Request</th>
-                                    <th class="col-action"></th>
-                                </tr>
-                            </thead>
-
-                            <tbody></tbody>
-                        </table>
-                    </div>
-
-                    <div class="text-end mt-4">
-                        <button id="saveBtn" class="btn btn-success" onclick="saveRequest()" disabled>
-                            Submit Issue Request
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="content-card">
-                <div class="content-card-header">
-                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-                        <div>
-                            <h5 class="content-card-title">My Pending Requests</h5>
-                            <div class="content-card-subtitle" id="myRequestStatus">
-                                Loading requests...
+                        <div class="items-body">
+                            <div class="request-table-wrap">
+                                <table class="table table-bordered table-striped align-middle request-table" id="itemsTable">
+                                    <thead>
+                                        <tr>
+                                            <th class="col-item">SAP ItemCode</th>
+                                            <th class="col-part">Part Name</th>
+                                            <th class="col-line">ITR/Line</th>
+                                            <th class="col-requested">Already Requested</th>
+                                            <th class="col-remaining">Remaining</th>
+                                            <th class="col-stock">Your WH Stock</th>
+                                            <th class="col-qty">Qty to Request</th>
+                                            <th class="col-action"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
                             </div>
                         </div>
+                    </section>
+                </section>
 
-                        <button class="btn btn-outline-primary" type="button" onclick="loadMyRequests()">
-                            Reload Pending
-                        </button>
-                    </div>
-                </div>
+                <aside class="request-right">
+                    <section class="request-tabs-card">
+                        <div class="tabs-card-head">
+                            <div>
+                                <div class="tabs-kicker">Request Workspace</div>
+                                <h2 class="tabs-title">Setup & Queue</h2>
+                            </div>
+                            <button class="btn btn-outline-primary btn-sm" type="button" onclick="refreshSideTabs()">Refresh</button>
+                        </div>
 
-                <div class="content-card-body">
-                    <div class="mb-2">
-                        <span class="badge bg-primary rounded-pill px-3 py-2">
-                            <span id="myRequestCount">0</span> open request(s)
-                        </span>
-                    </div>
+                        <ul class="nav nav-pills request-tabs" id="requestWorkspaceTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="setup-tab" data-bs-toggle="pill" data-bs-target="#setupPane" type="button" role="tab" aria-controls="setupPane" aria-selected="true">
+                                    Request Setup
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="pending-tab" data-bs-toggle="pill" data-bs-target="#pendingPane" type="button" role="tab" aria-controls="pendingPane" aria-selected="false">
+                                    Pending Queue
+                                </button>
+                            </li>
+                        </ul>
 
-                    <div id="myRequestList" class="requests-panel pending-grid"></div>
-                </div>
+                        <div class="tab-content request-tab-content">
+                            <div class="tab-pane fade show active" id="setupPane" role="tabpanel" aria-labelledby="setup-tab" tabindex="0">
+                                <div class="tab-section-title">Request Details</div>
+
+                                <div class="mb-3">
+                                    <label class="form-label" for="neededDate">Needed Date</label>
+                                    <input id="neededDate" class="form-control" type="date" value="<?= h(date('Y-m-d')) ?>">
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label" for="remarksInput">Remarks</label>
+                                    <input id="remarksInput" class="form-control" placeholder="Optional note for warehouse">
+                                </div>
+
+                                <div class="tab-section-title mt-3">Tools</div>
+                                <div class="tool-stack compact-tools">
+                                    <button class="tool-button primary" type="button" onclick="openItrModal()">
+                                        <span class="tool-icon">📄</span>
+                                        <span>
+                                            <span class="tool-title">Select SAP ITR</span>
+                                            <span class="tool-subtitle d-block">Load open transfer request</span>
+                                        </span>
+                                    </button>
+
+                                    <button class="tool-button" type="button" onclick="openStockModal()">
+                                        <span class="tool-icon">📦</span>
+                                        <span>
+                                            <span class="tool-title">Check Stock</span>
+                                            <span class="tool-subtitle d-block">Open warehouse stock list</span>
+                                        </span>
+                                    </button>
+
+                                    <button class="tool-button" type="button" onclick="openSapItModal()">
+                                        <span class="tool-icon">✅</span>
+                                        <span>
+                                            <span class="tool-title">View SAP IT</span>
+                                            <span class="tool-subtitle d-block">Check posted transfer records</span>
+                                        </span>
+                                    </button>
+                                </div>
+
+                                <div id="loadedInfo" class="alert alert-secondary info-box mt-3">
+                                    No ITR loaded. Click <strong>Select SAP ITR</strong> to start.
+                                </div>
+
+                                <button id="saveBtn" class="btn btn-success mt-3" onclick="saveRequest()" disabled>
+                                    Submit Issue Request
+                                </button>
+                            </div>
+
+                            <div class="tab-pane fade" id="pendingPane" role="tabpanel" aria-labelledby="pending-tab" tabindex="0">
+                                <div class="pending-tab-head">
+                                    <div>
+                                        <div class="tab-section-title mb-1">Pending Queue</div>
+                                        <div class="pending-status" id="myRequestStatus">Loading requests...</div>
+                                    </div>
+                                    <button class="btn btn-outline-primary btn-sm" type="button" onclick="loadMyRequests()">Reload</button>
+                                </div>
+
+                                <div id="myRequestList" class="requests-panel pending-grid tabbed-request-list"></div>
+                            </div>
+                        </div>
+                    </section>
+                </aside>
             </div>
         </div>
     </main>
@@ -2159,14 +2253,14 @@ const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebarToggle');
 const sidebarBackdrop = document.getElementById('sidebarBackdrop');
 
-if (sidebarToggle) {
+if (sidebarToggle && sidebar && sidebarBackdrop) {
     sidebarToggle.addEventListener('click', function () {
         sidebar.classList.add('show');
         sidebarBackdrop.classList.add('show');
     });
 }
 
-if (sidebarBackdrop) {
+if (sidebarBackdrop && sidebar) {
     sidebarBackdrop.addEventListener('click', function () {
         sidebar.classList.remove('show');
         sidebarBackdrop.classList.remove('show');
