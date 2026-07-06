@@ -173,6 +173,21 @@ function zebra_pick_image_png_compression()
     return defined('PICK_TAG_IMAGE_PNG_COMPRESSION') ? max(0, min(9, (int)PICK_TAG_IMAGE_PNG_COMPRESSION)) : 6;
 }
 
+function zebra_pick_driver_relay_enabled()
+{
+    return defined('PICK_TAG_DRIVER_RELAY_ENABLED') && (bool)PICK_TAG_DRIVER_RELAY_ENABLED;
+}
+
+function zebra_pick_driver_relay_inbox()
+{
+    return defined('PICK_TAG_DRIVER_RELAY_INBOX') ? trim((string)PICK_TAG_DRIVER_RELAY_INBOX) : '';
+}
+
+function zebra_pick_driver_relay_printer()
+{
+    return defined('PICK_TAG_DRIVER_RELAY_PRINTER') ? trim((string)PICK_TAG_DRIVER_RELAY_PRINTER) : zebra_pick_printer_name();
+}
+
 function zebra_pick_printer_key($value = null)
 {
     $key = strtolower(trim((string)($value ?? '')));
@@ -1649,6 +1664,78 @@ function zebra_send_image_to_windows_driver($imagePath, $printerName, $printerLa
     ];
 }
 
+function zebra_queue_image_to_driver_relay($imagePath, $printerLabel = 'printer', $paperWidthHundredths = 400, $paperHeightHundredths = 400)
+{
+    $imagePath = trim((string)$imagePath);
+    $printerLabel = trim((string)$printerLabel);
+    $inbox = zebra_pick_driver_relay_inbox();
+
+    if ($printerLabel === '') {
+        $printerLabel = 'printer';
+    }
+
+    if ($imagePath === '' || !is_file($imagePath)) {
+        return [
+            'ok' => false,
+            'message' => 'Rendered label image was not found for relay queue.'
+        ];
+    }
+
+    if ($inbox === '') {
+        return [
+            'ok' => false,
+            'message' => 'Nitto relay inbox is not configured.'
+        ];
+    }
+
+    if (!is_dir($inbox) && !mkdir($inbox, 0775, true) && !is_dir($inbox)) {
+        return [
+            'ok' => false,
+            'message' => 'Nitto relay inbox does not exist or cannot be created: ' . $inbox
+        ];
+    }
+
+    if (!is_writable($inbox)) {
+        return [
+            'ok' => false,
+            'message' => 'Nitto relay inbox is not writable: ' . $inbox
+        ];
+    }
+
+    $jobId = date('YmdHis') . '_' . bin2hex(random_bytes(4));
+    $basePath = rtrim($inbox, "\\/") . DIRECTORY_SEPARATOR . 'nitto_' . $jobId;
+    $tmpImage = $basePath . '.tmp';
+    $finalImage = $basePath . '.png';
+    $finalJson = $basePath . '.json';
+
+    if (!copy($imagePath, $tmpImage) || !@rename($tmpImage, $finalImage)) {
+        @unlink($tmpImage);
+
+        return [
+            'ok' => false,
+            'message' => 'Unable to copy rendered label into Nitto relay inbox.'
+        ];
+    }
+
+    $meta = [
+        'job_id' => $jobId,
+        'created_at' => date('Y-m-d H:i:s'),
+        'printer_name' => zebra_pick_driver_relay_printer(),
+        'paper_width_hundredths' => (int)$paperWidthHundredths,
+        'paper_height_hundredths' => (int)$paperHeightHundredths,
+        'image_file' => basename($finalImage),
+        'source_computer' => getenv('COMPUTERNAME') ?: '',
+        'source_user' => getenv('USERNAME') ?: '',
+    ];
+
+    file_put_contents($finalJson, json_encode($meta, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), LOCK_EX);
+
+    return [
+        'ok' => true,
+        'message' => 'Rendered label queued to Nitto relay inbox for ' . $printerLabel . '. Inbox: ' . $inbox . '. Job: ' . $jobId . '. Bytes: ' . filesize($finalImage)
+    ];
+}
+
 function zebra_send_to_tcp_printer($zpl, $host, $port, $printerLabel = 'Zebra printer')
 {
     $host = trim((string)$host);
@@ -1776,6 +1863,15 @@ function zebra_send_pick_label($zpl)
 
 function zebra_send_pick_label_image($imagePath)
 {
+    if (zebra_pick_driver_relay_enabled()) {
+        return zebra_queue_image_to_driver_relay(
+            $imagePath,
+            zebra_pick_printer_name() . ' picker printer',
+            zebra_pick_width_hundredths(),
+            zebra_pick_height_hundredths()
+        );
+    }
+
     return zebra_send_image_to_windows_driver(
         $imagePath,
         zebra_pick_printer_queue(),
