@@ -1563,10 +1563,11 @@ function zebra_send_to_windows_queue($zpl, $printerName, $printerLabel = 'printe
     ];
 }
 
-function zebra_send_image_to_windows_driver($imagePath, $printerName, $printerLabel = 'printer', $paperWidthHundredths = 400, $paperHeightHundredths = 400)
+function zebra_send_image_to_windows_driver($imagePath, $printerName, $printerLabel = 'printer', $paperWidthHundredths = 400, $paperHeightHundredths = 400, $fallbackPrinterName = '')
 {
     $imagePath = trim((string)$imagePath);
     $printerName = trim((string)$printerName);
+    $fallbackPrinterName = trim((string)$fallbackPrinterName);
     $printerLabel = trim((string)$printerLabel);
 
     if ($printerLabel === '') {
@@ -1607,6 +1608,7 @@ function zebra_send_image_to_windows_driver($imagePath, $printerName, $printerLa
         . zebra_cmd_arg($script)
         . ' -ImagePath ' . zebra_cmd_arg($imagePath)
         . ' -PrinterName ' . zebra_cmd_arg($printerName)
+        . ' -FallbackPrinterName ' . zebra_cmd_arg($fallbackPrinterName)
         . ' -PaperWidthHundredths ' . (int)$paperWidthHundredths
         . ' -PaperHeightHundredths ' . (int)$paperHeightHundredths;
 
@@ -1767,7 +1769,8 @@ function zebra_send_pick_label_image($imagePath)
         zebra_pick_printer_queue(),
         zebra_pick_printer_name() . ' picker printer',
         zebra_pick_width_hundredths(),
-        zebra_pick_height_hundredths()
+        zebra_pick_height_hundredths(),
+        zebra_pick_printer_share()
     );
 }
 

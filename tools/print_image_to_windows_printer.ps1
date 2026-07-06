@@ -5,6 +5,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$PrinterName,
 
+    [string]$FallbackPrinterName = "",
+
     [int]$PaperWidthHundredths = 300,
     [int]$PaperHeightHundredths = 300
 )
@@ -20,30 +22,94 @@ $visiblePrinters = [System.Drawing.Printing.PrinterSettings]::InstalledPrinters
 Write-Output "Computer: $env:COMPUTERNAME"
 Write-Output "Windows user: $identity"
 Write-Output "Target printer: $PrinterName"
+Write-Output "Fallback printer: $FallbackPrinterName"
 Write-Output ("Visible printers: " + (($visiblePrinters | ForEach-Object { $_ }) -join " | "))
 
-$resolvedPrinterName = $PrinterName
+function Add-PrinterCandidate {
+    param(
+        [System.Collections.ArrayList]$Candidates,
+        [string]$Name
+    )
+
+    $candidate = $Name.Trim()
+
+    if ($candidate -ne "" -and -not $Candidates.Contains($candidate)) {
+        [void]$Candidates.Add($candidate)
+    }
+}
+
+function Test-PrinterCandidate {
+    param([string]$Name)
+
+    $settings = New-Object System.Drawing.Printing.PrinterSettings
+    $settings.PrinterName = $Name
+
+    return $settings.IsValid
+}
+
+$printerCandidates = New-Object System.Collections.ArrayList
+Add-PrinterCandidate $printerCandidates $PrinterName
+Add-PrinterCandidate $printerCandidates $FallbackPrinterName
+
+$fallbackShareQueueName = ""
+$fallbackServerName = ""
+
+if ($FallbackPrinterName.StartsWith("\\")) {
+    $fallbackParts = $FallbackPrinterName -split "\\"
+    $fallbackServerName = $fallbackParts[-2]
+    $fallbackShareQueueName = $fallbackParts[-1]
+}
 
 if ($PrinterName.StartsWith("\\")) {
     $shareQueueName = ($PrinterName -split "\\")[-1]
-    $localQueue = $visiblePrinters | Where-Object { $_ -ieq $shareQueueName } | Select-Object -First 1
+    Add-PrinterCandidate $printerCandidates $shareQueueName
+} else {
+    $shareQueueName = $PrinterName
+}
 
-    if ($localQueue) {
-        $resolvedPrinterName = [string]$localQueue
-        Write-Output "Resolved shared printer to local queue: $resolvedPrinterName"
+if ($fallbackShareQueueName -ne "" -and $shareQueueName -eq "") {
+    $shareQueueName = $fallbackShareQueueName
+}
+
+$visibleShareQueue = $visiblePrinters | Where-Object { $_ -like "\\*\$shareQueueName" } | Select-Object -First 1
+Add-PrinterCandidate $printerCandidates ([string]$visibleShareQueue)
+
+$visibleNamedQueue = $visiblePrinters | Where-Object { $_ -ieq $shareQueueName } | Select-Object -First 1
+Add-PrinterCandidate $printerCandidates ([string]$visibleNamedQueue)
+
+$visiblePrinters |
+    Where-Object { $_ -like "$shareQueueName*" } |
+    ForEach-Object { Add-PrinterCandidate $printerCandidates ([string]$_) }
+
+if ($fallbackServerName -ne "" -and $fallbackShareQueueName -ne "") {
+    $visiblePrinters |
+        Where-Object { $_ -like "$fallbackShareQueueName on $fallbackServerName*" } |
+        ForEach-Object { Add-PrinterCandidate $printerCandidates ([string]$_) }
+}
+
+$resolvedPrinterName = ""
+
+foreach ($candidate in $printerCandidates) {
+    $isValid = Test-PrinterCandidate $candidate
+    Write-Output "Candidate printer valid [$candidate]: $isValid"
+
+    if ($isValid) {
+        $resolvedPrinterName = $candidate
+        break
     }
 }
+
+if ($resolvedPrinterName -eq "") {
+    throw "No valid printer queue found. Tried: $($printerCandidates -join " | ")"
+}
+
+Write-Output "Resolved printer: $resolvedPrinterName"
 
 $image = [System.Drawing.Image]::FromFile($ImagePath)
 $doc = New-Object System.Drawing.Printing.PrintDocument
 
 try {
     $doc.PrinterSettings.PrinterName = $resolvedPrinterName
-    Write-Output "Printer valid for this user: $($doc.PrinterSettings.IsValid)"
-
-    if (-not $doc.PrinterSettings.IsValid) {
-        throw "Printer queue is not valid or not available: $resolvedPrinterName"
-    }
 
     $doc.DocumentName = "NBC Picker Tag"
     $doc.OriginAtMargins = $false
