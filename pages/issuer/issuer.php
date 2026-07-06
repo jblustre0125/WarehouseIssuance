@@ -14,7 +14,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <base href="<?= h(app_path('')) ?>">
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="assets/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <link href="assets/app-shell.css" rel="stylesheet">
 
     <style>
@@ -768,6 +768,83 @@ $currentRole = strtolower($currentUser['role'] ?? '');
                 min-width: 150px;
             }
         }
+
+        @media (max-width: 1366px) {
+            .main-content > .row.g-3 > .col-xl-4 {
+                order: -1;
+            }
+
+            .main-content > .row.g-3 > .col-xl-8,
+            .main-content > .row.g-3 > .col-xl-4 {
+                width: 100%;
+            }
+
+            #issuerSideTabs {
+                display: flex !important;
+            }
+
+            .content-card-body > .tab-content {
+                display: block !important;
+            }
+
+            .content-card-body > .tab-content > .tab-pane {
+                display: none !important;
+            }
+
+            .content-card-body > .tab-content > .tab-pane.show.active,
+            .content-card-body > .tab-content > .tab-pane.active {
+                display: block !important;
+                opacity: 1 !important;
+                visibility: visible !important;
+            }
+
+            #requestList,
+            #stockList,
+            .requests-panel,
+            .side-panel-list {
+                max-height: none !important;
+                overflow-y: visible !important;
+                height: auto !important;
+                min-height: 80px !important;
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+            }
+
+            #requestList .itr-card,
+            #stockList .stock-card {
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+            }
+        }
+
+        /* WebView / tablet fix: keep Bootstrap tabs, request cards, stock cards, and table data visible. */
+        #requestList,
+        #stockList,
+        .requests-panel,
+        .side-panel-list {
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+
+        #requestList .itr-card,
+        #stockList .stock-card {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+
+        .tab-content > .tab-pane {
+            display: none;
+        }
+
+        .tab-content > .tab-pane.show.active,
+        .tab-content > .tab-pane.active {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
     </style>
 </head>
 
@@ -1047,7 +1124,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
 <script src="assets/app-refresh.js"></script>
 
 <script>

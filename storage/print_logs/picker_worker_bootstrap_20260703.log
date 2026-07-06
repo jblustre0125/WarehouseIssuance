@@ -1,0 +1,14 @@
+[2026-07-03 10:17:54] Worker started
+[2026-07-03 10:17:54] PHP: C:\xampp\php\php.exe
+[2026-07-03 10:17:54] CWD: C:\Xampp\htdocs\WarehouseIssuance
+[2026-07-03 10:17:54] DIR: C:\Xampp\htdocs\WarehouseIssuance\workers
+[2026-07-03 10:17:54] ARGV: ["workers\\print_picker_worker.php","storage\\print_jobs\\pick_20260703101556_37d3977f.json"]
+[2026-07-03 10:17:54] Job file: storage\print_jobs\pick_20260703101556_37d3977f.json
+[2026-07-03 10:17:54] Job file exists: YES
+[2026-07-03 10:19:56] Worker started
+[2026-07-03 10:19:56] PHP: C:\Xampp\php\php.exe
+[2026-07-03 10:19:56] CWD: C:\Xampp\htdocs\WarehouseIssuance\actions
+[2026-07-03 10:19:56] DIR: C:\Xampp\htdocs\WarehouseIssuance\workers
+[2026-07-03 10:19:56] ARGV: ["C:\\Xampp\\htdocs\\WarehouseIssuance\\workers\\print_picker_worker.php","C:\\Xampp\\htdocs\\WarehouseIssuance\\storage\\print_jobs\\pick_20260703101956_68c2862c.json"]
+[2026-07-03 10:19:56] Job file: C:\Xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260703101956_68c2862c.json
+[2026-07-03 10:19:56] Job file exists: YES

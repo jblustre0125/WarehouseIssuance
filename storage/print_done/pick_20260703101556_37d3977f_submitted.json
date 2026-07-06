@@ -1,0 +1,34 @@
+{
+    "job_id": "20260703101556_37d3977f",
+    "created_at": "2026-07-03 10:15:56",
+    "created_by": {
+        "username": "admin",
+        "name": "",
+        "role": "admin"
+    },
+    "total_tags": 1,
+    "printer_key": "zebra",
+    "printer_name": "Zebra QLn320",
+    "failed_validation": [],
+    "items": [
+        {
+            "item_code": "00000000053",
+            "part_name": "CLAMP 82711-48070",
+            "quantity": "5000",
+            "requested_qty": 5000,
+            "remaining_qty": 5000,
+            "lot_no": "123",
+            "request_no": "REQ-20260626-085810-2714",
+            "request_id": 32,
+            "request_line_id": 71,
+            "itr_number": "470207640",
+            "itr_doc_entry": 207640,
+            "itr_doc_num": "470207640",
+            "itr_line_num": 22,
+            "uom": "pc",
+            "num_per_msr": 1,
+            "qr_payload": "(01)00000000053(17)5000(10)123",
+            "picked_by": "admin"
+        }
+    ]
+}

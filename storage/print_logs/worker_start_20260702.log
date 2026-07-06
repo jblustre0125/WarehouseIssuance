@@ -1,0 +1,8 @@
+[2026-07-02 10:22:01] Picker tag queued
+Job ID: 20260702102201_3f269d49
+Job file: C:\Xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260702102201_3f269d49.json
+Queued by: admin
+Printer: \\Nbcp-lt-042\NITTO DURA-SL-400
+Task CMD: schtasks /Run /TN "Warehouse Picker Print Queue"
+Task Started: YES
+--------------------------------------------------------------------------------

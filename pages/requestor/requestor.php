@@ -15,7 +15,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <base href="<?= h(app_path('')) ?>">
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="assets/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <link href="assets/app-shell.css" rel="stylesheet">
 
     <style>
@@ -834,18 +834,45 @@ $currentRole = strtolower($currentUser['role'] ?? '');
 
         @media (max-width: 1366px) {
             .request-board {
-                grid-template-columns: minmax(0, 1fr) 390px !important;
-            }
-        }
-
-        @media (max-width: 1199.98px) {
-            .request-board {
                 grid-template-columns: 1fr !important;
             }
 
             .request-right {
                 position: static !important;
-                order: -1;
+                grid-row: 1 !important;
+                order: -1 !important;
+            }
+
+            .request-main {
+                grid-row: 2 !important;
+            }
+
+            .request-tabs {
+                display: none !important;
+            }
+
+            .request-tab-content {
+                display: grid !important;
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)) !important;
+                gap: 14px !important;
+            }
+
+            .request-tab-content .tab-pane {
+                display: block !important;
+                opacity: 1 !important;
+                visibility: visible !important;
+            }
+
+            .request-tab-content .tab-pane.fade:not(.show) {
+                opacity: 1 !important;
+            }
+
+            .tabbed-request-list {
+                max-height: 300px !important;
+            }
+
+            .request-table-wrap {
+                max-height: 520px;
             }
         }
 
@@ -881,12 +908,6 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             top: 0;
             z-index: 5;
             box-shadow: inset 0 -1px 0 var(--border);
-        }
-
-        @media (max-width: 1199.98px) {
-            .request-table-wrap {
-                max-height: 520px;
-            }
         }
 
         @media (max-width: 767.98px) {
@@ -1185,7 +1206,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
 <script src="assets/app-refresh.js"></script>
 
 <script>

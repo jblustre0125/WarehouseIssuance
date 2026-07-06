@@ -85,16 +85,35 @@ Nitto picker tags are configured separately:
 define('PICK_TAG_PRINT_CONNECTION', 'windows_driver');
 define('PICK_TAG_DEFAULT_PRINTER', 'nitto');
 define('PICK_TAG_PRINTER_NAME', 'NITTO DURA-SL-400');
-define('PICK_TAG_PRINTER_SHARE', 'NITTO DURA-SL-400');
+define('PICK_TAG_PRINTER_QUEUE', '\\\\Nbcp-lt-042\\NITTO DURA-SL-400');
+define('PICK_TAG_PRINTER_SHARE', '\\\\Nbcp-lt-042\\NITTO DURA-SL-400');
 define('PICK_TAG_WIDTH_HUNDREDTHS', 300);
 define('PICK_TAG_HEIGHT_HUNDREDTHS', 300);
-define('PICK_TAG_LABEL_DELAY_SECONDS', 2);
-define('PICK_TAG_MAX_LABEL_BYTES', 32768);
-define('PICK_TAG_BATCH_MAX_BYTES', 131072);
-define('PICK_TAG_BATCH_COOLDOWN_SECONDS', 2);
+define('PICK_TAG_IMAGE_SCALE', 1);
+define('PICK_TAG_IMAGE_PNG_COMPRESSION', 6);
+define('PICK_TAG_DRIVER_RELAY_ENABLED', false);
+define('PICK_TAG_DRIVER_RELAY_INBOX', '\\\\Nbcp-lt-042\\NittoPrintRelay\\inbox');
+define('PICK_TAG_DRIVER_RELAY_PRINTER', 'NITTO DURA-SL-400');
+define('PICK_TAG_LABEL_DELAY_SECONDS', 0);
+define('PICK_TAG_MAX_LABEL_BYTES', 0);
+define('PICK_TAG_BATCH_MAX_BYTES', 0);
+define('PICK_TAG_BATCH_COOLDOWN_SECONDS', 0);
 ```
 
-When Nitto is selected, the picker-tag setup renders each 3 inch by 3 inch tag as a PNG and prints it through the installed Windows printer driver named `NITTO DURA-SL-400`. When Zebra QLn320 is selected, the same picker tag data is printed as raw ZPL through the normal `ZEBRA_PRINT_CONNECTION` settings. Picker printing sends one label at a time and pauses after the configured byte budget to avoid overflowing printer memory.
+When Nitto is selected, the picker-tag setup renders each 3 inch by 3 inch tag as a PNG and prints it through the installed Windows printer driver queue named `NITTO DURA-SL-400`. Use `PICK_TAG_PRINTER_QUEUE` for the preferred queue visible on the XAMPP server, and keep `PICK_TAG_PRINTER_SHARE` as the shared printer path fallback. The PowerShell print helper validates the queue for the Windows user running XAMPP and automatically tries the fallback share if the preferred queue is not valid. `PICK_TAG_IMAGE_SCALE` controls the rendered bitmap size: `1` renders 609 x 609 pixels for faster shared-printer spooling, while `2` restores the older 1218 x 1218 high-resolution image if scanning quality needs it. When Zebra QLn320 is selected, the same picker tag data is printed as raw ZPL through the normal `ZEBRA_PRINT_CONNECTION` settings.
+
+For the fastest reliable Nitto printing, run `tools/run_nitto_print_relay.ps1` on the PC that physically hosts the Nitto printer. Share `C:\NittoPrintRelay\inbox` from that PC as `\\Nbcp-lt-042\NittoPrintRelay\inbox`, then set `PICK_TAG_DRIVER_RELAY_ENABLED` to `true`. The web server will drop the small PNG label into that inbox, and the relay prints it locally on the Nitto host instead of sending a Windows-driver print over the slow shared-printer path.
+
+To install the relay as a startup task on the Nitto host PC, copy these two files to any folder on that PC:
+
+- `tools/run_nitto_print_relay.ps1`
+- `tools/install_nitto_print_relay_task.ps1`
+
+Then run PowerShell as Administrator from that folder:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install_nitto_print_relay_task.ps1
+```
 
 If you need to test raw label command printing, `PICK_TAG_PRINT_CONNECTION` can be set to `windows_share`, but that requires a shared printer path such as `\\localhost\NITTO DURA-SL-400` and only works when the printer understands the raw label command language.
 

@@ -1,0 +1,18 @@
+[2026-07-03 10:15:56] Picker tag queued
+Job ID: 20260703101556_37d3977f
+Job file: C:\Xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260703101556_37d3977f.json
+Queued by: admin
+Printer: Zebra QLn320 (zebra)
+Task CMD: schtasks /Run /TN "Warehouse Picker Print Queue"
+Task Started: YES
+--------------------------------------------------------------------------------
+[2026-07-03 10:19:56] Picker tag queued
+Job ID: 20260703101956_68c2862c
+Job file: C:\Xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260703101956_68c2862c.json
+Queued by: admin
+Printer: Zebra QLn320 (zebra)
+Direct CMD: wscript.exe //B "C:\Xampp\htdocs\WarehouseIssuance\tools\run_picker_print_queue_hidden.vbs" "C:\Xampp\htdocs\WarehouseIssuance\storage\print_jobs\pick_20260703101956_68c2862c.json"
+Direct Started: YES
+Task CMD: schtasks /Run /TN "Warehouse Picker Print Queue"
+Task Started: NO
+--------------------------------------------------------------------------------

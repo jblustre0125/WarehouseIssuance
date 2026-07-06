@@ -45,7 +45,7 @@ foreach ($saved as $idx => $s) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <base href="<?= pick_result_h(app_path('')) ?>">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="assets/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background:#f4f7fb; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
         .wrap { max-width:1180px; margin:0 auto; padding:18px; }
@@ -130,7 +130,7 @@ foreach ($saved as $idx => $s) {
         </div>
     </div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="assets/vendor/qrcodejs/qrcode.min.js"></script>
 <script>
 const qrPayloads = <?= json_encode($qrPayloads, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 qrPayloads.forEach(function (payload) {

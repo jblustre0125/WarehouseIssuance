@@ -19,7 +19,7 @@ $defaultPickPrinter = $defaultPickPrinter === 'zebra' ? 'zebra' : 'nitto';
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <base href="<?= h(app_path('')) ?>">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="assets/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <link href="assets/app-shell.css" rel="stylesheet">
     <style>
         :root {
@@ -805,7 +805,7 @@ $defaultPickPrinter = $defaultPickPrinter === 'zebra' ? 'zebra' : 'nitto';
             word-break: break-all !important;
         }
 
-        @media (max-width: 1180px) {
+        @media (max-width: 1366px) {
             .picker-workspace {
                 grid-template-columns: 1fr !important;
             }
@@ -816,8 +816,40 @@ $defaultPickPrinter = $defaultPickPrinter === 'zebra' ? 'zebra' : 'nitto';
                 max-height: none !important;
             }
 
+            .picker-side {
+                grid-row: 1 !important;
+            }
+
+            .picker-main {
+                grid-row: 2 !important;
+            }
+
+            .documents-card .content-card-body {
+                overflow: visible !important;
+            }
+
+            .documents-card .tab-content {
+                display: grid !important;
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
+                gap: 12px !important;
+            }
+
+            .documents-card .tab-pane {
+                display: block !important;
+                opacity: 1 !important;
+                visibility: visible !important;
+            }
+
+            .documents-card .tab-pane.fade:not(.show) {
+                opacity: 1 !important;
+            }
+
+            .source-tabs {
+                display: none !important;
+            }
+
             .request-list {
-                max-height: 420px !important;
+                max-height: 300px !important;
             }
         }
 
@@ -1069,7 +1101,7 @@ $defaultPickPrinter = $defaultPickPrinter === 'zebra' ? 'zebra' : 'nitto';
     document.body.classList.add('sidebar-rail-mode');
 })();
 </script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="assets/vendor/bootstrap/bootstrap.bundle.min.js"></script>
 <script src="assets/app-refresh.js"></script>
 <script>
 let openDocuments = [];

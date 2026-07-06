@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Allow cleartext (HTTP) for the local development IP only -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.23.64</domain>
+    </domain-config>
+
+    <!-- Keep default secure policy for other domains -->
+</network-security-config>
+
