@@ -59,15 +59,15 @@ define('ZEBRA_TEAR_OFF_DOTS', 80);
 define('PICK_TAG_PRINT_CONNECTION', 'windows_driver');
 define('PICK_TAG_DEFAULT_PRINTER', 'nitto'); // nitto or zebra
 define('PICK_TAG_PRINTER_NAME', 'NITTO DURA-SL-400');
-define('PICK_TAG_PRINTER_QUEUE', '\\\\Nbcp-lt-042\\NITTO DURA-SL-400');
-define('PICK_TAG_PRINTER_SHARE', '\\\\Nbcp-lt-042\\NITTO DURA-SL-400');
+define('PICK_TAG_PRINTER_QUEUE', '\\\\192.168.23.64\\NITTO DURA-SL-400');
+define('PICK_TAG_PRINTER_SHARE', '\\\\192.168.23.64\\NITTO DURA-SL-400');
 
 define('PICK_TAG_WIDTH_HUNDREDTHS', 300);  // 3.00 inches
 define('PICK_TAG_HEIGHT_HUNDREDTHS', 300); // 3.00 inches
 define('PICK_TAG_IMAGE_SCALE', 1);         // 1 = 609px/203 DPI, 2 = 1218px/high-res
 define('PICK_TAG_IMAGE_PNG_COMPRESSION', 6);
 define('PICK_TAG_DRIVER_RELAY_ENABLED', false);
-define('PICK_TAG_DRIVER_RELAY_INBOX', '\\\\Nbcp-lt-042\\NittoPrintRelay\\inbox');
+define('PICK_TAG_DRIVER_RELAY_INBOX', '\\\\192.168.23.64\\NittoPrintRelay\\inbox');
 define('PICK_TAG_DRIVER_RELAY_PRINTER', 'NITTO DURA-SL-400');
 
 /*
