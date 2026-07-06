@@ -22,15 +22,27 @@ Write-Output "Windows user: $identity"
 Write-Output "Target printer: $PrinterName"
 Write-Output ("Visible printers: " + (($visiblePrinters | ForEach-Object { $_ }) -join " | "))
 
+$resolvedPrinterName = $PrinterName
+
+if ($PrinterName.StartsWith("\\")) {
+    $shareQueueName = ($PrinterName -split "\\")[-1]
+    $localQueue = $visiblePrinters | Where-Object { $_ -ieq $shareQueueName } | Select-Object -First 1
+
+    if ($localQueue) {
+        $resolvedPrinterName = [string]$localQueue
+        Write-Output "Resolved shared printer to local queue: $resolvedPrinterName"
+    }
+}
+
 $image = [System.Drawing.Image]::FromFile($ImagePath)
 $doc = New-Object System.Drawing.Printing.PrintDocument
 
 try {
-    $doc.PrinterSettings.PrinterName = $PrinterName
+    $doc.PrinterSettings.PrinterName = $resolvedPrinterName
     Write-Output "Printer valid for this user: $($doc.PrinterSettings.IsValid)"
 
     if (-not $doc.PrinterSettings.IsValid) {
-        throw "Printer queue is not valid or not available: $PrinterName"
+        throw "Printer queue is not valid or not available: $resolvedPrinterName"
     }
 
     $doc.DocumentName = "NBC Picker Tag"
@@ -49,7 +61,7 @@ try {
     })
 
     $doc.Print()
-    Write-Output "Printed image to $PrinterName"
+    Write-Output "Printed image to $resolvedPrinterName"
 } finally {
     $image.Dispose()
     $doc.Dispose()

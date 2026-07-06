@@ -1610,16 +1610,18 @@ function zebra_send_image_to_windows_driver($imagePath, $printerName, $printerLa
         . ' -PaperWidthHundredths ' . (int)$paperWidthHundredths
         . ' -PaperHeightHundredths ' . (int)$paperHeightHundredths;
 
+    $startedAt = microtime(true);
     $output = [];
     $exitCode = 0;
     exec($cmd . ' 2>&1', $output, $exitCode);
+    $elapsedSeconds = round(microtime(true) - $startedAt, 3);
 
     $message = trim(implode(' ', $output));
 
     if ($exitCode === 0) {
         return [
             'ok' => true,
-            'message' => 'Rendered label sent to ' . $printerLabel . ' through Windows driver. Output: ' . ($message !== '' ? $message : 'Print command completed.') . ' Bytes: ' . filesize($imagePath)
+            'message' => 'Rendered label sent to ' . $printerLabel . ' through Windows driver in ' . $elapsedSeconds . 's. Output: ' . ($message !== '' ? $message : 'Print command completed.') . ' Bytes: ' . filesize($imagePath)
         ];
     }
 
@@ -1629,7 +1631,7 @@ function zebra_send_image_to_windows_driver($imagePath, $printerName, $printerLa
 
     return [
         'ok' => false,
-        'message' => 'Unable to print rendered label on ' . $printerLabel . '. PowerShell output: ' . $message
+        'message' => 'Unable to print rendered label on ' . $printerLabel . ' after ' . $elapsedSeconds . 's. PowerShell output: ' . $message
     ];
 }
 
@@ -1868,15 +1870,18 @@ function zebra_print_pick_labels_to_target(array $items, $usePickerPrinter, $pri
 
         if ($useWindowsDriver) {
             $imagePath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'nitto_picker_' . uniqid('', true) . '.png';
+            $renderStartedAt = microtime(true);
             $renderResult = zebra_pick_label_png($item, $imagePath);
+            $renderSeconds = round(microtime(true) - $renderStartedAt, 3);
 
             if (empty($renderResult['ok'])) {
                 $failed++;
-                $messages[] = $renderResult['message'] ?? 'Unable to render Nitto picker label image.';
+                $messages[] = ($renderResult['message'] ?? 'Unable to render Nitto picker label image.') . ' Render time: ' . $renderSeconds . 's.';
                 continue;
             }
 
             $labelBytes = is_file($imagePath) ? (int)filesize($imagePath) : 0;
+            $messages[] = 'Rendered Nitto picker label image in ' . $renderSeconds . 's. Bytes: ' . $labelBytes;
         } else {
             $zpl = zebra_pick_label_zpl($item);
             $labelBytes = strlen((string)$zpl);
