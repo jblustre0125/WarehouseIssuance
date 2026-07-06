@@ -49,7 +49,6 @@ function Test-PrinterCandidate {
 
 $printerCandidates = New-Object System.Collections.ArrayList
 Add-PrinterCandidate $printerCandidates $PrinterName
-Add-PrinterCandidate $printerCandidates $FallbackPrinterName
 
 $fallbackShareQueueName = ""
 $fallbackServerName = ""
@@ -62,7 +61,6 @@ if ($FallbackPrinterName.StartsWith("\\")) {
 
 if ($PrinterName.StartsWith("\\")) {
     $shareQueueName = ($PrinterName -split "\\")[-1]
-    Add-PrinterCandidate $printerCandidates $shareQueueName
 } else {
     $shareQueueName = $PrinterName
 }
@@ -72,7 +70,6 @@ if ($fallbackShareQueueName -ne "" -and $shareQueueName -eq "") {
 }
 
 $visibleShareQueue = $visiblePrinters | Where-Object { $_ -like "\\*\$shareQueueName" } | Select-Object -First 1
-Add-PrinterCandidate $printerCandidates ([string]$visibleShareQueue)
 
 $visibleNamedQueue = $visiblePrinters | Where-Object { $_ -ieq $shareQueueName } | Select-Object -First 1
 Add-PrinterCandidate $printerCandidates ([string]$visibleNamedQueue)
@@ -85,6 +82,13 @@ if ($fallbackServerName -ne "" -and $fallbackShareQueueName -ne "") {
     $visiblePrinters |
         Where-Object { $_ -like "$fallbackShareQueueName on $fallbackServerName*" } |
         ForEach-Object { Add-PrinterCandidate $printerCandidates ([string]$_) }
+}
+
+Add-PrinterCandidate $printerCandidates ([string]$visibleShareQueue)
+Add-PrinterCandidate $printerCandidates $FallbackPrinterName
+
+if ($PrinterName.StartsWith("\\")) {
+    Add-PrinterCandidate $printerCandidates $shareQueueName
 }
 
 $resolvedPrinterName = ""
