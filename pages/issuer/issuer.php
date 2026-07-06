@@ -769,7 +769,45 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             }
         }
 
-        /* Tablet/WebView fix: keep desktop layout and keep right panel usable */
+        @media (max-width: 1366px) {
+            .main-content > .row.g-3 > .col-xl-4 {
+                order: -1;
+            }
+
+            .main-content > .row.g-3 > .col-xl-8,
+            .main-content > .row.g-3 > .col-xl-4 {
+                width: 100%;
+            }
+
+            #issuerSideTabs {
+                display: none;
+            }
+
+            #issuerSideTabs + .tab-content,
+            .content-card-body > .tab-content {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                gap: 14px;
+            }
+
+            .content-card-body > .tab-content > .tab-pane {
+                display: block !important;
+                opacity: 1 !important;
+                visibility: visible !important;
+            }
+
+            .content-card-body > .tab-content > .tab-pane.fade:not(.show) {
+                opacity: 1 !important;
+            }
+
+            .side-panel-list {
+                max-height: 320px;
+                overflow-y: auto;
+            }
+        }
+
+
+        /* WEBVIEW/TABLET FIX - keep desktop layout and allow right panel scrolling */
         @media (max-width: 1366px) and (min-width: 901px) {
             .main-content > .row.g-3 {
                 display: flex !important;
@@ -822,25 +860,22 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             }
         }
 
-        /* WebView right panel fix: request and stock lists stay scrollable instead of being clipped */
-        .col-xl-4 .content-card,
-        .col-xl-4 .content-card-body,
-        #issueRequestsPane,
-        #issuerStockPane {
-            overflow: visible !important;
-        }
-
         #requestList,
         #stockList {
             display: block !important;
             visibility: visible !important;
             opacity: 1 !important;
-            min-height: 260px !important;
-            max-height: calc(100vh - 335px) !important;
+            min-height: 180px !important;
+            max-height: 55vh !important;
             overflow-y: auto !important;
             overflow-x: hidden !important;
-            padding: 8px 4px 12px 0 !important;
+            padding: 8px 6px 12px 0 !important;
             -webkit-overflow-scrolling: touch;
+        }
+
+        #issuerStockPane,
+        #issueRequestsPane {
+            overflow: hidden !important;
         }
 
         #requestList .itr-card,
@@ -861,7 +896,6 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             min-height: auto !important;
             overflow: visible !important;
             white-space: normal !important;
-            cursor: default;
         }
 
         #requestList .qty-grid {
@@ -876,25 +910,18 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             min-height: 56px !important;
         }
 
-        /* Manual tab state used as a fallback when Bootstrap tabs do not behave well in WebView */
         #issueRequestsPane,
         #issuerStockPane {
             display: none !important;
         }
 
         #issueRequestsPane.webview-tab-active,
-        #issuerStockPane.webview-tab-active {
+        #issuerStockPane.webview-tab-active,
+        #issueRequestsPane.show.active,
+        #issuerStockPane.show.active {
             display: block !important;
             visibility: visible !important;
             opacity: 1 !important;
-        }
-
-        @media (max-width: 900px) {
-            #requestList,
-            #stockList {
-                max-height: 60vh !important;
-                overflow-y: auto !important;
-            }
         }
     </style>
 </head>
@@ -1250,13 +1277,72 @@ function lotStatusHtml(it) {
     return `<span class="badge text-bg-secondary">Not checked</span>`;
 }
 
+async function normalizeOpenDocuments(requests, documents) {
+    const grouped = groupRequestsByDocument(Array.isArray(requests) ? requests : []);
+
+    if (!Array.isArray(documents) || documents.length === 0) {
+        return grouped;
+    }
+
+    return documents.map(doc => {
+        const docNum = String(doc.doc_num || doc.itr_number || '').trim();
+        const reqNo = String(doc.request_no || '').trim();
+
+        const matchingGroup = grouped.find(g => {
+            const gDocNum = String(g.doc_num || g.itr_number || '').trim();
+            const gReqNo = String(g.request_no || '').trim();
+
+            return (docNum && gDocNum && gDocNum === docNum) ||
+                (reqNo && gReqNo && gReqNo === reqNo);
+        });
+
+        return {
+            ...doc,
+            doc_entry: doc.doc_entry || matchingGroup?.doc_entry || '',
+            doc_num: doc.doc_num || doc.itr_number || matchingGroup?.doc_num || '',
+            itr_number: doc.itr_number || doc.doc_num || matchingGroup?.itr_number || matchingGroup?.doc_num || '',
+            doc_date: doc.doc_date || matchingGroup?.doc_date || '',
+            needed_date: doc.needed_date || matchingGroup?.needed_date || '',
+            request_no: doc.request_no || matchingGroup?.request_no || '',
+            requested_by: doc.requested_by || matchingGroup?.requested_by || '',
+            remarks: doc.remarks || matchingGroup?.remarks || '',
+            line_count: Number(doc.line_count || matchingGroup?.line_count || 0),
+            requested_qty: Number(doc.requested_qty || matchingGroup?.requested_qty || 0),
+            open_qty: Number(doc.open_qty || matchingGroup?.open_qty || 0),
+            issued_qty: Number(doc.issued_qty || matchingGroup?.issued_qty || 0),
+            remaining_qty: Number(doc.remaining_qty || matchingGroup?.remaining_qty || 0),
+            warehouse_stock_qty: Number(doc.warehouse_stock_qty || matchingGroup?.warehouse_stock_qty || 0),
+            lines: Array.isArray(doc.lines) && doc.lines.length > 0
+                ? doc.lines
+                : (matchingGroup?.lines || [])
+        };
+    });
+}
+
 async function loadOpenRequests() {
     const status = document.getElementById('requestStatus');
     status.textContent = 'Refreshing requests...';
 
     try {
-        const res = await fetch('api/get_open_issue_requests.php', { cache: 'no-store' });
-        const data = await res.json();
+        const res = await fetch('api/get_open_issue_requests.php', {
+            cache: 'no-store',
+            credentials: 'same-origin'
+        });
+
+        const text = await res.text();
+        let data = null;
+
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            console.error('Invalid request API response:', text);
+            openRequests = [];
+            openDocuments = [];
+            document.getElementById('requestCount').textContent = '0';
+            renderRequests();
+            status.textContent = 'Request API returned invalid response.';
+            return;
+        }
 
         if (!data.ok) {
             openRequests = [];
@@ -1267,8 +1353,8 @@ async function loadOpenRequests() {
             return;
         }
 
-        openRequests = data.requests || [];
-        openDocuments = data.documents || groupRequestsByDocument(openRequests);
+        openRequests = Array.isArray(data.requests) ? data.requests : [];
+        openDocuments = normalizeOpenDocuments(openRequests, data.documents);
         document.getElementById('requestCount').textContent = openDocuments.length;
 
         renderRequests();
@@ -1282,8 +1368,11 @@ async function loadOpenRequests() {
         status.textContent = openDocuments.length + ' open request(s), ' + openRequests.length + ' line(s), updated ' + stamp;
     } catch (e) {
         console.error('loadOpenRequests failed:', e);
+        openRequests = [];
+        openDocuments = [];
         document.getElementById('requestCount').textContent = '0';
-        status.textContent = 'Unable to load requests. Check WHPOKAYOKE connection, login session, or API path.';
+        renderRequests();
+        status.textContent = 'Unable to load requests. Check WHPOKAYOKE connection or login session.';
     }
 }
 
@@ -1308,11 +1397,10 @@ async function loadStocks() {
         renderStocks();
         status.textContent = (data.warehouses || []).join(', ') + ' | ' + stockRows.length + ' stocked item(s)';
     } catch (e) {
-        console.error('loadStocks failed:', e);
         stockRows = [];
         document.getElementById('stockCount').textContent = '0';
         renderStocks();
-        status.textContent = 'Unable to load stock. Check SAP connection, login session, or API path.';
+        status.textContent = 'Unable to load stock. Check SAP connection or login session.';
     }
 }
 
@@ -1474,7 +1562,7 @@ function renderRequests() {
             <div class="itr-card${docActive}">
                 <div class="itr-header">
                     <div class="d-flex justify-content-between align-items-start gap-2">
-                        <div class="min-w-0 flex-grow-1">
+                        <div class="min-w-0">
                             <div class="request-title">${esc(doc.request_no || doc.doc_num)}</div>
                             <div class="request-meta">ITR ${esc(doc.itr_number || doc.doc_num)} | Needed ${esc(doc.needed_date || doc.doc_date)} | ${esc(doc.line_count)} item(s)</div>
                             <div class="request-meta">By ${esc(doc.requested_by || '')}${doc.remarks ? ' | ' + esc(doc.remarks) : ''}</div>
@@ -1614,14 +1702,27 @@ function loadDocumentItemsConfirmed(docIdx) {
     const doc = openDocuments[docIdx];
 
     if (!doc) {
+        showMessage('Request document was not found.');
+        return;
+    }
+
+    if (!Array.isArray(doc.lines) || doc.lines.length === 0) {
+        console.error('Selected document has no line data:', doc);
+        showMessage('This request has no line data. Please refresh the Warehouse panel.');
+        return;
+    }
+
+    const sourceLines = doc.lines.filter(req => Number(req.remaining_qty || req.open_qty || req.requested_qty || 0) > 0);
+
+    if (sourceLines.length === 0) {
+        console.error('Selected document lines have no remaining quantity:', doc.lines);
+        showMessage('This request has no remaining quantity to issue.');
         return;
     }
 
     selectedDocument = doc;
 
-    items = doc.lines
-        .filter(req => Number(req.remaining_qty) > 0)
-        .flatMap(req => splitIssueItemByPack(buildIssueItemFromRequest(req)));
+    items = sourceLines.flatMap(req => splitIssueItemByPack(buildIssueItemFromRequest(req)));
 
     document.getElementById('selectedRequestBox').classList.remove('d-none');
     document.getElementById('selectedRequestTitle').textContent = (doc.request_no || 'Request') + ' / ITR ' + (doc.itr_number || doc.doc_num);
@@ -1630,11 +1731,7 @@ function loadDocumentItemsConfirmed(docIdx) {
     renderRequests();
     render();
 
-    // Keep the loaded issuance table visible after selecting a request in WebView/tablet.
-    const tableWrap = document.querySelector('.issuer-table-wrap');
-    if (tableWrap) {
-        tableWrap.scrollTop = 0;
-    }
+    console.log('Loaded table items:', items);
 }
 
 function clearSelectedRequest() {
@@ -2464,14 +2561,14 @@ const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebarToggle');
 const sidebarBackdrop = document.getElementById('sidebarBackdrop');
 
-if (sidebarToggle && sidebar && sidebarBackdrop) {
+if (sidebarToggle) {
     sidebarToggle.addEventListener('click', function () {
         sidebar.classList.add('show');
         sidebarBackdrop.classList.add('show');
     });
 }
 
-if (sidebarBackdrop && sidebar) {
+if (sidebarBackdrop) {
     sidebarBackdrop.addEventListener('click', function () {
         sidebar.classList.remove('show');
         sidebarBackdrop.classList.remove('show');
@@ -2497,15 +2594,14 @@ function setIssuerSideTab(tabName) {
         stockTab.classList.add('active');
         stockPane.classList.add('show', 'active', 'webview-tab-active');
         renderStocks();
-        return;
+    } else {
+        requestTab.classList.add('active');
+        requestPane.classList.add('show', 'active', 'webview-tab-active');
+        renderRequests();
     }
-
-    requestTab.classList.add('active');
-    requestPane.classList.add('show', 'active', 'webview-tab-active');
-    renderRequests();
 }
 
-function initIssuerPage() {
+document.addEventListener('DOMContentLoaded', function () {
     const requestTab = document.getElementById('issueRequestsTab');
     const stockTab = document.getElementById('issuerStockTab');
 
@@ -2527,13 +2623,7 @@ function initIssuerPage() {
 
     setIssuerSideTab('requests');
     refreshSideTabs();
-}
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initIssuerPage);
-} else {
-    initIssuerPage();
-}
+});
 
 if (window.createRefreshController) {
     const issuerRefresh = window.createRefreshController([
