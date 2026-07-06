@@ -769,9 +769,8 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             }
         }
 
-        /* WebView / tablet landscape: keep the same desktop layout.
-           Left = issuance table, Right = warehouse request/stock panel.
-           Do not override Bootstrap tab-pane display because it breaks Requests/Stock tabs. */
+        /* WebView/tablet landscape: keep the same desktop layout.
+           Issuance details stay on the left and Warehouse requests stay on the right. */
         @media (max-width: 1366px) and (min-width: 901px) {
             .main-content > .row.g-3 {
                 display: flex !important;
@@ -801,43 +800,16 @@ $currentRole = strtolower($currentUser['role'] ?? '');
                 display: block !important;
             }
 
-            .requests-panel,
-            .side-panel-list {
-                max-height: calc(100vh - 285px) !important;
-                overflow-y: auto !important;
-                overflow-x: hidden !important;
-                padding-right: 4px !important;
+            .content-card-body > .tab-content > .tab-pane {
+                display: none !important;
             }
 
-            #requestList {
-                min-height: 180px !important;
-            }
-
-            #requestList .itr-card {
+            .content-card-body > .tab-content > .tab-pane.active,
+            .content-card-body > .tab-content > .tab-pane.show.active,
+            .content-card-body > .tab-content > .tab-pane.webview-tab-active {
                 display: block !important;
-                visibility: visible !important;
                 opacity: 1 !important;
-                width: 100% !important;
-                min-height: unset !important;
-                height: auto !important;
-                overflow: visible !important;
-            }
-
-            #requestList .itr-header {
-                display: block !important;
                 visibility: visible !important;
-                opacity: 1 !important;
-                width: 100% !important;
-                height: auto !important;
-                min-height: unset !important;
-                overflow: visible !important;
-                white-space: normal !important;
-            }
-
-            #requestList .qty-grid {
-                display: grid !important;
-                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-                gap: 7px !important;
             }
 
             .issuer-table-wrap {
@@ -852,12 +824,31 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             }
         }
 
-        /* Final safety for WebView: cards must never be clipped/collapsed. */
+        /* WebView fix: do not let the right panel clip request or stock cards. */
+        .col-xl-4 .content-card,
+        .col-xl-4 .content-card-body,
+        #issueRequestsPane,
+        #issuerStockPane {
+            overflow: visible !important;
+        }
+
         #requestList,
         #stockList {
             display: block !important;
             visibility: visible !important;
             opacity: 1 !important;
+            min-height: 260px !important;
+            max-height: none !important;
+            overflow-y: visible !important;
+            overflow-x: hidden !important;
+            padding: 8px 4px 12px 0 !important;
+        }
+
+        .requests-panel,
+        .side-panel-list {
+            max-height: none !important;
+            overflow-y: visible !important;
+            overflow-x: hidden !important;
         }
 
         #requestList .itr-card,
@@ -866,14 +857,43 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             visibility: visible !important;
             opacity: 1 !important;
             height: auto !important;
-            max-height: none !important;
+            min-height: auto !important;
             overflow: visible !important;
+            margin-bottom: 12px !important;
         }
 
         #requestList .itr-header {
+            display: block !important;
+            width: 100% !important;
             height: auto !important;
-            max-height: none !important;
+            min-height: auto !important;
             overflow: visible !important;
+            white-space: normal !important;
+        }
+
+        #requestList .qty-grid {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 7px !important;
+            margin-top: 12px !important;
+        }
+
+        #requestList .qty-box {
+            display: block !important;
+            min-height: 56px !important;
+        }
+
+        /* The side tabs are controlled by simple JS below, not Bootstrap's tab plugin. */
+        #issueRequestsPane,
+        #issuerStockPane {
+            display: none !important;
+        }
+
+        #issueRequestsPane.webview-tab-active,
+        #issuerStockPane.webview-tab-active {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
         }
     </style>
 </head>
@@ -1260,12 +1280,8 @@ async function loadOpenRequests() {
 
         status.textContent = openDocuments.length + ' open request(s), ' + openRequests.length + ' line(s), updated ' + stamp;
     } catch (e) {
-        console.error('loadOpenRequests failed:', e);
-        openRequests = [];
-        openDocuments = [];
         document.getElementById('requestCount').textContent = '0';
-        renderRequests();
-        status.textContent = 'Unable to load requests. Check WHPOKAYOKE connection, login session, or API path.';
+        status.textContent = 'Unable to load requests. Check WHPOKAYOKE connection or login session.';
     }
 }
 
@@ -1290,11 +1306,10 @@ async function loadStocks() {
         renderStocks();
         status.textContent = (data.warehouses || []).join(', ') + ' | ' + stockRows.length + ' stocked item(s)';
     } catch (e) {
-        console.error('loadStocks failed:', e);
         stockRows = [];
         document.getElementById('stockCount').textContent = '0';
         renderStocks();
-        status.textContent = 'Unable to load stock. Check SAP connection, login session, or API path.';
+        status.textContent = 'Unable to load stock. Check SAP connection or login session.';
     }
 }
 
@@ -1454,14 +1469,17 @@ function renderRequests() {
 
         list.insertAdjacentHTML('beforeend', `
             <div class="itr-card${docActive}">
-                <button type="button" class="itr-header" onclick="loadDocumentItems(${docIdx})">
+                <div class="itr-header">
                     <div class="d-flex justify-content-between align-items-start gap-2">
-                        <div>
+                        <div class="min-w-0">
                             <div class="request-title">${esc(doc.request_no || doc.doc_num)}</div>
                             <div class="request-meta">ITR ${esc(doc.itr_number || doc.doc_num)} | Needed ${esc(doc.needed_date || doc.doc_date)} | ${esc(doc.line_count)} item(s)</div>
                             <div class="request-meta">By ${esc(doc.requested_by || '')}${doc.remarks ? ' | ' + esc(doc.remarks) : ''}</div>
                         </div>
-                        <span class="badge text-bg-primary rounded-pill">Load</span>
+
+                        <button type="button" class="btn btn-sm btn-primary rounded-pill" onclick="loadDocumentItems(${docIdx})">
+                            Load
+                        </button>
                     </div>
 
                     <div class="qty-grid">
@@ -1487,7 +1505,7 @@ function renderRequests() {
                     </div>
 
                     ${requestLotListHtml(doc)}
-                </button>
+                </div>
             </div>
         `);
     });
@@ -2452,19 +2470,55 @@ if (sidebarBackdrop && sidebar) {
     });
 }
 
-async function initialIssuerLoad() {
-    try {
-        await refreshSideTabs();
-    } catch (e) {
-        console.error('Initial issuer load failed:', e);
+function setIssuerSideTab(tabName) {
+    const requestTab = document.getElementById('issueRequestsTab');
+    const stockTab = document.getElementById('issuerStockTab');
+    const requestPane = document.getElementById('issueRequestsPane');
+    const stockPane = document.getElementById('issuerStockPane');
+
+    if (!requestTab || !stockTab || !requestPane || !stockPane) {
+        return;
+    }
+
+    requestTab.classList.remove('active');
+    stockTab.classList.remove('active');
+    requestPane.classList.remove('show', 'active', 'webview-tab-active');
+    stockPane.classList.remove('show', 'active', 'webview-tab-active');
+
+    if (tabName === 'stock') {
+        stockTab.classList.add('active');
+        stockPane.classList.add('show', 'active', 'webview-tab-active');
+        renderStocks();
+    } else {
+        requestTab.classList.add('active');
+        requestPane.classList.add('show', 'active', 'webview-tab-active');
+        renderRequests();
     }
 }
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initialIssuerLoad);
-} else {
-    initialIssuerLoad();
-}
+document.addEventListener('DOMContentLoaded', function () {
+    const requestTab = document.getElementById('issueRequestsTab');
+    const stockTab = document.getElementById('issuerStockTab');
+
+    if (requestTab) {
+        requestTab.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            setIssuerSideTab('requests');
+        });
+    }
+
+    if (stockTab) {
+        stockTab.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            setIssuerSideTab('stock');
+        });
+    }
+
+    setIssuerSideTab('requests');
+    refreshSideTabs();
+});
 
 if (window.createRefreshController) {
     const issuerRefresh = window.createRefreshController([
@@ -2474,8 +2528,7 @@ if (window.createRefreshController) {
 
     issuerRefresh.scheduleAll();
 } else {
-    window.setInterval(loadOpenRequests, 60000);
-    window.setInterval(loadStocks, 120000);
+    console.warn('createRefreshController not found. Using direct refresh only.');
 }
 </script>
 
