@@ -769,8 +769,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             }
         }
 
-        /* WebView/tablet landscape: keep the same desktop layout.
-           Issuance details stay on the left and Warehouse requests stay on the right. */
+        /* Tablet/WebView fix: keep desktop layout and keep right panel usable */
         @media (max-width: 1366px) and (min-width: 901px) {
             .main-content > .row.g-3 {
                 display: flex !important;
@@ -804,7 +803,6 @@ $currentRole = strtolower($currentUser['role'] ?? '');
                 display: none !important;
             }
 
-            .content-card-body > .tab-content > .tab-pane.active,
             .content-card-body > .tab-content > .tab-pane.show.active,
             .content-card-body > .tab-content > .tab-pane.webview-tab-active {
                 display: block !important;
@@ -819,12 +817,12 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             }
 
             .issuer-table {
-                min-width: 1000px;
+                min-width: 980px;
                 table-layout: auto;
             }
         }
 
-        /* WebView fix: do not let the right panel clip request or stock cards. */
+        /* WebView right panel fix: request and stock lists stay scrollable instead of being clipped */
         .col-xl-4 .content-card,
         .col-xl-4 .content-card-body,
         #issueRequestsPane,
@@ -838,17 +836,11 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             visibility: visible !important;
             opacity: 1 !important;
             min-height: 260px !important;
-            max-height: none !important;
-            overflow-y: visible !important;
+            max-height: calc(100vh - 335px) !important;
+            overflow-y: auto !important;
             overflow-x: hidden !important;
             padding: 8px 4px 12px 0 !important;
-        }
-
-        .requests-panel,
-        .side-panel-list {
-            max-height: none !important;
-            overflow-y: visible !important;
-            overflow-x: hidden !important;
+            -webkit-overflow-scrolling: touch;
         }
 
         #requestList .itr-card,
@@ -869,6 +861,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             min-height: auto !important;
             overflow: visible !important;
             white-space: normal !important;
+            cursor: default;
         }
 
         #requestList .qty-grid {
@@ -883,7 +876,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             min-height: 56px !important;
         }
 
-        /* The side tabs are controlled by simple JS below, not Bootstrap's tab plugin. */
+        /* Manual tab state used as a fallback when Bootstrap tabs do not behave well in WebView */
         #issueRequestsPane,
         #issuerStockPane {
             display: none !important;
@@ -894,6 +887,14 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             display: block !important;
             visibility: visible !important;
             opacity: 1 !important;
+        }
+
+        @media (max-width: 900px) {
+            #requestList,
+            #stockList {
+                max-height: 60vh !important;
+                overflow-y: auto !important;
+            }
         }
     </style>
 </head>
@@ -1280,8 +1281,9 @@ async function loadOpenRequests() {
 
         status.textContent = openDocuments.length + ' open request(s), ' + openRequests.length + ' line(s), updated ' + stamp;
     } catch (e) {
+        console.error('loadOpenRequests failed:', e);
         document.getElementById('requestCount').textContent = '0';
-        status.textContent = 'Unable to load requests. Check WHPOKAYOKE connection or login session.';
+        status.textContent = 'Unable to load requests. Check WHPOKAYOKE connection, login session, or API path.';
     }
 }
 
@@ -1306,10 +1308,11 @@ async function loadStocks() {
         renderStocks();
         status.textContent = (data.warehouses || []).join(', ') + ' | ' + stockRows.length + ' stocked item(s)';
     } catch (e) {
+        console.error('loadStocks failed:', e);
         stockRows = [];
         document.getElementById('stockCount').textContent = '0';
         renderStocks();
-        status.textContent = 'Unable to load stock. Check SAP connection or login session.';
+        status.textContent = 'Unable to load stock. Check SAP connection, login session, or API path.';
     }
 }
 
@@ -1471,13 +1474,12 @@ function renderRequests() {
             <div class="itr-card${docActive}">
                 <div class="itr-header">
                     <div class="d-flex justify-content-between align-items-start gap-2">
-                        <div class="min-w-0">
+                        <div class="min-w-0 flex-grow-1">
                             <div class="request-title">${esc(doc.request_no || doc.doc_num)}</div>
                             <div class="request-meta">ITR ${esc(doc.itr_number || doc.doc_num)} | Needed ${esc(doc.needed_date || doc.doc_date)} | ${esc(doc.line_count)} item(s)</div>
                             <div class="request-meta">By ${esc(doc.requested_by || '')}${doc.remarks ? ' | ' + esc(doc.remarks) : ''}</div>
                         </div>
-
-                        <button type="button" class="btn btn-sm btn-primary rounded-pill" onclick="loadDocumentItems(${docIdx})">
+                        <button type="button" class="btn btn-sm btn-primary rounded-pill flex-shrink-0" onclick="loadDocumentItems(${docIdx})">
                             Load
                         </button>
                     </div>
@@ -1627,6 +1629,12 @@ function loadDocumentItemsConfirmed(docIdx) {
 
     renderRequests();
     render();
+
+    // Keep the loaded issuance table visible after selecting a request in WebView/tablet.
+    const tableWrap = document.querySelector('.issuer-table-wrap');
+    if (tableWrap) {
+        tableWrap.scrollTop = 0;
+    }
 }
 
 function clearSelectedRequest() {
@@ -2489,14 +2497,15 @@ function setIssuerSideTab(tabName) {
         stockTab.classList.add('active');
         stockPane.classList.add('show', 'active', 'webview-tab-active');
         renderStocks();
-    } else {
-        requestTab.classList.add('active');
-        requestPane.classList.add('show', 'active', 'webview-tab-active');
-        renderRequests();
+        return;
     }
+
+    requestTab.classList.add('active');
+    requestPane.classList.add('show', 'active', 'webview-tab-active');
+    renderRequests();
 }
 
-document.addEventListener('DOMContentLoaded', function () {
+function initIssuerPage() {
     const requestTab = document.getElementById('issueRequestsTab');
     const stockTab = document.getElementById('issuerStockTab');
 
@@ -2518,7 +2527,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     setIssuerSideTab('requests');
     refreshSideTabs();
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initIssuerPage);
+} else {
+    initIssuerPage();
+}
 
 if (window.createRefreshController) {
     const issuerRefresh = window.createRefreshController([
