@@ -769,14 +769,31 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             }
         }
 
-        @media (max-width: 1366px) {
-            .main-content > .row.g-3 > .col-xl-4 {
-                order: -1;
+        /* Tablet/WebView landscape fix:
+           Keep the desktop layout:
+           - Issuance Details on the left
+           - Warehouse request panel on the right
+           - Keep Bootstrap tabs normal so table/request data loads correctly
+        */
+        @media (max-width: 1366px) and (min-width: 901px) {
+            .main-content > .row.g-3 {
+                display: flex !important;
+                flex-wrap: nowrap !important;
+                align-items: flex-start !important;
             }
 
-            .main-content > .row.g-3 > .col-xl-8,
+            .main-content > .row.g-3 > .col-xl-8 {
+                flex: 0 0 68% !important;
+                max-width: 68% !important;
+                width: 68% !important;
+                order: 1 !important;
+            }
+
             .main-content > .row.g-3 > .col-xl-4 {
-                width: 100%;
+                flex: 0 0 32% !important;
+                max-width: 32% !important;
+                width: 32% !important;
+                order: 2 !important;
             }
 
             #issuerSideTabs {
@@ -791,24 +808,18 @@ $currentRole = strtolower($currentUser['role'] ?? '');
                 display: none !important;
             }
 
-            .content-card-body > .tab-content > .tab-pane.show.active,
-            .content-card-body > .tab-content > .tab-pane.active {
+            .content-card-body > .tab-content > .tab-pane.active,
+            .content-card-body > .tab-content > .tab-pane.show.active {
                 display: block !important;
                 opacity: 1 !important;
                 visibility: visible !important;
             }
 
-            #requestList,
-            #stockList,
             .requests-panel,
             .side-panel-list {
-                max-height: none !important;
-                overflow-y: visible !important;
-                height: auto !important;
-                min-height: 80px !important;
-                display: block !important;
-                visibility: visible !important;
-                opacity: 1 !important;
+                max-height: calc(100vh - 300px) !important;
+                overflow-y: auto !important;
+                overflow-x: hidden !important;
             }
 
             #requestList .itr-card,
@@ -817,33 +828,17 @@ $currentRole = strtolower($currentUser['role'] ?? '');
                 visibility: visible !important;
                 opacity: 1 !important;
             }
-        }
 
-        /* WebView / tablet fix: keep Bootstrap tabs, request cards, stock cards, and table data visible. */
-        #requestList,
-        #stockList,
-        .requests-panel,
-        .side-panel-list {
-            visibility: visible !important;
-            opacity: 1 !important;
-        }
+            .issuer-table-wrap {
+                max-height: calc(100vh - 360px) !important;
+                overflow-y: auto !important;
+                overflow-x: auto !important;
+            }
 
-        #requestList .itr-card,
-        #stockList .stock-card {
-            display: block !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-        }
-
-        .tab-content > .tab-pane {
-            display: none;
-        }
-
-        .tab-content > .tab-pane.show.active,
-        .tab-content > .tab-pane.active {
-            display: block !important;
-            visibility: visible !important;
-            opacity: 1 !important;
+            .issuer-table {
+                min-width: 1000px;
+                table-layout: auto;
+            }
         }
     </style>
 </head>
