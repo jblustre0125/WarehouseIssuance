@@ -75,12 +75,12 @@ $visibleNamedQueue = $visiblePrinters | Where-Object { $_ -ieq $shareQueueName }
 Add-PrinterCandidate $printerCandidates ([string]$visibleNamedQueue)
 
 $visiblePrinters |
-    Where-Object { $_ -like "$shareQueueName*" } |
+    Where-Object { $_ -like "$shareQueueName*" -and $_ -notlike "*(redirected*)" } |
     ForEach-Object { Add-PrinterCandidate $printerCandidates ([string]$_) }
 
 if ($fallbackServerName -ne "" -and $fallbackShareQueueName -ne "") {
     $visiblePrinters |
-        Where-Object { $_ -like "$fallbackShareQueueName on $fallbackServerName*" } |
+        Where-Object { $_ -like "$fallbackShareQueueName on $fallbackServerName*" -and $_ -notlike "*(redirected*)" } |
         ForEach-Object { Add-PrinterCandidate $printerCandidates ([string]$_) }
 }
 
