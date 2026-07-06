@@ -769,12 +769,9 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             }
         }
 
-        /* Tablet/WebView landscape fix:
-           Keep the desktop layout:
-           - Issuance Details on the left
-           - Warehouse request panel on the right
-           - Keep Bootstrap tabs normal so records can render correctly
-        */
+        /* WebView / tablet landscape: keep the same desktop layout.
+           Left = issuance table, Right = warehouse request/stock panel.
+           Do not override Bootstrap tab-pane display because it breaks Requests/Stock tabs. */
         @media (max-width: 1366px) and (min-width: 901px) {
             .main-content > .row.g-3 {
                 display: flex !important;
@@ -804,22 +801,43 @@ $currentRole = strtolower($currentUser['role'] ?? '');
                 display: block !important;
             }
 
-            .content-card-body > .tab-content > .tab-pane {
-                display: none !important;
-            }
-
-            .content-card-body > .tab-content > .tab-pane.active,
-            .content-card-body > .tab-content > .tab-pane.show.active {
-                display: block !important;
-                opacity: 1 !important;
-                visibility: visible !important;
-            }
-
             .requests-panel,
             .side-panel-list {
-                max-height: calc(100vh - 300px) !important;
+                max-height: calc(100vh - 285px) !important;
                 overflow-y: auto !important;
                 overflow-x: hidden !important;
+                padding-right: 4px !important;
+            }
+
+            #requestList {
+                min-height: 180px !important;
+            }
+
+            #requestList .itr-card {
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                width: 100% !important;
+                min-height: unset !important;
+                height: auto !important;
+                overflow: visible !important;
+            }
+
+            #requestList .itr-header {
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                width: 100% !important;
+                height: auto !important;
+                min-height: unset !important;
+                overflow: visible !important;
+                white-space: normal !important;
+            }
+
+            #requestList .qty-grid {
+                display: grid !important;
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                gap: 7px !important;
             }
 
             .issuer-table-wrap {
@@ -834,71 +852,28 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             }
         }
 
-        /* WebView fix: the request count can load while the generated request card is hidden/collapsed.
-           Force the generated request cards and stock cards to stay visible without changing the JS logic. */
-        #requestList {
+        /* Final safety for WebView: cards must never be clipped/collapsed. */
+        #requestList,
+        #stockList {
             display: block !important;
             visibility: visible !important;
             opacity: 1 !important;
-            min-height: 140px !important;
-            height: auto !important;
-            max-height: calc(100vh - 330px) !important;
-            overflow-y: auto !important;
-            overflow-x: hidden !important;
-            padding-top: 8px !important;
         }
 
-        #requestList .itr-card {
-            display: block !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-            position: relative !important;
-            width: 100% !important;
-            min-height: 120px !important;
-            background: #ffffff !important;
-            border: 1px solid #0d6efd !important;
-            border-radius: 14px !important;
-            margin-bottom: 10px !important;
-            overflow: visible !important;
-        }
-
-        #requestList .itr-header {
-            display: block !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-            width: 100% !important;
-            min-height: 115px !important;
-            background: #ffffff !important;
-            color: #111827 !important;
-            padding: 14px !important;
-            border: 0 !important;
-            text-align: left !important;
-        }
-
-        #requestList .request-title,
-        #requestList .request-meta,
-        #requestList .qty-grid,
-        #requestList .qty-box,
-        #requestList .qty-box .label,
-        #requestList .qty-box .value,
+        #requestList .itr-card,
         #stockList .stock-card {
             display: block !important;
             visibility: visible !important;
             opacity: 1 !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
         }
 
-        #requestList .qty-grid {
-            display: grid !important;
-            grid-template-columns: repeat(2, 1fr) !important;
-            gap: 7px !important;
-            margin-top: 12px !important;
-        }
-
-        #requestList .qty-box {
-            background: #f8fafc !important;
-            border: 1px solid #e5eaf2 !important;
-            border-radius: 10px !important;
-            padding: 8px !important;
+        #requestList .itr-header {
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
         }
     </style>
 </head>
@@ -1285,8 +1260,12 @@ async function loadOpenRequests() {
 
         status.textContent = openDocuments.length + ' open request(s), ' + openRequests.length + ' line(s), updated ' + stamp;
     } catch (e) {
+        console.error('loadOpenRequests failed:', e);
+        openRequests = [];
+        openDocuments = [];
         document.getElementById('requestCount').textContent = '0';
-        status.textContent = 'Unable to load requests. Check WHPOKAYOKE connection or login session.';
+        renderRequests();
+        status.textContent = 'Unable to load requests. Check WHPOKAYOKE connection, login session, or API path.';
     }
 }
 
@@ -1311,10 +1290,11 @@ async function loadStocks() {
         renderStocks();
         status.textContent = (data.warehouses || []).join(', ') + ' | ' + stockRows.length + ' stocked item(s)';
     } catch (e) {
+        console.error('loadStocks failed:', e);
         stockRows = [];
         document.getElementById('stockCount').textContent = '0';
         renderStocks();
-        status.textContent = 'Unable to load stock. Check SAP connection or login session.';
+        status.textContent = 'Unable to load stock. Check SAP connection, login session, or API path.';
     }
 }
 
@@ -2458,42 +2438,44 @@ const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebarToggle');
 const sidebarBackdrop = document.getElementById('sidebarBackdrop');
 
-if (sidebarToggle) {
+if (sidebarToggle && sidebar && sidebarBackdrop) {
     sidebarToggle.addEventListener('click', function () {
         sidebar.classList.add('show');
         sidebarBackdrop.classList.add('show');
     });
 }
 
-if (sidebarBackdrop) {
+if (sidebarBackdrop && sidebar) {
     sidebarBackdrop.addEventListener('click', function () {
         sidebar.classList.remove('show');
         sidebarBackdrop.classList.remove('show');
     });
 }
 
-/* Load request records immediately.
-   This keeps the page working even if app-refresh.js does not start inside Android WebView. */
-function bootIssuerPage() {
-    refreshSideTabs();
-
-    if (window.createRefreshController) {
-        const issuerRefresh = window.createRefreshController([
-            { name: 'issuerRequests', fn: loadOpenRequests, intervalMs: 60000 },
-            { name: 'issuerStocks', fn: loadStocks, intervalMs: 120000 }
-        ]);
-
-        issuerRefresh.scheduleAll();
-    } else {
-        window.setInterval(loadOpenRequests, 60000);
-        window.setInterval(loadStocks, 120000);
+async function initialIssuerLoad() {
+    try {
+        await refreshSideTabs();
+    } catch (e) {
+        console.error('Initial issuer load failed:', e);
     }
 }
 
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bootIssuerPage);
+    document.addEventListener('DOMContentLoaded', initialIssuerLoad);
 } else {
-    bootIssuerPage();
+    initialIssuerLoad();
+}
+
+if (window.createRefreshController) {
+    const issuerRefresh = window.createRefreshController([
+        { name: 'issuerRequests', fn: loadOpenRequests, intervalMs: 60000 },
+        { name: 'issuerStocks', fn: loadStocks, intervalMs: 120000 }
+    ]);
+
+    issuerRefresh.scheduleAll();
+} else {
+    window.setInterval(loadOpenRequests, 60000);
+    window.setInterval(loadStocks, 120000);
 }
 </script>
 
