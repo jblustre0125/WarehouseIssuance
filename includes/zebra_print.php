@@ -163,6 +163,16 @@ function zebra_pick_height_hundredths()
     return defined('PICK_TAG_HEIGHT_HUNDREDTHS') ? max(1, (int)PICK_TAG_HEIGHT_HUNDREDTHS) : 300;
 }
 
+function zebra_pick_image_scale()
+{
+    return defined('PICK_TAG_IMAGE_SCALE') ? max(1, min(3, (int)PICK_TAG_IMAGE_SCALE)) : 2;
+}
+
+function zebra_pick_image_png_compression()
+{
+    return defined('PICK_TAG_IMAGE_PNG_COMPRESSION') ? max(0, min(9, (int)PICK_TAG_IMAGE_PNG_COMPRESSION)) : 6;
+}
+
 function zebra_pick_printer_key($value = null)
 {
     $key = strtolower(trim((string)($value ?? '')));
@@ -605,10 +615,10 @@ function zebra_font_path()
 function zebra_gd_font_size($font)
 {
     /*
-        High-resolution NITTO image output.
-        The 3-inch label is rendered at 16 dots/mm, about 1218 x 1218 px.
-        These font sizes are intentionally large so numbers remain readable.
+        Font sizes are based on the original 1218px render. Scale them down
+        when generating a lighter 609px image so the physical layout stays stable.
     */
+    $scaleFactor = zebra_pick_image_scale() / 2;
     $map = [
         1 => 16,
         2 => 18,
@@ -621,7 +631,9 @@ function zebra_gd_font_size($font)
         9 => 54,
     ];
 
-    return $map[(int)$font] ?? 22;
+    $size = $map[(int)$font] ?? 22;
+
+    return max(8, (int)round($size * $scaleFactor));
 }
 
 function zebra_gd_text($image, $x, $y, $text, $font = 3)
@@ -1288,12 +1300,13 @@ function zebra_pick_label_png(array $item, $path)
     }
 
     /*
-        3 x 3 inches at the NITTO driver resolution shown in your settings:
-        16 dots/mm x 76.2 mm = about 1219 dots.
-        Rendering at native print size keeps QR modules sharper for scanners.
+        Design coordinates are based on a 609px / 203 DPI 3-inch label.
+        Use PICK_TAG_IMAGE_SCALE = 2 only if the printer needs the older
+        1218px high-resolution image; scale 1 spools much faster on shared queues.
     */
-    $width = 1218;
-    $height = 1218;
+    $s = zebra_pick_image_scale();
+    $width = 609 * $s;
+    $height = 609 * $s;
     $image = imagecreatetruecolor($width, $height);
     $white = imagecolorallocate($image, 255, 255, 255);
     $black = imagecolorallocate($image, 0, 0, 0);
@@ -1324,7 +1337,6 @@ function zebra_pick_label_png(array $item, $path)
     }
 
     /* Helper scale function. Design coordinates are based on a 609px layout. */
-    $s = 2;
     $p = static fn($v): int => (int)round($v * $s);
 
     /* Outer border and header. */
@@ -1384,7 +1396,7 @@ function zebra_pick_label_png(array $item, $path)
     zebra_gd_text_heavy($image, $p(24), $p(566), 'PART NAME', 2);
     zebra_gd_wrapped_text($image, $p(120), $p(566), $p(455), $p(24), $partName, 3, 1, true);
 
-    $ok = imagepng($image, $path, 0);
+    $ok = imagepng($image, $path, zebra_pick_image_png_compression());
     imagedestroy($image);
 
     if (!$ok) {
@@ -1396,7 +1408,7 @@ function zebra_pick_label_png(array $item, $path)
 
     return [
         'ok' => true,
-        'message' => 'Nitto picker 3-inch high-resolution balanced-font label image rendered.'
+        'message' => 'Nitto picker 3-inch label image rendered at ' . $width . 'x' . $height . 'px.'
     ];
 }
 

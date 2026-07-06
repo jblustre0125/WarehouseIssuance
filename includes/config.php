@@ -64,6 +64,8 @@ define('PICK_TAG_PRINTER_SHARE', '\\\\Nbcp-lt-042\\NITTO DURA-SL-400');
 
 define('PICK_TAG_WIDTH_HUNDREDTHS', 300);  // 3.00 inches
 define('PICK_TAG_HEIGHT_HUNDREDTHS', 300); // 3.00 inches
+define('PICK_TAG_IMAGE_SCALE', 1);         // 1 = 609px/203 DPI, 2 = 1218px/high-res
+define('PICK_TAG_IMAGE_PNG_COMPRESSION', 6);
 
 /*
 | Pause between pick tags so the picker can tear each tag off.
