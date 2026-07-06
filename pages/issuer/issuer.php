@@ -648,18 +648,16 @@ $currentRole = strtolower($currentUser['role'] ?? '');
 
         .lot-suggestion-popup {
             display: none;
-            position: absolute;
-            left: 0;
-            right: 0;
-            top: calc(100% + 4px);
-            z-index: 3000;
+            position: fixed;
+            z-index: 99999;
             background: #ffffff;
             border: 1px solid #bfdbfe;
             border-radius: 10px;
-            box-shadow: 0 12px 28px rgba(15, 23, 42, .16);
-            max-height: 180px;
+            box-shadow: 0 12px 28px rgba(15, 23, 42, .18);
+            max-height: 220px;
             overflow-y: auto;
             padding: 5px;
+            min-width: 180px;
         }
 
         .lot-suggestion-popup.show {
@@ -671,7 +669,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             border: 0;
             background: #ffffff;
             text-align: left;
-            padding: 7px 8px;
+            padding: 8px 9px;
             border-radius: 8px;
             font-size: 11px;
             font-weight: 800;
@@ -1644,6 +1642,8 @@ function escJs(v) {
         .replace(/\\/g, '\\\\')
         .replace(/'/g, "\\'");
 }
+
+
 function grpoLotSuggestionsHtml(it, idx) {
     const suggestions = [];
 
@@ -1696,12 +1696,22 @@ function showLotSuggestions(idx) {
         el.classList.remove('show');
     });
 
+    const input = document.getElementById('lot_' + idx);
     const popup = document.getElementById('lot_suggest_' + idx);
 
-    if (popup) {
-        popup.classList.add('show');
+    if (!input || !popup) {
+        return;
     }
+
+    const rect = input.getBoundingClientRect();
+
+    popup.style.left = rect.left + 'px';
+    popup.style.top = (rect.bottom + 4) + 'px';
+    popup.style.width = rect.width + 'px';
+
+    popup.classList.add('show');
 }
+
 
 function hideLotSuggestionsDelayed(idx) {
     window.setTimeout(function () {
@@ -2489,6 +2499,19 @@ if (sidebarBackdrop) {
         sidebarBackdrop.classList.remove('show');
     });
 }
+
+
+document.addEventListener('scroll', function () {
+    document.querySelectorAll('.lot-suggestion-popup').forEach(el => {
+        el.classList.remove('show');
+    });
+}, true);
+
+window.addEventListener('resize', function () {
+    document.querySelectorAll('.lot-suggestion-popup').forEach(el => {
+        el.classList.remove('show');
+    });
+});
 
 const issuerRefresh = window.createRefreshController([
     { name: 'issuerRequests', fn: loadOpenRequests, intervalMs: 60000 },
