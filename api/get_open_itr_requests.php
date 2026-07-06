@@ -48,12 +48,12 @@ $sectionWarehouseMap = [
     'cut and crimp' => ['CNC'],
     'cut & crimp' => ['CNC'],
 
-    'sub-assy' => ['SA'],
-    'sub assy' => ['SA'],
-    'subassy' => ['SA'],
-    'sub assembly' => ['SA'],
+    'sub-assy' => ['SA', 'KIT'],
+    'sub assy' => ['SA', 'KIT'],
+    'subassy' => ['SA', 'KIT'],
+    'sub assembly' => ['SA', 'KIT'],
 
-    'kitting' => ['KIT'],
+    'kitting' => ['KIT', 'SA'],
 ];
 
 /*
