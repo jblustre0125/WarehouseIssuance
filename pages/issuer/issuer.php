@@ -641,6 +641,56 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             display: none;
         }
 
+
+        .lot-suggestion-wrap {
+            position: relative;
+        }
+
+        .lot-suggestion-popup {
+            display: none;
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: calc(100% + 4px);
+            z-index: 3000;
+            background: #ffffff;
+            border: 1px solid #bfdbfe;
+            border-radius: 10px;
+            box-shadow: 0 12px 28px rgba(15, 23, 42, .16);
+            max-height: 180px;
+            overflow-y: auto;
+            padding: 5px;
+        }
+
+        .lot-suggestion-popup.show {
+            display: block;
+        }
+
+        .lot-suggestion-item {
+            width: 100%;
+            border: 0;
+            background: #ffffff;
+            text-align: left;
+            padding: 7px 8px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 800;
+            color: #111827;
+        }
+
+        .lot-suggestion-item:hover,
+        .lot-suggestion-item:focus {
+            background: #eef6ff;
+        }
+
+        .lot-suggestion-sub {
+            display: block;
+            font-size: 10px;
+            font-weight: 600;
+            color: #6b7280;
+            margin-top: 2px;
+        }
+
         .sidebar-backdrop {
             display: none;
         }
@@ -1589,6 +1639,102 @@ function validateIssueTotals(showAlert = true) {
     return true;
 }
 
+function escJs(v) {
+    return String(v ?? '')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'");
+}
+function grpoLotSuggestionsHtml(it, idx) {
+    const suggestions = [];
+
+    if (Array.isArray(it.available_lots)) {
+        it.available_lots.forEach(lot => {
+            const lotNo = String(lot.lot_no || '').trim();
+
+            if (!lotNo) {
+                return;
+            }
+
+            suggestions.push({
+                lot_no: lotNo,
+                label: 'Available ' + fmtQty(lot.available_qty || 0)
+            });
+        });
+    }
+
+    const requestedLot = String(it.requested_lot_no || '').trim();
+
+    if (requestedLot && !suggestions.some(x => x.lot_no.toUpperCase() === requestedLot.toUpperCase())) {
+        suggestions.unshift({
+            lot_no: requestedLot,
+            label: 'Suggested GRPO lot'
+        });
+    }
+
+    if (suggestions.length === 0) {
+        return '';
+    }
+
+    return `
+        <div class="lot-suggestion-popup" id="lot_suggest_${idx}">
+            ${suggestions.slice(0, 10).map(s => `
+                <button
+                    type="button"
+                    class="lot-suggestion-item"
+                    onclick="selectSuggestedLot(${idx}, '${escJs(s.lot_no)}')"
+                >
+                    ${esc(s.lot_no)}
+                    <span class="lot-suggestion-sub">${esc(s.label)}</span>
+                </button>
+            `).join('')}
+        </div>
+    `;
+}
+
+function showLotSuggestions(idx) {
+    document.querySelectorAll('.lot-suggestion-popup').forEach(el => {
+        el.classList.remove('show');
+    });
+
+    const popup = document.getElementById('lot_suggest_' + idx);
+
+    if (popup) {
+        popup.classList.add('show');
+    }
+}
+
+function hideLotSuggestionsDelayed(idx) {
+    window.setTimeout(function () {
+        const popup = document.getElementById('lot_suggest_' + idx);
+
+        if (popup) {
+            popup.classList.remove('show');
+        }
+    }, 180);
+}
+
+function selectSuggestedLot(idx, lotNo) {
+    if (!items[idx]) {
+        return;
+    }
+
+    items[idx].lot_no = lotNo;
+
+    const input = document.getElementById('lot_' + idx);
+
+    if (input) {
+        input.value = lotNo;
+    }
+
+    const popup = document.getElementById('lot_suggest_' + idx);
+
+    if (popup) {
+        popup.classList.remove('show');
+    }
+
+    validateItemLot(idx);
+}
+
 function render() {
     const tb = document.querySelector('#itemsTable tbody');
     tb.innerHTML = '';
@@ -1635,16 +1781,20 @@ function render() {
                 </td>
 
                 <td class="col-lot">
-                    <input
-                        class="form-control form-control-sm lot-input"
-                        id="lot_${idx}"
-                        ${lotListAttr}
-                        value="${esc(it.lot_no)}"
-                        placeholder="GRPO lot"
-                        onchange="updateItemField(${idx}, 'lot_no', this.value); validateItemLot(${idx})"
-                    >
-                    ${lotOptionsHtml ? `<datalist id="lot_options_${idx}">${lotOptionsHtml}</datalist>` : ''}
-                    ${it.requested_lot_no ? `<div class="small text-muted">GRPO ${esc(it.requested_lot_no)}</div>` : ''}
+                    <div class="lot-suggestion-wrap">
+                        <input
+                            class="form-control form-control-sm lot-input"
+                            id="lot_${idx}"
+                            value="${esc(it.lot_no)}"
+                            placeholder="GRPO lot"
+                            autocomplete="off"
+                            onfocus="showLotSuggestions(${idx})"
+                            onclick="showLotSuggestions(${idx})"
+                            onblur="hideLotSuggestionsDelayed(${idx})"
+                            onchange="updateItemField(${idx}, 'lot_no', this.value); validateItemLot(${idx})"
+                        >
+                        ${grpoLotSuggestionsHtml(it, idx)}
+                    </div>
                 </td>
 
                 <td class="col-wh-lot">
