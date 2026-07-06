@@ -770,11 +770,10 @@ $currentRole = strtolower($currentUser['role'] ?? '');
         }
 
         /* Tablet/WebView landscape fix:
-           Keep the desktop layout:
-           - Issuance Details on the left
-           - Warehouse request panel on the right
-           - Keep Bootstrap tabs normal so table/request data loads correctly
-        */
+           Keep the desktop-style layout.
+           Left side  = Issuance Details
+           Right side = Warehouse Requests / Stock
+           Do not force Bootstrap tabs into grid because it can stop WebView rendering. */
         @media (max-width: 1366px) and (min-width: 901px) {
             .main-content > .row.g-3 {
                 display: flex !important;
@@ -1225,8 +1224,12 @@ async function loadOpenRequests() {
 
         status.textContent = openDocuments.length + ' open request(s), ' + openRequests.length + ' line(s), updated ' + stamp;
     } catch (e) {
+        console.error('loadOpenRequests failed:', e);
+        openRequests = [];
+        openDocuments = [];
         document.getElementById('requestCount').textContent = '0';
-        status.textContent = 'Unable to load requests. Check WHPOKAYOKE connection or login session.';
+        renderRequests();
+        status.textContent = 'Unable to load requests. Check WHPOKAYOKE connection, login session, or API path.';
     }
 }
 
@@ -1251,10 +1254,11 @@ async function loadStocks() {
         renderStocks();
         status.textContent = (data.warehouses || []).join(', ') + ' | ' + stockRows.length + ' stocked item(s)';
     } catch (e) {
+        console.error('loadStocks failed:', e);
         stockRows = [];
         document.getElementById('stockCount').textContent = '0';
         renderStocks();
-        status.textContent = 'Unable to load stock. Check SAP connection or login session.';
+        status.textContent = 'Unable to load stock. Check SAP connection, login session, or API path.';
     }
 }
 
@@ -2398,26 +2402,51 @@ const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebarToggle');
 const sidebarBackdrop = document.getElementById('sidebarBackdrop');
 
-if (sidebarToggle) {
+if (sidebarToggle && sidebar && sidebarBackdrop) {
     sidebarToggle.addEventListener('click', function () {
         sidebar.classList.add('show');
         sidebarBackdrop.classList.add('show');
     });
 }
 
-if (sidebarBackdrop) {
+if (sidebarBackdrop && sidebar) {
     sidebarBackdrop.addEventListener('click', function () {
         sidebar.classList.remove('show');
         sidebarBackdrop.classList.remove('show');
     });
 }
 
-const issuerRefresh = window.createRefreshController([
-    { name: 'issuerRequests', fn: loadOpenRequests, intervalMs: 60000 },
-    { name: 'issuerStocks', fn: loadStocks, intervalMs: 120000 }
-]);
+let issuerPageInitialized = false;
 
-issuerRefresh.scheduleAll();
+function initializeIssuerPage() {
+    if (issuerPageInitialized) {
+        return;
+    }
+
+    issuerPageInitialized = true;
+
+    // Load the request records and stock records immediately.
+    // This keeps WebView from depending only on app-refresh.js timing.
+    refreshSideTabs();
+
+    // Keep auto-refresh only when app-refresh.js is available.
+    if (window.createRefreshController) {
+        const issuerRefresh = window.createRefreshController([
+            { name: 'issuerRequests', fn: loadOpenRequests, intervalMs: 60000 },
+            { name: 'issuerStocks', fn: loadStocks, intervalMs: 120000 }
+        ]);
+
+        issuerRefresh.scheduleAll();
+    } else {
+        console.warn('createRefreshController not found. Initial load and manual refresh will still work.');
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeIssuerPage);
+} else {
+    initializeIssuerPage();
+}
 </script>
 
 </body>
