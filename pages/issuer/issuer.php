@@ -369,7 +369,7 @@ $defaultIssuePrinter = $defaultIssuePrinter === 'zebra' ? 'zebra' : 'nitto';
         }
 
         .col-action {
-            width: 7%;
+            width: 9%;
             text-align: center;
             white-space: nowrap;
         }
@@ -654,12 +654,15 @@ $defaultIssuePrinter = $defaultIssuePrinter === 'zebra' ? 'zebra' : 'nitto';
             z-index: 99999;
             background: #ffffff;
             border: 1px solid #bfdbfe;
-            border-radius: 10px;
-            box-shadow: 0 12px 28px rgba(15, 23, 42, .18);
-            max-height: 220px;
+            border-radius: 12px;
+            box-shadow: 0 18px 40px rgba(15, 23, 42, .22);
+            max-height: 340px;
             overflow-y: auto;
-            padding: 5px;
-            min-width: 180px;
+            overflow-x: hidden;
+            padding: 7px;
+            min-width: 260px;
+            max-width: calc(100vw - 24px);
+            box-sizing: border-box;
         }
 
         .lot-suggestion-popup.show {
@@ -676,6 +679,9 @@ $defaultIssuePrinter = $defaultIssuePrinter === 'zebra' ? 'zebra' : 'nitto';
             font-size: 11px;
             font-weight: 800;
             color: #111827;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
         }
 
         .lot-suggestion-item:hover,
@@ -685,10 +691,19 @@ $defaultIssuePrinter = $defaultIssuePrinter === 'zebra' ? 'zebra' : 'nitto';
 
         .lot-suggestion-sub {
             display: block;
-            font-size: 10px;
-            font-weight: 600;
+            font-size: 10.5px;
+            font-weight: 700;
             color: #6b7280;
-            margin-top: 2px;
+            margin-top: 3px;
+            white-space: normal;
+        }
+
+        .lot-suggestion-empty {
+            padding: 9px;
+            font-size: 11px;
+            color: #6b7280;
+            font-weight: 700;
+            white-space: normal;
         }
 
         .sidebar-backdrop {
@@ -920,7 +935,7 @@ $defaultIssuePrinter = $defaultIssuePrinter === 'zebra' ? 'zebra' : 'nitto';
                                         <th class="col-wh-lot">WH Lot No</th>
                                         <th class="col-match">Lot Balance</th>
                                         <th class="col-itr">ITR/IT</th>
-                                        <th class="col-action">Remove</th>
+                                        <th class="col-action">Actions</th>
                                     </tr>
                                 </thead>
 
@@ -1119,6 +1134,7 @@ let pendingLoadDocIdx = null;
 let pendingSaveAfterOverQty = false;
 let pendingRemoveItemIdx = null;
 let stockRows = [];
+let lotsByItemCode = {};
 
 function fmtQty(v) {
     const n = Number(v || 0);
@@ -1469,7 +1485,93 @@ function roundIssueQty(value) {
     return Math.round((Number(value || 0) + Number.EPSILON) * 1000) / 1000;
 }
 
+function itemCodeKey(value) {
+    return String(value || '').trim().toUpperCase();
+}
+
+function normalizeLotRow(lot) {
+    const lotNo = String(lot?.lot_no || lot?.LotNo || '').trim();
+
+    if (!lotNo) {
+        return null;
+    }
+
+    const onHandQty = Number(lot?.on_hand_qty ?? lot?.OnHandQty ?? lot?.quantity ?? 0);
+    const committedQty = Number(lot?.committed_qty ?? lot?.CommittedQty ?? 0);
+    const availableQty = Number(lot?.available_qty ?? lot?.AvailableQty ?? Math.max(0, onHandQty - committedQty));
+
+    return {
+        lot_no: lotNo,
+        warehouse_code: lot?.warehouse_code || lot?.WhsCode || '01',
+        on_hand_qty: onHandQty,
+        committed_qty: committedQty,
+        available_qty: availableQty
+    };
+}
+
+function rebuildLotsByItemCode(doc) {
+    lotsByItemCode = {};
+
+    function addLot(itemCode, lot) {
+        const itemKey = itemCodeKey(itemCode);
+        const normalized = normalizeLotRow(lot);
+
+        if (!itemKey || !normalized) {
+            return;
+        }
+
+        if (!lotsByItemCode[itemKey]) {
+            lotsByItemCode[itemKey] = [];
+        }
+
+        const existing = lotsByItemCode[itemKey].find(x => String(x.lot_no || '').trim().toUpperCase() === normalized.lot_no.toUpperCase());
+
+        if (existing) {
+            existing.on_hand_qty = Math.max(Number(existing.on_hand_qty || 0), normalized.on_hand_qty);
+            existing.committed_qty = Math.max(Number(existing.committed_qty || 0), normalized.committed_qty);
+            existing.available_qty = Math.max(Number(existing.available_qty || 0), normalized.available_qty);
+            return;
+        }
+
+        lotsByItemCode[itemKey].push(normalized);
+    }
+
+    const sourceLines = [];
+
+    if (doc && Array.isArray(doc.lines)) {
+        sourceLines.push(...doc.lines);
+    }
+
+    openDocuments.forEach(openDoc => {
+        if (openDoc && Array.isArray(openDoc.lines)) {
+            sourceLines.push(...openDoc.lines);
+        }
+    });
+
+    sourceLines.forEach(line => {
+        const itemKey = itemCodeKey(line.item_code);
+
+        if (!itemKey) {
+            return;
+        }
+
+        if (Array.isArray(line.available_lots)) {
+            line.available_lots.forEach(lot => addLot(itemKey, lot));
+        }
+    });
+
+    Object.keys(lotsByItemCode).forEach(itemKey => {
+        lotsByItemCode[itemKey].sort((a, b) => String(a.lot_no).localeCompare(String(b.lot_no)));
+    });
+}
+
+function lotsForItemCode(itemCode) {
+    return lotsByItemCode[itemCodeKey(itemCode)] || [];
+}
+
 function buildIssueItemFromRequest(req) {
+    const mergedLots = lotsForItemCode(req.item_code);
+
     return {
         item_code: req.item_code,
         scanned_code: (req.request_no ? req.request_no + ' / ' : '') + 'ITR ' + req.doc_num + ' line ' + req.line_num,
@@ -1481,7 +1583,7 @@ function buildIssueItemFromRequest(req) {
         warehouse_stock_qty: req.warehouse_stock_qty || 0,
         stock_whs_code: req.stock_whs_code || '01',
         requested_lot_no: req.lot_no || '',
-        available_lots: Array.isArray(req.available_lots) ? req.available_lots : [],
+        available_lots: mergedLots.length > 0 ? mergedLots : (Array.isArray(req.available_lots) ? req.available_lots : []),
         lot_no: req.lot_no || '',
         warehouse_lot_no: req.warehouse_lot_no || '',
         itr_number: req.doc_num,
@@ -1550,6 +1652,7 @@ function loadDocumentItemsConfirmed(docIdx) {
     }
 
     selectedDocument = doc;
+    rebuildLotsByItemCode(doc);
 
     items = doc.lines
         .filter(req => Number(req.remaining_qty) > 0)
@@ -1566,6 +1669,7 @@ function loadDocumentItemsConfirmed(docIdx) {
 function clearSelectedRequest() {
     selectedDocument = null;
     items = [];
+    lotsByItemCode = {};
 
     document.getElementById('selectedRequestBox').classList.add('d-none');
 
@@ -1660,40 +1764,137 @@ function escJs(v) {
 }
 
 
-function grpoLotSuggestionsHtml(it, idx) {
-    const suggestions = [];
+function allAvailableLotsForItem(it) {
+    const itemCode = itemCodeKey(it?.item_code);
+    const merged = [];
+    const seen = new Set();
 
-    if (Array.isArray(it.available_lots)) {
-        it.available_lots.forEach(lot => {
-            const lotNo = String(lot.lot_no || '').trim();
+    function addLots(lots) {
+        if (!Array.isArray(lots)) {
+            return;
+        }
 
-            if (!lotNo) {
+        lots.forEach(lot => {
+            const normalized = normalizeLotRow(lot);
+
+            if (!normalized) {
                 return;
             }
 
-            suggestions.push({
-                lot_no: lotNo,
-                label: 'Available ' + fmtQty(lot.available_qty || 0)
-            });
+            const key = normalized.lot_no.toUpperCase();
+
+            if (seen.has(key)) {
+                const existing = merged.find(x => String(x.lot_no || '').trim().toUpperCase() === key);
+                if (existing) {
+                    existing.available_qty = Math.max(Number(existing.available_qty || 0), normalized.available_qty);
+                    existing.on_hand_qty = Math.max(Number(existing.on_hand_qty || 0), normalized.on_hand_qty);
+                    existing.committed_qty = Math.max(Number(existing.committed_qty || 0), normalized.committed_qty);
+                }
+                return;
+            }
+
+            seen.add(key);
+            merged.push(normalized);
         });
     }
+
+    addLots(lotsForItemCode(itemCode));
+    addLots(it?.available_lots);
+
+    if (selectedDocument && Array.isArray(selectedDocument.lines)) {
+        selectedDocument.lines.forEach(line => {
+            if (itemCodeKey(line.item_code) === itemCode) {
+                addLots(line.available_lots);
+            }
+        });
+    }
+
+    openDocuments.forEach(doc => {
+        if (!doc || !Array.isArray(doc.lines)) {
+            return;
+        }
+
+        doc.lines.forEach(line => {
+            if (itemCodeKey(line.item_code) === itemCode) {
+                addLots(line.available_lots);
+            }
+        });
+    });
+
+    return merged.sort((a, b) => String(a.lot_no).localeCompare(String(b.lot_no)));
+}
+
+function grpoLotSuggestionsHtml(it, idx) {
+    const suggestions = [];
+    const seenLots = new Set();
+
+    const itemCode = String(it.item_code || '').trim();
+    const whsCode = String(it.stock_whs_code || '01').trim() || '01';
+    const allLots = allAvailableLotsForItem(it);
+
+    function addSuggestion(lotNo, availableQty, labelPrefix) {
+        const cleanLot = String(lotNo || '').trim();
+
+        if (!cleanLot) {
+            return;
+        }
+
+        const key = cleanLot.toUpperCase();
+
+        if (seenLots.has(key)) {
+            return;
+        }
+
+        const available = Number(availableQty || 0);
+        const pendingQty = pendingQtyForLot(itemCode, cleanLot, whsCode, idx);
+        const remaining = Math.max(0, available - pendingQty);
+
+        // Hide lot from suggestions only when it is already fully consumed by another row on this screen.
+        if (available > 0 && remaining <= 0) {
+            return;
+        }
+
+        seenLots.add(key);
+
+        suggestions.push({
+            lot_no: cleanLot,
+            available_qty: available,
+            remaining_qty: remaining,
+            label: labelPrefix + (available > 0 ? ' ' + fmtQty(remaining) : '')
+        });
+    }
+
+    allLots.forEach(lot => {
+        addSuggestion(
+            lot.lot_no,
+            lot.available_qty,
+            'Available'
+        );
+    });
 
     const requestedLot = String(it.requested_lot_no || '').trim();
 
-    if (requestedLot && !suggestions.some(x => x.lot_no.toUpperCase() === requestedLot.toUpperCase())) {
-        suggestions.unshift({
-            lot_no: requestedLot,
-            label: 'Suggested GRPO lot'
-        });
+    if (requestedLot && !seenLots.has(requestedLot.toUpperCase())) {
+        const matchedLot = allLots.find(lot => String(lot.lot_no || '').trim().toUpperCase() === requestedLot.toUpperCase());
+
+        addSuggestion(
+            requestedLot,
+            matchedLot ? matchedLot.available_qty : 0,
+            matchedLot ? 'Available' : 'Requested GRPO lot'
+        );
     }
 
     if (suggestions.length === 0) {
-        return '';
+        return `
+            <div class="lot-suggestion-popup" id="lot_suggest_${idx}">
+                <div class="lot-suggestion-empty">No available lot suggestion</div>
+            </div>
+        `;
     }
 
     return `
         <div class="lot-suggestion-popup" id="lot_suggest_${idx}">
-            ${suggestions.slice(0, 10).map(s => `
+            ${suggestions.map(s => `
                 <button
                     type="button"
                     class="lot-suggestion-item"
@@ -1719,11 +1920,43 @@ function showLotSuggestions(idx) {
         return;
     }
 
-    const rect = input.getBoundingClientRect();
+    // Move the popup outside the scrollable table before showing it.
+    // This prevents clipping, but the popup is still positioned beside the active GRPO input.
+    if (popup.parentElement !== document.body) {
+        document.body.appendChild(popup);
+    }
 
-    popup.style.left = rect.left + 'px';
-    popup.style.top = (rect.bottom + 4) + 'px';
-    popup.style.width = rect.width + 'px';
+    const rect = input.getBoundingClientRect();
+    const viewportW = window.innerWidth || document.documentElement.clientWidth;
+    const viewportH = window.innerHeight || document.documentElement.clientHeight;
+    const gap = 4;
+    const margin = 10;
+
+    const popupWidth = Math.min(Math.max(rect.width, 260), viewportW - (margin * 2));
+    const spaceBelow = viewportH - rect.bottom - margin;
+    const spaceAbove = rect.top - margin;
+
+    let maxHeight = 240;
+    let top = rect.bottom + gap;
+
+    // Prefer showing below the selected input. Only place it above when there is almost no space below.
+    if (spaceBelow >= 120 || spaceBelow >= spaceAbove) {
+        maxHeight = Math.max(90, Math.min(240, spaceBelow));
+        top = rect.bottom + gap;
+    } else {
+        maxHeight = Math.max(90, Math.min(240, spaceAbove));
+        top = Math.max(margin, rect.top - maxHeight - gap);
+    }
+
+    let left = rect.left;
+    if (left + popupWidth > viewportW - margin) {
+        left = Math.max(margin, viewportW - popupWidth - margin);
+    }
+
+    popup.style.left = left + 'px';
+    popup.style.top = top + 'px';
+    popup.style.width = popupWidth + 'px';
+    popup.style.maxHeight = maxHeight + 'px';
 
     popup.classList.add('show');
 }
@@ -1838,6 +2071,15 @@ function render() {
 
                 <td class="col-action">
                     <div class="d-grid gap-1">
+                        <button
+                            class="btn btn-sm btn-outline-primary remove-btn"
+                            type="button"
+                            id="print_single_${idx}"
+                            onclick="printSingleIssueTag(${idx})"
+                            title="Print this tag only"
+                        >
+                            Print
+                        </button>
                         <button
                             class="btn btn-sm btn-outline-danger remove-btn"
                             type="button"
@@ -2246,6 +2488,111 @@ async function applyPickerQrScan() {
     if (input) {
         input.value = '';
         input.focus();
+    }
+}
+
+async function printSingleIssueTag(idx, silent = false) {
+    syncTableItems();
+
+    const it = items[idx];
+
+    if (!it) {
+        if (!silent) {
+            showMessage('Selected line was not found.');
+        }
+        return false;
+    }
+
+    if (!it.quantity || Number(it.quantity) <= 0) {
+        if (!silent) {
+            showMessage('Line ' + (idx + 1) + ' quantity must be greater than zero.');
+        }
+        return false;
+    }
+
+    if (!it.lot_no) {
+        if (!silent) {
+            showMessage('Line ' + (idx + 1) + ' GRPO lot number is required.');
+        }
+        return false;
+    }
+
+    if (!it.warehouse_lot_no) {
+        if (!silent) {
+            showMessage('Line ' + (idx + 1) + ' warehouse lot number is required.');
+        }
+        return false;
+    }
+
+    if (!validateIssueTotals(true)) {
+        return false;
+    }
+
+    const lotOk = await validateItemLotBalanceCandidate(idx, it.quantity, it.lot_no, true);
+
+    if (!lotOk) {
+        return false;
+    }
+
+    const printBtn = document.getElementById('print_single_' + idx);
+    const oldText = printBtn ? printBtn.textContent : '';
+
+    if (printBtn) {
+        printBtn.disabled = true;
+        printBtn.textContent = 'Printing...';
+    }
+
+    try {
+        const body = new FormData();
+        body.append('batch_items', JSON.stringify([it]));
+        body.append('issue_printer', selectedIssuePrinter());
+        body.append('pick_printer', selectedIssuePrinter());
+
+        const res = await fetch('api/issuer/print_issue_tags.php', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: body
+        });
+
+        const text = await res.text();
+        let data = null;
+
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            if (!silent) {
+                showMessage('Print API returned invalid response.');
+            }
+            console.error(text);
+            return false;
+        }
+
+        if (!data.ok) {
+            if (!silent) {
+                showMessage(data.message || 'Unable to print tag.');
+            }
+            return false;
+        }
+
+        if (!silent) {
+            showMessage(data.message || ('Printed line ' + (idx + 1) + '.' + (data.printer_name ? ' Printer: ' + data.printer_name + '.' : '')));
+        }
+
+        return true;
+    } catch (e) {
+        console.error(e);
+        if (!silent) {
+            showMessage('Unable to print tag. Check printer/API connection.');
+        }
+        return false;
+    } finally {
+        if (printBtn) {
+            printBtn.disabled = items.length === 0;
+            printBtn.textContent = oldText || 'Print';
+        }
     }
 }
 
