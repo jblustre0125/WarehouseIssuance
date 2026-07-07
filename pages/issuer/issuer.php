@@ -2035,6 +2035,12 @@ function selectSuggestedLot(idx, lotNo) {
 }
 
 function render() {
+    // Remove old suggestion popups first. Some popups are moved to document.body
+    // to avoid table clipping, so they can become stale after validation/re-render.
+    document.querySelectorAll('.lot-suggestion-popup').forEach(el => {
+        el.remove();
+    });
+
     const tb = document.querySelector('#itemsTable tbody');
     tb.innerHTML = '';
 
@@ -2269,6 +2275,14 @@ async function validateItemLotBalanceCandidate(idx, qty, lotNo, showAlert = fals
             rememberConsumedLot(itemCode, cleanLot, whsCode, msg);
         }
 
+        if (String(items[idx]?.lot_no || '').trim().toUpperCase() === cleanLot.toUpperCase()) {
+            items[idx].lot_no = '';
+            const lotInput = document.getElementById('lot_' + idx);
+            if (lotInput) {
+                lotInput.value = '';
+            }
+        }
+
         setLotStatus(idx, 'invalid', msg, balance);
         render();
 
@@ -2311,9 +2325,18 @@ async function validateItemLotBalanceCandidate(idx, qty, lotNo, showAlert = fals
 
         const msg = 'Lot ' + cleanLot + ' only has ' + fmtQty(availableQty) +
             ' available. Already pending on this screen: ' + fmtQty(pendingQty) +
-            '. No remaining quantity is available for this line.';
+            '. No remaining quantity is available for this line. This lot was removed from the current line.';
 
         rememberConsumedLot(itemCode, cleanLot, whsCode, msg);
+
+        if (String(items[idx]?.lot_no || '').trim().toUpperCase() === cleanLot.toUpperCase()) {
+            items[idx].lot_no = '';
+            const lotInput = document.getElementById('lot_' + idx);
+            if (lotInput) {
+                lotInput.value = '';
+            }
+        }
+
         setLotStatus(idx, 'invalid', msg, balance);
         render();
 
