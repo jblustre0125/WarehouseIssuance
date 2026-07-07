@@ -1135,6 +1135,7 @@ let pendingSaveAfterOverQty = false;
 let pendingRemoveItemIdx = null;
 let stockRows = [];
 let lotsByItemCode = {};
+let consumedLotKeys = {};
 
 function fmtQty(v) {
     const n = Number(v || 0);
@@ -1149,6 +1150,30 @@ function lotKey(itemCode, lotNo, whsCode = '01') {
     return String(itemCode || '').trim().toUpperCase() + '|' +
         String(lotNo || '').trim().toUpperCase() + '|' +
         String(whsCode || '01').trim().toUpperCase();
+}
+
+function rememberConsumedLot(itemCode, lotNo, whsCode = '01', reason = '') {
+    const key = lotKey(itemCode, lotNo, whsCode);
+
+    if (!String(itemCode || '').trim() || !String(lotNo || '').trim()) {
+        return;
+    }
+
+    consumedLotKeys[key] = {
+        item_code: String(itemCode || '').trim(),
+        lot_no: String(lotNo || '').trim(),
+        warehouse_code: String(whsCode || '01').trim() || '01',
+        reason: String(reason || 'Consumed lot')
+    };
+}
+
+function forgetConsumedLot(itemCode, lotNo, whsCode = '01') {
+    const key = lotKey(itemCode, lotNo, whsCode);
+    delete consumedLotKeys[key];
+}
+
+function isConsumedLot(itemCode, lotNo, whsCode = '01') {
+    return !!consumedLotKeys[lotKey(itemCode, lotNo, whsCode)];
 }
 
 function pendingQtyForLot(itemCode, lotNo, whsCode = '01', excludeIdx = -1) {
@@ -1652,6 +1677,7 @@ function loadDocumentItemsConfirmed(docIdx) {
     }
 
     selectedDocument = doc;
+    consumedLotKeys = {};
     rebuildLotsByItemCode(doc);
 
     items = doc.lines
@@ -1670,6 +1696,7 @@ function clearSelectedRequest() {
     selectedDocument = null;
     items = [];
     lotsByItemCode = {};
+    consumedLotKeys = {};
 
     document.getElementById('selectedRequestBox').classList.add('d-none');
 
@@ -1845,12 +1872,25 @@ function grpoLotSuggestionsHtml(it, idx) {
             return;
         }
 
+        if (isConsumedLot(itemCode, cleanLot, whsCode)) {
+            return;
+        }
+
         const available = Number(availableQty || 0);
         const pendingQty = pendingQtyForLot(itemCode, cleanLot, whsCode, idx);
         const remaining = Math.max(0, available - pendingQty);
+        const currentRowLot = String(it.lot_no || '').trim().toUpperCase();
+        const currentRowStatus = String(it.lot_status || '').trim().toLowerCase();
+        const currentRowMessage = String(it.lot_message || '').trim().toLowerCase();
+        const currentRowBlocked = currentRowLot === key && currentRowStatus === 'invalid' &&
+            (currentRowMessage.includes('fully consumed') ||
+                currentRowMessage.includes('no remaining') ||
+                currentRowMessage.includes('no available') ||
+                currentRowMessage.includes('no balance'));
 
-        // Hide lot from suggestions only when it is already fully consumed by another row on this screen.
-        if (available > 0 && remaining <= 0) {
+        // Hide lots that are already fully consumed by another row on this screen,
+        // or that the live balance check already blocked as consumed/no balance.
+        if ((available > 0 && remaining <= 0) || currentRowBlocked) {
             return;
         }
 
@@ -2220,6 +2260,15 @@ async function validateItemLotBalanceCandidate(idx, qty, lotNo, showAlert = fals
 
     if (!balance.ok || !balance.valid) {
         const msg = balance.message || 'Lot has no available balance.';
+        const lowerMsg = String(msg || '').toLowerCase();
+
+        if (lowerMsg.includes('fully consumed') ||
+            lowerMsg.includes('no remaining') ||
+            lowerMsg.includes('no available') ||
+            lowerMsg.includes('no balance')) {
+            rememberConsumedLot(itemCode, cleanLot, whsCode, msg);
+        }
+
         setLotStatus(idx, 'invalid', msg, balance);
         render();
 
@@ -2264,6 +2313,7 @@ async function validateItemLotBalanceCandidate(idx, qty, lotNo, showAlert = fals
             ' available. Already pending on this screen: ' + fmtQty(pendingQty) +
             '. No remaining quantity is available for this line.';
 
+        rememberConsumedLot(itemCode, cleanLot, whsCode, msg);
         setLotStatus(idx, 'invalid', msg, balance);
         render();
 
@@ -2276,6 +2326,7 @@ async function validateItemLotBalanceCandidate(idx, qty, lotNo, showAlert = fals
 
     const afterThisQty = pendingQty + issueQty;
 
+    forgetConsumedLot(itemCode, cleanLot, whsCode);
     setLotStatus(idx, 'valid', 'Lot available. Available ' + fmtQty(availableQty) + ', pending after this ' + fmtQty(afterThisQty) + '.', balance);
     render();
     return true;
