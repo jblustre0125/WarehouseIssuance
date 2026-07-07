@@ -5,6 +5,8 @@ require_role([ROLE_ISSUER, ROLE_ADMIN]);
 
 $currentUser = current_user();
 $currentRole = strtolower($currentUser['role'] ?? '');
+$defaultIssuePrinter = strtolower(trim((string)(defined('PICK_TAG_DEFAULT_PRINTER') ? PICK_TAG_DEFAULT_PRINTER : 'nitto')));
+$defaultIssuePrinter = $defaultIssuePrinter === 'zebra' ? 'zebra' : 'nitto';
 ?>
 <!doctype html>
 <html lang="en">
@@ -926,13 +928,23 @@ $currentRole = strtolower($currentUser['role'] ?? '');
                             </table>
                         </div>
 
-                        <div class="text-end mt-3 d-flex justify-content-end gap-2">
-                            <button id="printBtn" class="btn btn-outline-primary" onclick="printAllIssueTags()" disabled>
-                                Print All Tags
-                            </button>
-                            <button id="saveBtn" class="btn btn-success" onclick="saveItems()" disabled>
-                                Save Issuance and Generate Trace QR
-                            </button>
+                        <div class="mt-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <div class="btn-group" role="group" aria-label="Issue tag printer">
+                                <input class="btn-check" type="radio" name="issuePrinter" id="issuePrinterNitto" value="nitto" autocomplete="off" <?= $defaultIssuePrinter === 'nitto' ? 'checked' : '' ?>>
+                                <label class="btn btn-outline-primary" for="issuePrinterNitto">Nitto</label>
+
+                                <input class="btn-check" type="radio" name="issuePrinter" id="issuePrinterZebra" value="zebra" autocomplete="off" <?= $defaultIssuePrinter === 'zebra' ? 'checked' : '' ?>>
+                                <label class="btn btn-outline-primary" for="issuePrinterZebra">Zebra QLn320</label>
+                            </div>
+
+                            <div class="d-flex flex-wrap justify-content-end gap-2">
+                                <button id="printBtn" class="btn btn-outline-primary" onclick="printAllIssueTags()" disabled>
+                                    Print All Tags
+                                </button>
+                                <button id="saveBtn" class="btn btn-success" onclick="saveItems()" disabled>
+                                    Save Issuance and Generate Trace QR
+                                </button>
+                            </div>
                         </div>
 
                     </div>
@@ -1111,6 +1123,10 @@ let stockRows = [];
 function fmtQty(v) {
     const n = Number(v || 0);
     return Number.isInteger(n) ? String(n) : n.toLocaleString(undefined, { maximumFractionDigits: 3 });
+}
+
+function selectedIssuePrinter() {
+    return document.querySelector('input[name="issuePrinter"]:checked')?.value || 'nitto';
 }
 
 function lotKey(itemCode, lotNo, whsCode = '01') {
@@ -2289,9 +2305,15 @@ async function printAllIssueTags(silent = false) {
     try {
         const body = new FormData();
         body.append('batch_items', JSON.stringify(items));
+        body.append('issue_printer', selectedIssuePrinter());
+        body.append('pick_printer', selectedIssuePrinter());
 
         const res = await fetch('api/issuer/print_issue_tags.php', {
             method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
             body: body
         });
 
@@ -2316,7 +2338,7 @@ async function printAllIssueTags(silent = false) {
         }
 
         if (!silent) {
-            showMessage(data.message || ('Printed ' + (data.printed || 0) + ' tag(s).'));
+            showMessage(data.message || ('Printed ' + (data.printed || 0) + ' tag(s).' + (data.printer_name ? ' Printer: ' + data.printer_name + '.' : '')));
         }
 
         return true;

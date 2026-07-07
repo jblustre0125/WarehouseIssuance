@@ -296,28 +296,49 @@ function zebra_receive_itr_barcode_value($traceNo, array $item)
 function zebra_receive_label_zpl($traceNo, array $item)
 {
     /*
-        Receiving QR now uses the SAME payload format as picker:
-        (01)itemcode(17)qty(10)lot
+        Receiving / issuer Zebra QR tag now uses the SAME physical layout
+        as the picker tag:
+            - Same 3-inch label size
+            - Same reference barcode section coordinates
+            - Same QR PAYLOAD label, QR border, and QR command coordinates
+            - Same item / qty / lot / part name block positions
+
+        QR payload remains compatible with picker scanning:
+            (01)itemcode(17)qty(10)lot
     */
     $payload = zebra_zpl_text(zebra_pick_qr_payload($item), 220);
-    $itrBarcode = zebra_zpl_text(zebra_receive_itr_barcode_value($traceNo, $item), 60);
+    $referenceBarcode = zebra_zpl_text(zebra_receive_itr_barcode_value($traceNo, $item), 60);
 
     $itemCode = zebra_zpl_text($item['item_code'] ?? '', 40);
-    $partName = zebra_zpl_text($item['part_name'] ?? '', 70);
+    $partName = zebra_zpl_text($item['part_name'] ?? '', 72);
     $lotNo = zebra_zpl_text($item['lot_no'] ?? '', 45);
+    $warehouseLotNo = zebra_zpl_text($item['warehouse_lot_no'] ?? '', 45);
     $qty = zebra_zpl_text($item['quantity'] ?? '', 22);
     $uom = zebra_zpl_text($item['uom'] ?? '', 20);
     $traceNo = zebra_zpl_text($traceNo, 45);
 
-    /*
-        3 inch receiving tag for Zebra QLn320 / 203 DPI.
+    $referenceText = zebra_zpl_text($referenceBarcode !== '' ? $referenceBarcode : $traceNo, 65);
 
-        QR centering note:
-        The QR border is 190 x 190 dots.
-        The QR is shifted upward so the top and bottom margins look more balanced inside the border.
-        If your printer firmware renders the QR slightly different,
-        adjust only the ^FO62,286 line by 5-dot steps.
-    */
+    if ($referenceBarcode === '') {
+        $referenceBarcode = $referenceText;
+    }
+
+    if ($warehouseLotNo !== '') {
+        $lotBlock = "^FO238,416^A0N,18,18^FDGRPO LOT NO^FS\r\n"
+            . "^FO238,438^FB290,2,3,L^A0N,25,25^FD{$lotNo}^FS\r\n"
+            . "^FO238,492^A0N,18,18^FDWH LOT NO^FS\r\n"
+            . "^FO238,514^FB290,1,0,L^A0N,25,25^FD{$warehouseLotNo}^FS\r\n";
+        $partBlock = "^FO28,558^GB520,2,2^FS\r\n"
+            . "^FO28,574^A0N,18,18^FDPART NAME^FS\r\n"
+            . "^FO28,598^FB510,2,3,L^A0N,20,20^FD{$partName}^FS\r\n";
+    } else {
+        $lotBlock = "^FO238,432^A0N,18,18^FDLOT NO^FS\r\n"
+            . "^FO238,456^FB290,2,3,L^A0N,28,28^FD{$lotNo}^FS\r\n";
+        $partBlock = "^FO28,506^GB520,2,2^FS\r\n"
+            . "^FO28,524^A0N,18,18^FDPART NAME^FS\r\n"
+            . "^FO28,548^FB510,2,3,L^A0N,22,22^FD{$partName}^FS\r\n";
+    }
+
     return "^XA\r\n"
         . "^CI28\r\n"
         . "^PW576\r\n"
@@ -336,31 +357,28 @@ function zebra_receive_label_zpl($traceNo, array $item)
         . "^FO28,62^A0N,20,20^FDRECEIVING QR TAG^FS\r\n"
         . "^FO28,88^GB520,2,2^FS\r\n"
 
-        /* ITR barcode section */
-        . "^FO28,104^A0N,18,18^FDITR NUMBER^FS\r\n"
-        . "^FO28,128^A0N,28,28^FD{$itrBarcode}^FS\r\n"
-        . "^FO28,162^BY2,2,62^BCN,62,Y,N,N^FD{$itrBarcode}^FS\r\n"
-        . "^FO28,250^GB520,2,2^FS\r\n"
+        /* Reference barcode section - same coordinates as picker */
+        . "^FO28,104^A0N,19,19^FDITR NUMBER^FS\r\n"
+        . "^FO28,130^A0N,30,30^FD{$referenceText}^FS\r\n"
+        . "^FO28,170^BY2,2,62^BCN,62,Y,N,N^FD{$referenceBarcode}^FS\r\n"
+        . "^FO28,258^GB520,2,2^FS\r\n"
 
-        /* QR section - centered inside assigned border */
-        . "^FO28,268^A0N,18,18^FDRECEIVE PAYLOAD^FS\r\n"
-        . "^FO28,296^GB190,190,1^FS\r\n"
-        . "^FO62,268^BQN,2,5^FDLA,{$payload}^FS\r\n"
+        /* QR section - exact same Zebra QR layout as picker */
+        . "^FO28,276^A0N,19,19^FDQR PAYLOAD^FS\r\n"
+        . "^FO28,304^GB190,190,1^FS\r\n"
+        . "^FO62,276^BQN,2,5^FDLA,{$payload}^FS\r\n"
 
-        /* Item details on right */
-        . "^FO238,268^A0N,18,18^FDITEM CODE^FS\r\n"
-        . "^FO238,292^FB290,2,3,L^A0N,28,28^FD{$itemCode}^FS\r\n"
+        /* Item details on right - same coordinates as picker */
+        . "^FO238,276^A0N,18,18^FDITEM CODE^FS\r\n"
+        . "^FO238,300^FB290,2,3,L^A0N,28,28^FD{$itemCode}^FS\r\n"
 
-        . "^FO238,360^A0N,18,18^FDQTY^FS\r\n"
-        . "^FO300,346^FB210,1,0,L^A0N,44,44^FD{$qty}^FS\r\n"
+        . "^FO238,368^A0N,18,18^FDQTY {$uom}^FS\r\n"
+        . "^FO300,354^FB210,1,0,L^A0N,44,44^FD{$qty}^FS\r\n"
 
-        . "^FO238,424^A0N,18,18^FDLOT NO^FS\r\n"
-        . "^FO238,448^FB290,2,3,L^A0N,28,28^FD{$lotNo}^FS\r\n"
+        . $lotBlock
 
         /* Part name */
-        . "^FO28,506^GB520,2,2^FS\r\n"
-        . "^FO28,524^A0N,18,18^FDPART NAME^FS\r\n"
-        . "^FO28,548^FB510,2,3,L^A0N,22,22^FD{$partName}^FS\r\n"
+        . $partBlock
 
         /* Small payload text */
         . "^FO28,648^A0N,14,14^FD{$payload}^FS\r\n"
