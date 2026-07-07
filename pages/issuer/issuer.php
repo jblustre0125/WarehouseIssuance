@@ -867,7 +867,7 @@ $defaultIssuePrinter = $defaultIssuePrinter === 'zebra' ? 'zebra' : 'nitto';
             <div>
                 <h4 class="page-title">Issuer - Warehouse</h4>
                 <div class="page-subtitle">
-                    Load open issue requests, keep the GRPO lot for app scanning, enter warehouse lot numbers, then save issuance.
+                    Load open issue requests, keep the GRPO lot for app scanning, enter GRPO lot numbers, then save issuance. WH Lot No is optional.
                 </div>
             </div>
 
@@ -2061,7 +2061,7 @@ function render() {
                         class="form-control form-control-sm lot-input"
                         id="warehouse_lot_${idx}"
                         value="${esc(it.warehouse_lot_no)}"
-                        placeholder="WH actual lot"
+                        placeholder="WH lot (optional)"
                         onchange="updateItemField(${idx}, 'warehouse_lot_no', this.value)"
                     >
                 </td>
@@ -2491,7 +2491,39 @@ async function applyPickerQrScan() {
     }
 }
 
-async function printSingleIssueTag(idx, silent = false) {
+
+function submitPrintedItemsForSave(printedItems, message = '') {
+    const rows = Array.isArray(printedItems) ? printedItems : [];
+
+    if (rows.length === 0) {
+        showMessage('No printed items to save.');
+        return;
+    }
+
+    const f = document.createElement('form');
+    f.method = 'post';
+    f.action = 'actions/save_issue_with_lot_validation.php';
+
+    const i = document.createElement('input');
+    i.type = 'hidden';
+    i.name = 'batch_items';
+    i.value = JSON.stringify(rows);
+
+    f.appendChild(i);
+
+    if (message) {
+        const m = document.createElement('input');
+        m.type = 'hidden';
+        m.name = 'success_message';
+        m.value = message;
+        f.appendChild(m);
+    }
+
+    document.body.appendChild(f);
+    f.submit();
+}
+
+async function printSingleIssueTag(idx, silent = false, saveAfterPrint = true) {
     syncTableItems();
 
     const it = items[idx];
@@ -2513,13 +2545,6 @@ async function printSingleIssueTag(idx, silent = false) {
     if (!it.lot_no) {
         if (!silent) {
             showMessage('Line ' + (idx + 1) + ' GRPO lot number is required.');
-        }
-        return false;
-    }
-
-    if (!it.warehouse_lot_no) {
-        if (!silent) {
-            showMessage('Line ' + (idx + 1) + ' warehouse lot number is required.');
         }
         return false;
     }
@@ -2577,8 +2602,23 @@ async function printSingleIssueTag(idx, silent = false) {
             return false;
         }
 
+        const printedMessage = data.message || ('Printed line ' + (idx + 1) + '.' + (data.printer_name ? ' Printer: ' + data.printer_name + '.' : ''));
+
+        if (saveAfterPrint) {
+            if (!silent) {
+                const saveBtnText = printBtn ? printBtn.textContent : '';
+                if (printBtn) {
+                    printBtn.disabled = true;
+                    printBtn.textContent = 'Saving...';
+                }
+            }
+
+            submitPrintedItemsForSave([it], printedMessage + ' Issuance saved.');
+            return true;
+        }
+
         if (!silent) {
-            showMessage(data.message || ('Printed line ' + (idx + 1) + '.' + (data.printer_name ? ' Printer: ' + data.printer_name + '.' : '')));
+            showMessage(printedMessage);
         }
 
         return true;
@@ -2596,7 +2636,7 @@ async function printSingleIssueTag(idx, silent = false) {
     }
 }
 
-async function printAllIssueTags(silent = false) {
+async function printAllIssueTags(silent = false, saveAfterPrint = true) {
     syncTableItems();
 
     if (items.length === 0) {
@@ -2623,12 +2663,6 @@ async function printAllIssueTags(silent = false) {
             return false;
         }
 
-        if (!it.warehouse_lot_no) {
-            if (!silent) {
-                showMessage('Line ' + (idx + 1) + ' warehouse lot number is required.');
-            }
-            return false;
-        }
     }
 
     if (!validateIssueTotals(true)) {
@@ -2684,8 +2718,20 @@ async function printAllIssueTags(silent = false) {
             return false;
         }
 
+        const printedMessage = data.message || ('Printed ' + (data.printed || 0) + ' tag(s).' + (data.printer_name ? ' Printer: ' + data.printer_name + '.' : ''));
+
+        if (saveAfterPrint) {
+            if (printBtn) {
+                printBtn.disabled = true;
+                printBtn.textContent = 'Saving...';
+            }
+
+            submitPrintedItemsForSave(items, printedMessage + ' Issuance saved.');
+            return true;
+        }
+
         if (!silent) {
-            showMessage(data.message || ('Printed ' + (data.printed || 0) + ' tag(s).' + (data.printer_name ? ' Printer: ' + data.printer_name + '.' : '')));
+            showMessage(printedMessage);
         }
 
         return true;
@@ -2736,10 +2782,6 @@ async function saveItems(skipOverQtyCheck = false) {
             return;
         }
 
-        if (!it.warehouse_lot_no) {
-            showMessage('Line ' + (idx + 1) + ' warehouse lot number is required.');
-            return;
-        }
     }
 
     if (!validateIssueTotals(true)) {
@@ -2760,7 +2802,7 @@ async function saveItems(skipOverQtyCheck = false) {
         saveBtn.textContent = 'Printing tags...';
     }
 
-    const printOk = await printAllIssueTags(true);
+    const printOk = await printAllIssueTags(true, false);
 
     if (!printOk) {
         if (saveBtn) {
