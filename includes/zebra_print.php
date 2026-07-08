@@ -382,6 +382,7 @@ function zebra_receive_label_zpl($traceNo, array $item)
 
         /* Small payload text */
         . "^FO28,648^A0N,14,14^FD{$payload}^FS\r\n"
+        . "^PQ1\r\n"
         . "^XZ\r\n";
 }
 
@@ -518,6 +519,7 @@ function zebra_pick_label_zpl(array $item)
 
         /* Small payload text */
         . "^FO28,648^A0N,14,14^FD{$payload}^FS\r\n"
+        . "^PQ1\r\n"
         . "^XZ\r\n";
 }
 
@@ -1460,6 +1462,7 @@ function zebra_test_label_zpl()
         . "^FO70,130^A0N,26,26^FDIf this prints, raw ZPL is working.^FS\r\n"
         . "^FO70,180^BQN,2,6^FDLA,TEST-QR-12345^FS\r\n"
         . "^FO270,210^A0N,30,30^FDTEST-QR-12345^FS\r\n"
+        . "^PQ1\r\n"
         . "^XZ\r\n";
 }
 

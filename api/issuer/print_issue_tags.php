@@ -41,23 +41,28 @@ foreach ($items as $idx => $item) {
 
     $itemCode = trim((string)($item['item_code'] ?? ''));
     $quantity = trim((string)($item['quantity'] ?? ''));
+    $quantityNumber = (float)str_replace(',', '', $quantity);
     $grpoLotNo = trim((string)($item['lot_no'] ?? ''));
     $warehouseLotNo = trim((string)($item['warehouse_lot_no'] ?? ''));
 
-    if ($itemCode === '' || $quantity === '' || (float)$quantity <= 0 || $grpoLotNo === '') {
+    if ($itemCode === '' || $quantity === '' || $quantityNumber <= 0 || $grpoLotNo === '') {
         $errors[] = 'Line ' . ($idx + 1) . ' requires item code, quantity, and GRPO lot number.';
         continue;
     }
 
-    if ($warehouseLotNo === '') {
-        $errors[] = 'Line ' . ($idx + 1) . ' requires warehouse lot number.';
-        continue;
-    }
+    /*
+        WH Lot No is optional for issuer printing.
+        The GRPO lot is still required because it is part of the QR payload.
+    */
 
     $printItems[] = [
         'item_code' => $itemCode,
         'part_name' => trim((string)($item['part_name'] ?? '')),
-        'quantity' => $quantity,
+        /*
+            Quantity is printed as text and encoded in the QR only.
+            It must NOT be used as Zebra copy count. zebra_print.php forces ^PQ1.
+        */
+        'quantity' => rtrim(rtrim(number_format($quantityNumber, 3, '.', ''), '0'), '.'),
         'uom' => trim((string)($item['uom'] ?? '')),
         'lot_no' => $grpoLotNo,
         'warehouse_lot_no' => $warehouseLotNo,
