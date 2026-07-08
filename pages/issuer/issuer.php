@@ -2089,15 +2089,21 @@ function showLotSuggestions(idx) {
 
     popup.classList.add('show');
 
-    if (allAvailableLotsForItem(items[idx]).length === 0) {
-        fetchLotSuggestionsForRow(idx).then(() => {
-            positionLotSuggestionPopup(idx);
-            const updatedPopup = document.getElementById('lot_suggest_' + idx);
-            if (updatedPopup) {
-                updatedPopup.classList.add('show');
-            }
-        });
-    }
+    /*
+        Always refresh the FIFO sequence from SAP when the GRPO Lot No field is opened.
+        Reason: after the first FIFO lot is selected and its qty is used, the new remainder row
+        still has the old cached lot list. For example RM333 has 259 and request qty is 1500:
+        row 1 uses RM333 = 259, row 2 must show the next FIFO lot for 1241.
+        The backend returns a FIFO sequence enough for the row qty; the frontend then hides any
+        lot already fully consumed by other rows on this screen.
+    */
+    fetchLotSuggestionsForRow(idx, true).then(() => {
+        positionLotSuggestionPopup(idx);
+        const updatedPopup = document.getElementById('lot_suggest_' + idx);
+        if (updatedPopup) {
+            updatedPopup.classList.add('show');
+        }
+    });
 }
 
 
