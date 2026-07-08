@@ -1233,6 +1233,31 @@ function pendingQtyForLot(itemCode, lotNo, whsCode = '01', excludeIdx = -1) {
     return total;
 }
 
+function validatedAvailableQtyForLot(itemCode, lotNo, whsCode = '01') {
+    const key = lotKey(itemCode, lotNo, whsCode);
+    let availableQty = null;
+
+    items.forEach(row => {
+        if (lotKey(row.item_code, row.lot_no, row.stock_whs_code || whsCode) !== key) {
+            return;
+        }
+
+        const status = String(row.lot_status || '').toLowerCase();
+
+        if (status !== 'valid' && status !== 'invalid') {
+            return;
+        }
+
+        const rowAvailableQty = Number(row.lot_available_qty || 0);
+
+        availableQty = availableQty === null
+            ? rowAvailableQty
+            : Math.min(availableQty, rowAvailableQty);
+    });
+
+    return availableQty;
+}
+
 function setLotStatus(idx, status, message, balance = null) {
     if (!items[idx]) {
         return;
@@ -1840,7 +1865,9 @@ function rebuildLotsByItemCode(doc) {
         if (existing) {
             existing.on_hand_qty = Math.max(Number(existing.on_hand_qty || 0), normalized.on_hand_qty);
             existing.committed_qty = Math.max(Number(existing.committed_qty || 0), normalized.committed_qty);
-            existing.available_qty = Math.max(Number(existing.available_qty || 0), normalized.available_qty);
+            existing.available_qty = Number(existing.available_qty || 0) > 0 && Number(normalized.available_qty || 0) > 0
+                ? Math.min(Number(existing.available_qty || 0), normalized.available_qty)
+                : Math.max(Number(existing.available_qty || 0), normalized.available_qty);
             return;
         }
 
@@ -1916,11 +1943,19 @@ function grpoLotSuggestionContentHtml(it, idx) {
             return;
         }
 
-        const available = Number(availableQty || 0);
+        let available = Number(availableQty || 0);
+        const validatedAvailableQty = validatedAvailableQtyForLot(itemCode, cleanLot, whsCode);
+
+        if (validatedAvailableQty !== null) {
+            available = available > 0
+                ? Math.min(available, validatedAvailableQty)
+                : validatedAvailableQty;
+        }
+
         const pendingQty = pendingQtyForLot(itemCode, cleanLot, whsCode, idx);
         const remaining = Math.max(0, available - pendingQty);
 
-        if (available > 0 && remaining <= 0) {
+        if (remaining <= 0) {
             return;
         }
 
@@ -2287,7 +2322,9 @@ function allAvailableLotsForItem(it) {
             if (seen.has(key)) {
                 const existing = merged.find(x => String(x.lot_no || '').trim().toUpperCase() === key);
                 if (existing) {
-                    existing.available_qty = Math.max(Number(existing.available_qty || 0), normalized.available_qty);
+                    existing.available_qty = Number(existing.available_qty || 0) > 0 && Number(normalized.available_qty || 0) > 0
+                        ? Math.min(Number(existing.available_qty || 0), normalized.available_qty)
+                        : Math.max(Number(existing.available_qty || 0), normalized.available_qty);
                     existing.on_hand_qty = Math.max(Number(existing.on_hand_qty || 0), normalized.on_hand_qty);
                     existing.committed_qty = Math.max(Number(existing.committed_qty || 0), normalized.committed_qty);
                     existing.suggested_issue_qty = Math.max(Number(existing.suggested_issue_qty || 0), normalized.suggested_issue_qty || 0);
