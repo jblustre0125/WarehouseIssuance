@@ -1007,7 +1007,7 @@ foreach ([
                             </div>
 
                             <div class="d-flex flex-wrap justify-content-end gap-2">
-                                <button id="printBtn" class="btn btn-outline-primary" onclick="printAllIssueTags()" disabled>
+                                <button id="printBtn" class="btn btn-outline-primary" onclick="printAllIssueTags(false, false); return false;" disabled>
                                     Print All Tags
                                 </button>
                                 <button id="saveBtn" class="btn btn-success" onclick="saveItems()" disabled>
@@ -2529,7 +2529,7 @@ function render() {
                             class="btn btn-sm btn-outline-primary remove-btn"
                             type="button"
                             id="print_single_${idx}"
-                            onclick="printSingleIssueTag(${idx})"
+                            onclick="printSingleIssueTag(${idx}, false, false); return false;"
                             title="Print this tag only"
                         >
                             Print
@@ -2812,21 +2812,94 @@ async function validateItemLot(idx) {
 async function validateAllLotBalances(showAlert = true) {
     syncTableItems();
 
-    for (let idx = 0; idx < items.length; idx++) {
-        const it = items[idx];
+    const rowsToValidate = items
+        .map((it, idx) => ({ it, idx }))
+        .filter(({ it }) => it.quantity && Number(it.quantity) > 0 && it.lot_no);
 
-        if (!it.quantity || Number(it.quantity) <= 0 || !it.lot_no) {
-            continue;
-        }
-
-        const valid = await validateItemLotBalanceCandidate(idx, it.quantity, it.lot_no, showAlert);
-
-        if (!valid) {
-            return false;
-        }
+    if (rowsToValidate.length === 0) {
+        return true;
     }
 
-    return true;
+    rowsToValidate.forEach(({ idx }) => {
+        setLotStatus(idx, 'checking', 'Checking lot balance...');
+    });
+    render();
+
+    try {
+        const body = new FormData();
+        body.append('batch_items', JSON.stringify(items));
+
+        const res = await fetch('api/issuer/validate_issue_batch.php', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: body
+        });
+
+        const text = await res.text();
+        let data = null;
+
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            throw new Error('Lot validation API returned invalid response.');
+        }
+
+        if (!res.ok || !data.ok) {
+            const lineIdx = Number(data?.line || 0) > 0 ? Number(data.line) - 1 : rowsToValidate[0].idx;
+            const msg = data?.message || 'Lot balance validation failed.';
+
+            if (items[lineIdx]) {
+                setLotStatus(lineIdx, 'invalid', msg, data?.balance || null);
+            }
+
+            render();
+
+            if (showAlert) {
+                showMessage(msg);
+            }
+
+            return false;
+        }
+
+        (data.checked || []).forEach(row => {
+            const lineIdx = Number(row.line || 0) - 1;
+
+            if (!items[lineIdx]) {
+                return;
+            }
+
+            const availableQty = Number(row.available_qty || 0);
+            const pendingQty = Number(row.pending_qty || row.qty || 0);
+            const issueQty = Number(row.qty || 0);
+
+            setLotStatus(lineIdx, 'valid', 'Lot available. Available ' + fmtQty(availableQty) + ', issue qty ' + fmtQty(issueQty) + ', remaining after pending issue ' + fmtQty(Math.max(0, availableQty - pendingQty)) + '.', {
+                available_qty: availableQty,
+                issue_qty: issueQty,
+                pending_qty: pendingQty,
+                remaining_after_issue: Math.max(0, availableQty - pendingQty)
+            });
+        });
+
+        render();
+        return true;
+    } catch (e) {
+        console.error(e);
+        const msg = e.message || 'Unable to validate lot balances.';
+
+        rowsToValidate.forEach(({ idx }) => {
+            setLotStatus(idx, 'invalid', msg);
+        });
+        render();
+
+        if (showAlert) {
+            showMessage(msg);
+        }
+
+        return false;
+    }
 }
 
 function parsePickerQrPayload(raw) {
@@ -3027,7 +3100,66 @@ function submitPrintedItemsForSave(printedItems, message = '') {
     f.submit();
 }
 
-async function printSingleIssueTag(idx, silent = false, saveAfterPrint = true) {
+async function savePrintedItemsAjax(printedItems, message = '') {
+    const rows = Array.isArray(printedItems) ? printedItems : [];
+
+    if (rows.length === 0) {
+        throw new Error('No printed items to save.');
+    }
+
+    const body = new FormData();
+    body.append('batch_items', JSON.stringify(rows));
+    body.append('ajax', '1');
+
+    if (message) {
+        body.append('success_message', message);
+    }
+
+    const res = await fetch('actions/save_issue_with_lot_validation.php', {
+        method: 'POST',
+        headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: body
+    });
+
+    const text = await res.text();
+    let data = null;
+
+    try {
+        data = JSON.parse(text);
+    } catch (e) {
+        throw new Error('Save API returned invalid response.');
+    }
+
+    if (!res.ok || !data.ok) {
+        throw new Error(data.message || 'Unable to save issuance.');
+    }
+
+    return data;
+}
+
+function removePrintedRowFromTable(idx) {
+    if (!items[idx]) {
+        return;
+    }
+
+    items.splice(idx, 1);
+
+    if (items.length === 0) {
+        selectedDocument = null;
+        const selectedBox = document.getElementById('selectedRequestBox');
+        if (selectedBox) {
+            selectedBox.classList.add('d-none');
+        }
+    }
+
+    render();
+    renderRequests();
+}
+
+async function printSingleIssueTag(idx, silent = false, saveAfterPrint = true, skipLotValidation = false) {
     syncTableItems();
 
     const it = items[idx];
@@ -3057,7 +3189,7 @@ async function printSingleIssueTag(idx, silent = false, saveAfterPrint = true) {
         return false;
     }
 
-    const lotOk = await validateItemLotBalanceCandidate(idx, it.quantity, it.lot_no, true);
+    const lotOk = skipLotValidation ? true : await validateItemLotBalanceCandidate(idx, it.quantity, it.lot_no, true);
 
     if (!lotOk) {
         return false;
@@ -3109,15 +3241,32 @@ async function printSingleIssueTag(idx, silent = false, saveAfterPrint = true) {
         const printedMessage = data.message || ('Printed line ' + (idx + 1) + '.' + (data.printer_name ? ' Printer: ' + data.printer_name + '.' : ''));
 
         if (saveAfterPrint) {
-            if (!silent) {
-                const saveBtnText = printBtn ? printBtn.textContent : '';
-                if (printBtn) {
-                    printBtn.disabled = true;
-                    printBtn.textContent = 'Saving...';
-                }
+            if (printBtn) {
+                printBtn.disabled = true;
+                printBtn.textContent = 'Saving...';
             }
 
-            submitPrintedItemsForSave([it], printedMessage + ' Issuance saved.');
+            let saveData = null;
+
+            try {
+                saveData = await savePrintedItemsAjax([it], printedMessage + ' Issuance saved.');
+            } catch (saveError) {
+                console.error(saveError);
+
+                if (!silent) {
+                    showMessage('Tag printed, but issuance was not saved: ' + (saveError.message || 'Unknown save error.'));
+                }
+
+                return false;
+            }
+
+            removePrintedRowFromTable(idx);
+            loadOpenRequests();
+
+            if (!silent) {
+                showMessage(saveData.message || (printedMessage + ' Issuance saved.'));
+            }
+
             return true;
         }
 
@@ -3140,7 +3289,7 @@ async function printSingleIssueTag(idx, silent = false, saveAfterPrint = true) {
     }
 }
 
-async function printAllIssueTags(silent = false, saveAfterPrint = true) {
+async function printAllIssueTags(silent = false, saveAfterPrint = false, skipLotValidation = false) {
     syncTableItems();
 
     if (items.length === 0) {
@@ -3173,10 +3322,12 @@ async function printAllIssueTags(silent = false, saveAfterPrint = true) {
         return false;
     }
 
-    const lotOk = await validateAllLotBalances(true);
+    if (!skipLotValidation) {
+        const lotOk = await validateAllLotBalances(true);
 
-    if (!lotOk) {
-        return false;
+        if (!lotOk) {
+            return false;
+        }
     }
 
     const printBtn = document.getElementById('printBtn');
@@ -3306,7 +3457,7 @@ async function saveItems(skipOverQtyCheck = false) {
         saveBtn.textContent = 'Printing tags...';
     }
 
-    const printOk = await printAllIssueTags(true, false);
+    const printOk = await printAllIssueTags(true, false, true);
 
     if (!printOk) {
         if (saveBtn) {

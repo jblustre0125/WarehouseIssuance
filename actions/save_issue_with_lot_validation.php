@@ -3,9 +3,31 @@ require_once __DIR__ . '/../includes/auth.php';
 require_role([ROLE_ISSUER, ROLE_ADMIN]);
 require_once __DIR__ . '/../api/issuer/lot_balance_lib.php';
 
+if (!function_exists('issuer_wants_json_response')) {
+    function issuer_wants_json_response()
+    {
+        $accept = strtolower((string)($_SERVER['HTTP_ACCEPT'] ?? ''));
+        $requestedWith = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''));
+
+        return (($_POST['ajax'] ?? '') === '1') ||
+            strpos($accept, 'application/json') !== false ||
+            $requestedWith === 'xmlhttprequest';
+    }
+}
+
 function issuer_save_lot_fail($message)
 {
     http_response_code(400);
+
+    if (issuer_wants_json_response()) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok' => false,
+            'message' => $message
+        ]);
+        exit;
+    }
+
     ?>
 <!doctype html>
 <html lang="en">

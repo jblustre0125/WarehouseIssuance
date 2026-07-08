@@ -38,6 +38,47 @@ function issuer_app_issued_qty_for_lot($whp, $itemCode, $lotNo)
     }
 
     if (
+        issuer_lot_has_table($whp, 'IssuanceTransactions') &&
+        issuer_lot_has_column($whp, 'IssuanceTransactions', 'ItemCode') &&
+        issuer_lot_has_column($whp, 'IssuanceTransactions', 'LotNo') &&
+        issuer_lot_has_column($whp, 'IssuanceTransactions', 'Quantity')
+    ) {
+        $issuedRow = fetch_one(
+            $whp,
+            "SELECT ISNULL(SUM(ISNULL(Quantity, 0)), 0) AS IssuedQty
+             FROM IssuanceTransactions
+             WHERE ItemCode = ?
+               AND LotNo = ?",
+            [$itemCode, $lotNo]
+        );
+
+        return $issuedRow ? issuer_lot_num($issuedRow['IssuedQty'] ?? 0) : 0.0;
+    }
+
+    if (
+        issuer_lot_has_table($whp, 'RawmatTraceLines') &&
+        issuer_lot_has_column($whp, 'RawmatTraceLines', 'ItemCode') &&
+        issuer_lot_has_column($whp, 'RawmatTraceLines', 'LotNo') &&
+        issuer_lot_has_column($whp, 'RawmatTraceLines', 'IssuedQty')
+    ) {
+        $statusFilter = issuer_lot_has_column($whp, 'RawmatTraceLines', 'VerificationStatus')
+            ? "AND ISNULL(VerificationStatus, '') NOT IN ('CANCELLED', 'CANCELED', 'VOID')"
+            : '';
+
+        $issuedRow = fetch_one(
+            $whp,
+            "SELECT ISNULL(SUM(ISNULL(IssuedQty, 0)), 0) AS IssuedQty
+             FROM RawmatTraceLines
+             WHERE ItemCode = ?
+               AND LotNo = ?
+               {$statusFilter}",
+            [$itemCode, $lotNo]
+        );
+
+        return $issuedRow ? issuer_lot_num($issuedRow['IssuedQty'] ?? 0) : 0.0;
+    }
+
+    if (
         !issuer_lot_has_table($whp, 'WarehouseIssueRequestLines') ||
         !issuer_lot_has_column($whp, 'WarehouseIssueRequestLines', 'ItemCode') ||
         !issuer_lot_has_column($whp, 'WarehouseIssueRequestLines', 'LotNo') ||

@@ -1,8 +1,33 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_role([ROLE_ISSUER, ROLE_ADMIN]);
+
+if (!function_exists('issuer_wants_json_response')) {
+    function issuer_wants_json_response()
+    {
+        $accept = strtolower((string)($_SERVER['HTTP_ACCEPT'] ?? ''));
+        $requestedWith = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''));
+
+        return (($_POST['ajax'] ?? '') === '1') ||
+            strpos($accept, 'application/json') !== false ||
+            $requestedWith === 'xmlhttprequest';
+    }
+}
+
 $items = json_decode($_POST['batch_items'] ?? '[]', true);
-if (!is_array($items) || count($items) === 0) app_error('No items to save.', 400);
+if (!is_array($items) || count($items) === 0) {
+    if (issuer_wants_json_response()) {
+        http_response_code(400);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok' => false,
+            'message' => 'No items to save.'
+        ]);
+        exit;
+    }
+
+    app_error('No items to save.', 400);
+}
 $conn = get_whpokayoke_connection();
 $erp = get_erp_connection();
 $u = current_user();
@@ -237,5 +262,28 @@ foreach (array_keys($affectedRequestIds) as $affectedRequestId) {
 
 $pageTitle = 'Issuance Saved';
 $backUrl = 'pages/issuer/issuer.php';
+
+if (issuer_wants_json_response()) {
+    $ok = count($saved) > 0 && count($failed) === 0;
+    if (!$ok) {
+        http_response_code(count($saved) > 0 ? 207 : 400);
+    }
+
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'ok' => $ok,
+        'message' => $ok
+            ? 'Issuance saved. Trace ' . $traceNo . ' generated.'
+            : 'Issuance saved with errors.',
+        'trace_no' => $traceNo,
+        'trace_id' => $traceId,
+        'saved_count' => count($saved),
+        'failed_count' => count($failed),
+        'saved' => $saved,
+        'failed' => $failed
+    ]);
+    exit;
+}
+
 include __DIR__ . '/../pages/results/save_issue_result.php';
 ?>

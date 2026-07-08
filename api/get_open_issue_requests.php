@@ -3,6 +3,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/sap_cache.php';
 require_once __DIR__ . '/../includes/itr_pack_sizes.php';
 require_once __DIR__ . '/../includes/item_locations.php';
+require_once __DIR__ . '/issuer/lot_balance_lib.php';
 require_role([ROLE_PICKER, ROLE_ISSUER, ROLE_ADMIN]);
 
 header('Content-Type: application/json; charset=utf-8');
@@ -158,7 +159,7 @@ foreach ($rows as $sigRow) {
 $cacheKey = sap_cache_make_key('sap.open_issue_requests', [
     'signature' => hash('sha256', implode('|', $rowSignatureParts)),
     'pack_sizes' => itr_pack_sizes_cache_token(),
-    'lot_query_version' => 'fifo_initial_one_lot_requestor_section_location_v3'
+    'lot_query_version' => 'fifo_initial_available_lots_requestor_section_location_v4'
 ]);
 
 if (!sap_cache_should_refresh()) {
@@ -226,10 +227,9 @@ if (count($itemCodes) > 0 && fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMA
 
 /*
     FAST FIFO MODE:
-    Do not load every SAP lot during initial request loading.
-    Load only the first FIFO WH 01 lot per ItemCode so the right panel and the
-    GRPO Lot No suggestion can still show a lot number without causing the page
-    to get stuck fetching all batch records.
+    Do not load every SAP lot during initial request loading. Load a small FIFO
+    window per ItemCode, then subtract Warehouse Issuance issued qty so a fully
+    consumed first lot does not hide the next available lot.
 
     Final validation still uses api/issuer/check_lot_balance.php before printing/saving.
 */
@@ -294,17 +294,83 @@ if ($hasBatchBalance) {
                  ROW_NUMBER() OVER (PARTITION BY ItemCode ORDER BY FifoDate ASC, LotNo ASC) AS Rn
              FROM LotBalances
          )
-         SELECT ItemCode, LotNo, WhsCode, OnHandQty, CommittedQty, AvailableQty, FifoDate
+         SELECT ItemCode, LotNo, WhsCode, OnHandQty, CommittedQty, AvailableQty, FifoDate, Rn
          FROM RankedLots
-         WHERE Rn = 1
-         ORDER BY ItemCode",
+         WHERE Rn <= 10
+         ORDER BY ItemCode, Rn",
         array_merge(['01'], $codes)
     );
+
+    $appIssuedByItemLot = [];
+    if (count($lotRows) > 0) {
+        $lotItemCodes = [];
+        $lotNos = [];
+        foreach ($lotRows as $lotRow) {
+            $lotItemCode = trim((string)($lotRow['ItemCode'] ?? ''));
+            $lotNo = trim((string)($lotRow['LotNo'] ?? ''));
+            if ($lotItemCode !== '') {
+                $lotItemCodes[$lotItemCode] = true;
+            }
+            if ($lotNo !== '') {
+                $lotNos[$lotNo] = true;
+            }
+        }
+
+        if (count($lotItemCodes) > 0 && count($lotNos) > 0) {
+            $itemPlaceholders = implode(',', array_fill(0, count($lotItemCodes), '?'));
+            $lotPlaceholders = implode(',', array_fill(0, count($lotNos), '?'));
+
+            if (
+                issuer_lot_has_table($conn, 'IssuanceTransactions') &&
+                issuer_lot_has_column($conn, 'IssuanceTransactions', 'ItemCode') &&
+                issuer_lot_has_column($conn, 'IssuanceTransactions', 'LotNo') &&
+                issuer_lot_has_column($conn, 'IssuanceTransactions', 'Quantity')
+            ) {
+                $issuedRows = fetch_all(
+                    $conn,
+                    "SELECT ItemCode, LotNo, ISNULL(SUM(ISNULL(Quantity, 0)), 0) AS IssuedQty
+                     FROM IssuanceTransactions
+                     WHERE ItemCode IN ({$itemPlaceholders})
+                       AND LotNo IN ({$lotPlaceholders})
+                     GROUP BY ItemCode, LotNo",
+                    array_merge(array_keys($lotItemCodes), array_keys($lotNos))
+                );
+            } elseif (
+                issuer_lot_has_table($conn, 'WarehouseIssueRequestLines') &&
+                issuer_lot_has_column($conn, 'WarehouseIssueRequestLines', 'ItemCode') &&
+                issuer_lot_has_column($conn, 'WarehouseIssueRequestLines', 'LotNo') &&
+                issuer_lot_has_column($conn, 'WarehouseIssueRequestLines', 'IssuedQty')
+            ) {
+                $statusFilter = issuer_lot_has_column($conn, 'WarehouseIssueRequestLines', 'Status')
+                    ? "AND ISNULL(Status, '') NOT IN ('CANCELLED', 'CANCELED', 'VOID')"
+                    : '';
+                $issuedRows = fetch_all(
+                    $conn,
+                    "SELECT ItemCode, LotNo, ISNULL(SUM(ISNULL(IssuedQty, 0)), 0) AS IssuedQty
+                     FROM WarehouseIssueRequestLines
+                     WHERE ItemCode IN ({$itemPlaceholders})
+                       AND LotNo IN ({$lotPlaceholders})
+                       {$statusFilter}
+                     GROUP BY ItemCode, LotNo",
+                    array_merge(array_keys($lotItemCodes), array_keys($lotNos))
+                );
+            } else {
+                $issuedRows = [];
+            }
+
+            foreach ($issuedRows as $issuedRow) {
+                $key = strtoupper(trim((string)($issuedRow['ItemCode'] ?? ''))) . '|' . strtoupper(trim((string)($issuedRow['LotNo'] ?? '')));
+                $appIssuedByItemLot[$key] = (float)($issuedRow['IssuedQty'] ?? 0);
+            }
+        }
+    }
 
     foreach ($lotRows as $lotRow) {
         $itemCode = trim((string)($lotRow['ItemCode'] ?? ''));
         $lotNo = trim((string)($lotRow['LotNo'] ?? ''));
-        $availableQty = (float)($lotRow['AvailableQty'] ?? 0);
+        $sapAvailableQty = (float)($lotRow['AvailableQty'] ?? 0);
+        $appIssuedQty = $appIssuedByItemLot[strtoupper($itemCode) . '|' . strtoupper($lotNo)] ?? 0.0;
+        $availableQty = max(0, $sapAvailableQty - $appIssuedQty);
 
         if ($itemCode === '' || $lotNo === '' || $availableQty <= 0) {
             continue;
@@ -315,15 +381,21 @@ if ($hasBatchBalance) {
             $fifoDate = $fifoDate->format('Y-m-d');
         }
 
-        $lotsByItem[$itemCode] = [[
+        if (!isset($lotsByItem[$itemCode])) {
+            $lotsByItem[$itemCode] = [];
+        }
+
+        $lotsByItem[$itemCode][] = [
             'lot_no' => $lotNo,
             'warehouse_code' => (string)($lotRow['WhsCode'] ?? '01'),
             'on_hand_qty' => (float)($lotRow['OnHandQty'] ?? 0),
             'committed_qty' => (float)($lotRow['CommittedQty'] ?? 0),
+            'sap_available_qty' => $sapAvailableQty,
+            'issued_qty' => $appIssuedQty,
             'available_qty' => $availableQty,
             'fifo_date' => (string)$fifoDate,
-            'fifo_rank' => 1
-        ]];
+            'fifo_rank' => (int)($lotRow['Rn'] ?? 0)
+        ];
     }
 }
 
@@ -336,6 +408,10 @@ foreach ($rows as $r) {
     $requestedQty = (float)$r['RequestedQty'];
     $issuedQty = (float)$r['IssuedQty'];
     $remainingQty = max(0, $requestedQty - $issuedQty);
+    if ($remainingQty <= 0.0005) {
+        continue;
+    }
+
     $stockQty = $stockByItem[(string)$r['ItemCode']] ?? 0.0;
     $qtyPerPack = itr_qty_per_pack_for_item($r['ItemCode']);
     $itemLocation = $itemLocationByCode[(string)$r['ItemCode']] ?? [];
