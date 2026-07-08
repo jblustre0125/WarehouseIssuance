@@ -28,6 +28,41 @@ function issuer_lot_num($value)
     return (float)str_replace(',', '', (string)($value ?? 0));
 }
 
+function issuer_app_issued_qty_for_lot($whp, $itemCode, $lotNo)
+{
+    $itemCode = trim((string)$itemCode);
+    $lotNo = trim((string)$lotNo);
+
+    if ($itemCode === '' || $lotNo === '') {
+        return 0.0;
+    }
+
+    if (
+        !issuer_lot_has_table($whp, 'WarehouseIssueRequestLines') ||
+        !issuer_lot_has_column($whp, 'WarehouseIssueRequestLines', 'ItemCode') ||
+        !issuer_lot_has_column($whp, 'WarehouseIssueRequestLines', 'LotNo') ||
+        !issuer_lot_has_column($whp, 'WarehouseIssueRequestLines', 'IssuedQty')
+    ) {
+        return 0.0;
+    }
+
+    $statusFilter = issuer_lot_has_column($whp, 'WarehouseIssueRequestLines', 'Status')
+        ? "AND ISNULL(Status, '') NOT IN ('CANCELLED', 'CANCELED', 'VOID')"
+        : '';
+
+    $issuedRow = fetch_one(
+        $whp,
+        "SELECT ISNULL(SUM(ISNULL(IssuedQty, 0)), 0) AS IssuedQty
+         FROM WarehouseIssueRequestLines
+         WHERE ItemCode = ?
+           AND LotNo = ?
+           {$statusFilter}",
+        [$itemCode, $lotNo]
+    );
+
+    return $issuedRow ? issuer_lot_num($issuedRow['IssuedQty'] ?? 0) : 0.0;
+}
+
 function issuer_lot_balance($erp, $whp, $itemCode, $lotNo, $warehouseCode = '01')
 {
     $itemCode = trim((string)$itemCode);
@@ -43,6 +78,9 @@ function issuer_lot_balance($erp, $whp, $itemCode, $lotNo, $warehouseCode = '01'
             'lot_no' => $lotNo,
             'warehouse_code' => $warehouseCode,
             'received_qty' => 0,
+            'on_hand_qty' => 0,
+            'committed_qty' => 0,
+            'sap_available_qty' => 0,
             'issued_qty' => 0,
             'available_qty' => 0,
             'source' => 'none'
@@ -54,11 +92,6 @@ function issuer_lot_balance($erp, $whp, $itemCode, $lotNo, $warehouseCode = '01'
     $sapAvailableQty = 0.0;
     $source = 'none';
 
-    /*
-        SAP Business One batch balance.
-        OBTQ = batch quantity per warehouse.
-        OBTN = batch master where DistNumber is the lot/batch number.
-    */
     if (
         issuer_lot_has_table($erp, 'OBTQ') &&
         issuer_lot_has_table($erp, 'OBTN') &&
@@ -97,37 +130,14 @@ function issuer_lot_balance($erp, $whp, $itemCode, $lotNo, $warehouseCode = '01'
     }
 
     /*
-        App-side issued quantity. This is returned for visibility.
-        The available quantity uses SAP batch balance when available.
+        IMPORTANT:
+        Warehouse Issuance can save issued quantity before SAP batch balance is reduced.
+        To prevent the same lot from being suggested again, app IssuedQty is subtracted
+        from the SAP available quantity.
     */
-    $appIssuedQty = 0.0;
-
-    if (
-        issuer_lot_has_table($whp, 'WarehouseIssueRequestLines') &&
-        issuer_lot_has_column($whp, 'WarehouseIssueRequestLines', 'ItemCode') &&
-        issuer_lot_has_column($whp, 'WarehouseIssueRequestLines', 'LotNo') &&
-        issuer_lot_has_column($whp, 'WarehouseIssueRequestLines', 'IssuedQty')
-    ) {
-        $statusFilter = issuer_lot_has_column($whp, 'WarehouseIssueRequestLines', 'Status')
-            ? "AND ISNULL(Status, '') NOT IN ('CANCELLED', 'CANCELED', 'VOID')"
-            : '';
-
-        $issuedRow = fetch_one(
-            $whp,
-            "SELECT ISNULL(SUM(ISNULL(IssuedQty, 0)), 0) AS IssuedQty
-             FROM WarehouseIssueRequestLines
-             WHERE ItemCode = ?
-               AND LotNo = ?
-               {$statusFilter}",
-            [$itemCode, $lotNo]
-        );
-
-        if ($issuedRow) {
-            $appIssuedQty = issuer_lot_num($issuedRow['IssuedQty'] ?? 0);
-        }
-    }
-
-    $valid = $sapAvailableQty > 0;
+    $appIssuedQty = issuer_app_issued_qty_for_lot($whp, $itemCode, $lotNo);
+    $systemAvailableQty = max(0, $sapAvailableQty - $appIssuedQty);
+    $valid = $systemAvailableQty > 0;
 
     return [
         'ok' => true,
@@ -138,12 +148,13 @@ function issuer_lot_balance($erp, $whp, $itemCode, $lotNo, $warehouseCode = '01'
         'received_qty' => $sapOnHandQty,
         'on_hand_qty' => $sapOnHandQty,
         'committed_qty' => $sapCommittedQty,
+        'sap_available_qty' => $sapAvailableQty,
         'issued_qty' => $appIssuedQty,
-        'available_qty' => $sapAvailableQty,
+        'available_qty' => $systemAvailableQty,
         'source' => $source,
         'message' => $valid
-            ? 'Lot is available.'
-            : 'Lot is fully consumed or no SAP batch balance exists in warehouse ' . $warehouseCode . '.'
+            ? 'Lot is available. SAP available: ' . $sapAvailableQty . ', already issued in Warehouse Issuance: ' . $appIssuedQty . ', remaining: ' . $systemAvailableQty . '.'
+            : 'Lot is fully consumed. SAP available: ' . $sapAvailableQty . ', already issued in Warehouse Issuance: ' . $appIssuedQty . ', remaining: 0.'
     ];
 }
 

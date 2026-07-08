@@ -90,7 +90,7 @@ foreach ($rows as $sigRow) {
 $cacheKey = sap_cache_make_key('sap.open_issue_requests', [
     'signature' => hash('sha256', implode('|', $rowSignatureParts)),
     'pack_sizes' => itr_pack_sizes_cache_token(),
-    'lot_query_version' => 'fast_no_initial_lots_v1'
+    'lot_query_version' => 'fifo_initial_one_lot_v1'
 ]);
 
 if (!sap_cache_should_refresh()) {
@@ -157,21 +157,107 @@ if (count($itemCodes) > 0 && fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMA
 
 
 /*
-    FAST MODE:
-    Do not load all SAP WH 01 batch/lot balances during initial request loading.
+    FAST FIFO MODE:
+    Do not load every SAP lot during initial request loading.
+    Load only the first FIFO WH 01 lot per ItemCode so the right panel and the
+    GRPO Lot No suggestion can still show a lot number without causing the page
+    to get stuck fetching all batch records.
 
-    Reason:
-    The old logic queried OBTQ/OBTN and OIBT for every open ItemCode. On SAP B1 with
-    many batch rows, this makes api/get_open_issue_requests.php slow or stuck on
-    "Loading requests / Fetching records".
-
-    The issuer screen should load request records quickly. Lot balance is still
-    validated live through api/issuer/check_lot_balance.php before printing/saving.
-
-    available_lots is intentionally left empty here. If lot suggestions are needed,
-    create a separate endpoint that fetches lots only for the selected request/item.
+    Final validation still uses api/issuer/check_lot_balance.php before printing/saving.
 */
 $lotsByItem = [];
+
+$hasBatchBalance =
+    count($itemCodes) > 0 &&
+    fetch_one($erp, "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'OBTQ'") &&
+    fetch_one($erp, "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'OBTN'") &&
+    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'ItemCode'") &&
+    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'SysNumber'") &&
+    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'WhsCode'") &&
+    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'Quantity'") &&
+    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = 'ItemCode'") &&
+    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = 'SysNumber'") &&
+    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = 'DistNumber'");
+
+if ($hasBatchBalance) {
+    $codes = array_keys($itemCodes);
+    $placeholders = implode(',', array_fill(0, count($codes), '?'));
+    $hasCommitQty = fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'CommitQty'");
+    $commitExpr = $hasCommitQty ? 'ISNULL(Q.CommitQty, 0)' : '0';
+
+    $fifoDateParts = [];
+    foreach (['InDate', 'CreateDate', 'MnfDate', 'ExpDate'] as $dateColumn) {
+        if (fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = ?", [$dateColumn])) {
+            $fifoDateParts[] = 'TRY_CONVERT(datetime, B.[' . $dateColumn . '])';
+        }
+    }
+
+    $fifoDateExpr = count($fifoDateParts) > 0
+        ? 'COALESCE(' . implode(', ', $fifoDateParts) . ", CONVERT(datetime, '2099-12-31'))"
+        : "CONVERT(datetime, '2099-12-31')";
+
+    $lotRows = fetch_all(
+        $erp,
+        "WITH LotBalances AS (
+             SELECT
+                 Q.ItemCode,
+                 B.DistNumber AS LotNo,
+                 Q.WhsCode,
+                 ISNULL(SUM(ISNULL(Q.Quantity, 0)), 0) AS OnHandQty,
+                 ISNULL(SUM({$commitExpr}), 0) AS CommittedQty,
+                 MIN({$fifoDateExpr}) AS FifoDate
+             FROM OBTQ Q
+             INNER JOIN OBTN B
+                ON B.ItemCode = Q.ItemCode
+               AND B.SysNumber = Q.SysNumber
+             WHERE Q.WhsCode = ?
+               AND Q.ItemCode IN ({$placeholders})
+             GROUP BY Q.ItemCode, B.DistNumber, Q.WhsCode
+             HAVING ISNULL(SUM(ISNULL(Q.Quantity, 0)), 0) - ISNULL(SUM({$commitExpr}), 0) > 0
+         ), RankedLots AS (
+             SELECT
+                 ItemCode,
+                 LotNo,
+                 WhsCode,
+                 OnHandQty,
+                 CommittedQty,
+                 OnHandQty - CommittedQty AS AvailableQty,
+                 FifoDate,
+                 ROW_NUMBER() OVER (PARTITION BY ItemCode ORDER BY FifoDate ASC, LotNo ASC) AS Rn
+             FROM LotBalances
+         )
+         SELECT ItemCode, LotNo, WhsCode, OnHandQty, CommittedQty, AvailableQty, FifoDate
+         FROM RankedLots
+         WHERE Rn = 1
+         ORDER BY ItemCode",
+        array_merge(['01'], $codes)
+    );
+
+    foreach ($lotRows as $lotRow) {
+        $itemCode = trim((string)($lotRow['ItemCode'] ?? ''));
+        $lotNo = trim((string)($lotRow['LotNo'] ?? ''));
+        $availableQty = (float)($lotRow['AvailableQty'] ?? 0);
+
+        if ($itemCode === '' || $lotNo === '' || $availableQty <= 0) {
+            continue;
+        }
+
+        $fifoDate = $lotRow['FifoDate'] ?? null;
+        if ($fifoDate instanceof DateTimeInterface) {
+            $fifoDate = $fifoDate->format('Y-m-d');
+        }
+
+        $lotsByItem[$itemCode] = [[
+            'lot_no' => $lotNo,
+            'warehouse_code' => (string)($lotRow['WhsCode'] ?? '01'),
+            'on_hand_qty' => (float)($lotRow['OnHandQty'] ?? 0),
+            'committed_qty' => (float)($lotRow['CommittedQty'] ?? 0),
+            'available_qty' => $availableQty,
+            'fifo_date' => (string)$fifoDate,
+            'fifo_rank' => 1
+        ]];
+    }
+}
 
 $documents = [];
 $requests = [];

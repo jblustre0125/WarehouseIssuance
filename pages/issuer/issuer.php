@@ -1135,7 +1135,7 @@ let pendingSaveAfterOverQty = false;
 let pendingRemoveItemIdx = null;
 let stockRows = [];
 let lotsByItemCode = {};
-let consumedLotKeys = {};
+let lotSuggestionRequests = {};
 
 function fmtQty(v) {
     const n = Number(v || 0);
@@ -1150,30 +1150,6 @@ function lotKey(itemCode, lotNo, whsCode = '01') {
     return String(itemCode || '').trim().toUpperCase() + '|' +
         String(lotNo || '').trim().toUpperCase() + '|' +
         String(whsCode || '01').trim().toUpperCase();
-}
-
-function rememberConsumedLot(itemCode, lotNo, whsCode = '01', reason = '') {
-    const key = lotKey(itemCode, lotNo, whsCode);
-
-    if (!String(itemCode || '').trim() || !String(lotNo || '').trim()) {
-        return;
-    }
-
-    consumedLotKeys[key] = {
-        item_code: String(itemCode || '').trim(),
-        lot_no: String(lotNo || '').trim(),
-        warehouse_code: String(whsCode || '01').trim() || '01',
-        reason: String(reason || 'Consumed lot')
-    };
-}
-
-function forgetConsumedLot(itemCode, lotNo, whsCode = '01') {
-    const key = lotKey(itemCode, lotNo, whsCode);
-    delete consumedLotKeys[key];
-}
-
-function isConsumedLot(itemCode, lotNo, whsCode = '01') {
-    return !!consumedLotKeys[lotKey(itemCode, lotNo, whsCode)];
 }
 
 function pendingQtyForLot(itemCode, lotNo, whsCode = '01', excludeIdx = -1) {
@@ -1206,6 +1182,8 @@ function setLotStatus(idx, status, message, balance = null) {
         items[idx].lot_issued_qty = Number(balance.issued_qty || 0);
         items[idx].lot_available_qty = Number(balance.available_qty || 0);
         items[idx].lot_source = balance.source || '';
+        items[idx].lot_issue_qty = Number(balance.issue_qty || items[idx].quantity || 0);
+        items[idx].lot_remaining_after_issue = Number(balance.remaining_after_issue ?? Math.max(0, Number(balance.available_qty || 0) - Number(balance.issue_qty || items[idx].quantity || 0)));
     }
 }
 
@@ -1213,7 +1191,10 @@ function lotStatusHtml(it) {
     const status = String(it.lot_status || '').toLowerCase();
 
     if (status === 'valid') {
-        return `<span class="badge text-bg-success">OK</span><div class="small text-muted">Avail ${fmtQty(it.lot_available_qty)}</div>`;
+        const issueQty = Number(it.lot_issue_qty || it.quantity || 0);
+        const sapAvail = Number(it.lot_available_qty || 0);
+        const afterIssue = Number(it.lot_remaining_after_issue || 0);
+        return `<span class="badge text-bg-success">OK</span><div class="small text-muted">Issue ${fmtQty(issueQty)}</div><div class="small text-muted">SAP avail ${fmtQty(sapAvail)}</div><div class="small text-muted">After ${fmtQty(afterIssue)}</div>`;
     }
 
     if (status === 'invalid') {
@@ -1524,13 +1505,15 @@ function normalizeLotRow(lot) {
     const onHandQty = Number(lot?.on_hand_qty ?? lot?.OnHandQty ?? lot?.quantity ?? 0);
     const committedQty = Number(lot?.committed_qty ?? lot?.CommittedQty ?? 0);
     const availableQty = Number(lot?.available_qty ?? lot?.AvailableQty ?? Math.max(0, onHandQty - committedQty));
+    const suggestedIssueQty = Number(lot?.suggested_issue_qty ?? lot?.SuggestedIssueQty ?? 0);
 
     return {
         lot_no: lotNo,
         warehouse_code: lot?.warehouse_code || lot?.WhsCode || '01',
         on_hand_qty: onHandQty,
         committed_qty: committedQty,
-        available_qty: availableQty
+        available_qty: availableQty,
+        suggested_issue_qty: suggestedIssueQty
     };
 }
 
@@ -1592,6 +1575,190 @@ function rebuildLotsByItemCode(doc) {
 
 function lotsForItemCode(itemCode) {
     return lotsByItemCode[itemCodeKey(itemCode)] || [];
+}
+
+
+function setLotsForItemCode(itemCode, lots) {
+    const key = itemCodeKey(itemCode);
+
+    if (!key) {
+        return;
+    }
+
+    lotsByItemCode[key] = Array.isArray(lots)
+        ? lots.map(normalizeLotRow).filter(Boolean)
+        : [];
+
+    lotsByItemCode[key].sort((a, b) => String(a.lot_no).localeCompare(String(b.lot_no)));
+}
+
+function grpoLotSuggestionContentHtml(it, idx) {
+    const suggestions = [];
+    const seenLots = new Set();
+
+    const itemCode = String(it.item_code || '').trim();
+    const whsCode = String(it.stock_whs_code || '01').trim() || '01';
+    const allLots = allAvailableLotsForItem(it);
+
+    function addSuggestion(lotNo, availableQty, labelPrefix, suggestedIssueQty = 0) {
+        const cleanLot = String(lotNo || '').trim();
+
+        if (!cleanLot) {
+            return;
+        }
+
+        const key = cleanLot.toUpperCase();
+
+        if (seenLots.has(key)) {
+            return;
+        }
+
+        const available = Number(availableQty || 0);
+        const pendingQty = pendingQtyForLot(itemCode, cleanLot, whsCode, idx);
+        const remaining = Math.max(0, available - pendingQty);
+
+        if (available > 0 && remaining <= 0) {
+            return;
+        }
+
+        seenLots.add(key);
+
+        const issueQty = Number(suggestedIssueQty || 0) > 0 ? Math.min(Number(suggestedIssueQty || 0), remaining) : 0;
+        const label = issueQty > 0
+            ? labelPrefix + ' issue ' + fmtQty(issueQty) + ' / available ' + fmtQty(remaining)
+            : labelPrefix + (available > 0 ? ' ' + fmtQty(remaining) : '');
+
+        suggestions.push({
+            lot_no: cleanLot,
+            available_qty: available,
+            remaining_qty: remaining,
+            suggested_issue_qty: issueQty,
+            label: label
+        });
+    }
+
+    allLots.forEach(lot => {
+        addSuggestion(lot.lot_no, lot.available_qty, 'FIFO', lot.suggested_issue_qty || 0);
+    });
+
+    const requestedLot = String(it.requested_lot_no || '').trim();
+
+    if (requestedLot && !seenLots.has(requestedLot.toUpperCase())) {
+        const matchedLot = allLots.find(lot => String(lot.lot_no || '').trim().toUpperCase() === requestedLot.toUpperCase());
+
+        addSuggestion(
+            requestedLot,
+            matchedLot ? matchedLot.available_qty : 0,
+            matchedLot ? 'Available' : 'Requested GRPO lot'
+        );
+    }
+
+    if (suggestions.length === 0) {
+        return '<div class="lot-suggestion-empty">No available lot suggestion</div>';
+    }
+
+    return suggestions.map(s => `
+        <button
+            type="button"
+            class="lot-suggestion-item"
+            onclick="selectSuggestedLot(${idx}, '${escJs(s.lot_no)}')"
+        >
+            ${esc(s.lot_no)}
+            <span class="lot-suggestion-sub">${esc(s.label)}</span>
+        </button>
+    `).join('');
+}
+
+function refreshLotSuggestionPopupContent(idx, loadingText = '') {
+    const popup = document.getElementById('lot_suggest_' + idx);
+
+    if (!popup || !items[idx]) {
+        return;
+    }
+
+    if (loadingText) {
+        popup.innerHTML = '<div class="lot-suggestion-empty">' + esc(loadingText) + '</div>';
+        return;
+    }
+
+    popup.innerHTML = grpoLotSuggestionContentHtml(items[idx], idx);
+}
+
+async function fetchLotSuggestionsForRow(idx, force = false) {
+    if (!items[idx]) {
+        return false;
+    }
+
+    const itemCode = String(items[idx].item_code || '').trim();
+    const whsCode = String(items[idx].stock_whs_code || '01').trim() || '01';
+    const itemKey = itemCodeKey(itemCode);
+
+    if (!itemKey) {
+        return false;
+    }
+
+    if (!force && lotsForItemCode(itemCode).length > 0) {
+        refreshLotSuggestionPopupContent(idx);
+        return true;
+    }
+
+    if (lotSuggestionRequests[itemKey]) {
+        await lotSuggestionRequests[itemKey];
+        refreshLotSuggestionPopupContent(idx);
+        return lotsForItemCode(itemCode).length > 0;
+    }
+
+    refreshLotSuggestionPopupContent(idx, 'Loading SAP lots...');
+
+    lotSuggestionRequests[itemKey] = fetch(
+        'api/issuer/get_lot_suggestions.php?item_code=' + encodeURIComponent(itemCode) +
+        '&warehouse_code=' + encodeURIComponent(whsCode) +
+        '&qty_needed=' + encodeURIComponent(String(items[idx].quantity || '0')),
+        {
+            cache: 'no-store',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        }
+    )
+        .then(async res => {
+            const text = await res.text();
+            let data = null;
+
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                throw new Error('Lot API returned invalid response.');
+            }
+
+            if (!data.ok) {
+                throw new Error(data.message || 'Unable to fetch lot suggestions.');
+            }
+
+            setLotsForItemCode(itemCode, data.lots || []);
+
+            items.forEach(row => {
+                if (itemCodeKey(row.item_code) === itemKey) {
+                    row.available_lots = lotsForItemCode(itemCode);
+                }
+            });
+        })
+        .catch(e => {
+            console.error(e);
+            const popup = document.getElementById('lot_suggest_' + idx);
+
+            if (popup) {
+                popup.innerHTML = '<div class="lot-suggestion-empty">' + esc(e.message || 'Unable to fetch SAP lots.') + '</div>';
+            }
+        })
+        .finally(() => {
+            delete lotSuggestionRequests[itemKey];
+        });
+
+    await lotSuggestionRequests[itemKey];
+    refreshLotSuggestionPopupContent(idx);
+    return lotsForItemCode(itemCode).length > 0;
 }
 
 function buildIssueItemFromRequest(req) {
@@ -1677,7 +1844,6 @@ function loadDocumentItemsConfirmed(docIdx) {
     }
 
     selectedDocument = doc;
-    consumedLotKeys = {};
     rebuildLotsByItemCode(doc);
 
     items = doc.lines
@@ -1696,7 +1862,6 @@ function clearSelectedRequest() {
     selectedDocument = null;
     items = [];
     lotsByItemCode = {};
-    consumedLotKeys = {};
 
     document.getElementById('selectedRequestBox').classList.add('d-none');
 
@@ -1816,6 +1981,7 @@ function allAvailableLotsForItem(it) {
                     existing.available_qty = Math.max(Number(existing.available_qty || 0), normalized.available_qty);
                     existing.on_hand_qty = Math.max(Number(existing.on_hand_qty || 0), normalized.on_hand_qty);
                     existing.committed_qty = Math.max(Number(existing.committed_qty || 0), normalized.committed_qty);
+                    existing.suggested_issue_qty = Math.max(Number(existing.suggested_issue_qty || 0), normalized.suggested_issue_qty || 0);
                 }
                 return;
             }
@@ -1852,116 +2018,20 @@ function allAvailableLotsForItem(it) {
 }
 
 function grpoLotSuggestionsHtml(it, idx) {
-    const suggestions = [];
-    const seenLots = new Set();
-
-    const itemCode = String(it.item_code || '').trim();
-    const whsCode = String(it.stock_whs_code || '01').trim() || '01';
-    const allLots = allAvailableLotsForItem(it);
-
-    function addSuggestion(lotNo, availableQty, labelPrefix) {
-        const cleanLot = String(lotNo || '').trim();
-
-        if (!cleanLot) {
-            return;
-        }
-
-        const key = cleanLot.toUpperCase();
-
-        if (seenLots.has(key)) {
-            return;
-        }
-
-        if (isConsumedLot(itemCode, cleanLot, whsCode)) {
-            return;
-        }
-
-        const available = Number(availableQty || 0);
-        const pendingQty = pendingQtyForLot(itemCode, cleanLot, whsCode, idx);
-        const remaining = Math.max(0, available - pendingQty);
-        const currentRowLot = String(it.lot_no || '').trim().toUpperCase();
-        const currentRowStatus = String(it.lot_status || '').trim().toLowerCase();
-        const currentRowMessage = String(it.lot_message || '').trim().toLowerCase();
-        const currentRowBlocked = currentRowLot === key && currentRowStatus === 'invalid' &&
-            (currentRowMessage.includes('fully consumed') ||
-                currentRowMessage.includes('no remaining') ||
-                currentRowMessage.includes('no available') ||
-                currentRowMessage.includes('no balance'));
-
-        // Hide lots that are already fully consumed by another row on this screen,
-        // or that the live balance check already blocked as consumed/no balance.
-        if ((available > 0 && remaining <= 0) || currentRowBlocked) {
-            return;
-        }
-
-        seenLots.add(key);
-
-        suggestions.push({
-            lot_no: cleanLot,
-            available_qty: available,
-            remaining_qty: remaining,
-            label: labelPrefix + (available > 0 ? ' ' + fmtQty(remaining) : '')
-        });
-    }
-
-    allLots.forEach(lot => {
-        addSuggestion(
-            lot.lot_no,
-            lot.available_qty,
-            'Available'
-        );
-    });
-
-    const requestedLot = String(it.requested_lot_no || '').trim();
-
-    if (requestedLot && !seenLots.has(requestedLot.toUpperCase())) {
-        const matchedLot = allLots.find(lot => String(lot.lot_no || '').trim().toUpperCase() === requestedLot.toUpperCase());
-
-        addSuggestion(
-            requestedLot,
-            matchedLot ? matchedLot.available_qty : 0,
-            matchedLot ? 'Available' : 'Requested GRPO lot'
-        );
-    }
-
-    if (suggestions.length === 0) {
-        return `
-            <div class="lot-suggestion-popup" id="lot_suggest_${idx}">
-                <div class="lot-suggestion-empty">No available lot suggestion</div>
-            </div>
-        `;
-    }
-
     return `
         <div class="lot-suggestion-popup" id="lot_suggest_${idx}">
-            ${suggestions.map(s => `
-                <button
-                    type="button"
-                    class="lot-suggestion-item"
-                    onclick="selectSuggestedLot(${idx}, '${escJs(s.lot_no)}')"
-                >
-                    ${esc(s.lot_no)}
-                    <span class="lot-suggestion-sub">${esc(s.label)}</span>
-                </button>
-            `).join('')}
+            ${grpoLotSuggestionContentHtml(it, idx)}
         </div>
     `;
 }
-
-function showLotSuggestions(idx) {
-    document.querySelectorAll('.lot-suggestion-popup').forEach(el => {
-        el.classList.remove('show');
-    });
-
+function positionLotSuggestionPopup(idx) {
     const input = document.getElementById('lot_' + idx);
     const popup = document.getElementById('lot_suggest_' + idx);
 
     if (!input || !popup) {
-        return;
+        return false;
     }
 
-    // Move the popup outside the scrollable table before showing it.
-    // This prevents clipping, but the popup is still positioned beside the active GRPO input.
     if (popup.parentElement !== document.body) {
         document.body.appendChild(popup);
     }
@@ -1979,7 +2049,6 @@ function showLotSuggestions(idx) {
     let maxHeight = 240;
     let top = rect.bottom + gap;
 
-    // Prefer showing below the selected input. Only place it above when there is almost no space below.
     if (spaceBelow >= 120 || spaceBelow >= spaceAbove) {
         maxHeight = Math.max(90, Math.min(240, spaceBelow));
         top = rect.bottom + gap;
@@ -1998,7 +2067,37 @@ function showLotSuggestions(idx) {
     popup.style.width = popupWidth + 'px';
     popup.style.maxHeight = maxHeight + 'px';
 
+    return true;
+}
+
+function showLotSuggestions(idx) {
+    document.querySelectorAll('.lot-suggestion-popup').forEach(el => {
+        el.classList.remove('show');
+    });
+
+    const popup = document.getElementById('lot_suggest_' + idx);
+
+    if (!popup || !items[idx]) {
+        return;
+    }
+
+    refreshLotSuggestionPopupContent(idx);
+
+    if (!positionLotSuggestionPopup(idx)) {
+        return;
+    }
+
     popup.classList.add('show');
+
+    if (allAvailableLotsForItem(items[idx]).length === 0) {
+        fetchLotSuggestionsForRow(idx).then(() => {
+            positionLotSuggestionPopup(idx);
+            const updatedPopup = document.getElementById('lot_suggest_' + idx);
+            if (updatedPopup) {
+                updatedPopup.classList.add('show');
+            }
+        });
+    }
 }
 
 
@@ -2035,12 +2134,6 @@ function selectSuggestedLot(idx, lotNo) {
 }
 
 function render() {
-    // Remove old suggestion popups first. Some popups are moved to document.body
-    // to avoid table clipping, so they can become stale after validation/re-render.
-    document.querySelectorAll('.lot-suggestion-popup').forEach(el => {
-        el.remove();
-    });
-
     const tb = document.querySelector('#itemsTable tbody');
     tb.innerHTML = '';
 
@@ -2241,6 +2334,39 @@ async function checkLotBalance(itemCode, lotNo, whsCode = '01') {
     return data;
 }
 
+
+function insertRemainderIssueRow(idx, remainderQty, reasonText = '') {
+    if (!items[idx]) {
+        return -1;
+    }
+
+    const remainder = roundIssueQty(remainderQty);
+
+    if (remainder <= 0.0005) {
+        return -1;
+    }
+
+    const baseRow = items[idx];
+    const newRow = {
+        ...baseRow,
+        quantity: String(remainder),
+        lot_no: '',
+        warehouse_lot_no: '',
+        scanned_code: String(baseRow.scanned_code || '') + ' / remaining FIFO split',
+        lot_status: '',
+        lot_message: '',
+        lot_received_qty: 0,
+        lot_issued_qty: 0,
+        lot_available_qty: 0,
+        lot_source: '',
+        fifo_split_from_lot: baseRow.lot_no || '',
+        match_by: reasonText || 'FIFO split remainder'
+    };
+
+    items.splice(idx + 1, 0, newRow);
+    return idx + 1;
+}
+
 async function validateItemLotBalanceCandidate(idx, qty, lotNo, showAlert = false) {
     const it = items[idx];
 
@@ -2266,23 +2392,6 @@ async function validateItemLotBalanceCandidate(idx, qty, lotNo, showAlert = fals
 
     if (!balance.ok || !balance.valid) {
         const msg = balance.message || 'Lot has no available balance.';
-        const lowerMsg = String(msg || '').toLowerCase();
-
-        if (lowerMsg.includes('fully consumed') ||
-            lowerMsg.includes('no remaining') ||
-            lowerMsg.includes('no available') ||
-            lowerMsg.includes('no balance')) {
-            rememberConsumedLot(itemCode, cleanLot, whsCode, msg);
-        }
-
-        if (String(items[idx]?.lot_no || '').trim().toUpperCase() === cleanLot.toUpperCase()) {
-            items[idx].lot_no = '';
-            const lotInput = document.getElementById('lot_' + idx);
-            if (lotInput) {
-                lotInput.value = '';
-            }
-        }
-
         setLotStatus(idx, 'invalid', msg, balance);
         render();
 
@@ -2300,7 +2409,10 @@ async function validateItemLotBalanceCandidate(idx, qty, lotNo, showAlert = fals
 
     if (issueQty > remainingAvailableQty) {
         if (remainingAvailableQty > 0) {
-            issueQty = remainingAvailableQty;
+            const originalQty = issueQty;
+            issueQty = roundIssueQty(remainingAvailableQty);
+            const remainderQty = roundIssueQty(originalQty - issueQty);
+
             items[idx].quantity = String(issueQty);
 
             const qtyInput = document.getElementById('qty_' + idx);
@@ -2309,11 +2421,21 @@ async function validateItemLotBalanceCandidate(idx, qty, lotNo, showAlert = fals
                 qtyInput.value = issueQty;
             }
 
+            let remainderMsg = '';
+            if (remainderQty > 0.0005) {
+                insertRemainderIssueRow(idx, remainderQty, 'FIFO remainder from ' + cleanLot);
+                remainderMsg = ' Remaining ' + fmtQty(remainderQty) + ' was added as a new row for the next FIFO lot.';
+            }
+
             const msg = 'Lot ' + cleanLot + ' only has ' + fmtQty(availableQty) +
                 ' available. Already pending on this screen: ' + fmtQty(pendingQty) +
-                '. Qty to issue was adjusted to remaining available: ' + fmtQty(issueQty) + '.';
+                '. This row Qty to Issue was adjusted to ' + fmtQty(issueQty) + '.' + remainderMsg;
 
-            setLotStatus(idx, 'valid', msg, balance);
+            setLotStatus(idx, 'valid', msg, {
+                ...balance,
+                issue_qty: issueQty,
+                remaining_after_issue: Math.max(0, availableQty - pendingQty - issueQty)
+            });
             render();
 
             if (showAlert) {
@@ -2325,17 +2447,7 @@ async function validateItemLotBalanceCandidate(idx, qty, lotNo, showAlert = fals
 
         const msg = 'Lot ' + cleanLot + ' only has ' + fmtQty(availableQty) +
             ' available. Already pending on this screen: ' + fmtQty(pendingQty) +
-            '. No remaining quantity is available for this line. This lot was removed from the current line.';
-
-        rememberConsumedLot(itemCode, cleanLot, whsCode, msg);
-
-        if (String(items[idx]?.lot_no || '').trim().toUpperCase() === cleanLot.toUpperCase()) {
-            items[idx].lot_no = '';
-            const lotInput = document.getElementById('lot_' + idx);
-            if (lotInput) {
-                lotInput.value = '';
-            }
-        }
+            '. No remaining quantity is available for this line.';
 
         setLotStatus(idx, 'invalid', msg, balance);
         render();
@@ -2349,8 +2461,11 @@ async function validateItemLotBalanceCandidate(idx, qty, lotNo, showAlert = fals
 
     const afterThisQty = pendingQty + issueQty;
 
-    forgetConsumedLot(itemCode, cleanLot, whsCode);
-    setLotStatus(idx, 'valid', 'Lot available. Available ' + fmtQty(availableQty) + ', pending after this ' + fmtQty(afterThisQty) + '.', balance);
+    setLotStatus(idx, 'valid', 'Lot available. SAP available ' + fmtQty(availableQty) + ', issue qty ' + fmtQty(issueQty) + ', remaining after this issue ' + fmtQty(Math.max(0, availableQty - afterThisQty)) + '.', {
+        ...balance,
+        issue_qty: issueQty,
+        remaining_after_issue: Math.max(0, availableQty - afterThisQty)
+    });
     render();
     return true;
 }
