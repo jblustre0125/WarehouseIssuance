@@ -90,7 +90,7 @@ foreach ($rows as $sigRow) {
 $cacheKey = sap_cache_make_key('sap.open_issue_requests', [
     'signature' => hash('sha256', implode('|', $rowSignatureParts)),
     'pack_sizes' => itr_pack_sizes_cache_token(),
-    'lot_query_version' => 'all_wh01_lots_v2'
+    'lot_query_version' => 'fast_no_initial_lots_v1'
 ]);
 
 if (!sap_cache_should_refresh()) {
@@ -156,168 +156,22 @@ if (count($itemCodes) > 0 && fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMA
 }
 
 
-function add_lot_row(&$lotsByItem, $itemCode, $lotNo, $warehouseCode, $onHandQty, $committedQty = 0.0)
-{
-    $itemCode = trim((string)$itemCode);
-    $lotNo = trim((string)$lotNo);
-    $warehouseCode = trim((string)$warehouseCode) !== '' ? trim((string)$warehouseCode) : '01';
-    $onHandQty = (float)$onHandQty;
-    $committedQty = (float)$committedQty;
-    $availableQty = max(0, $onHandQty - $committedQty);
-
-    if ($itemCode === '' || $lotNo === '' || $onHandQty <= 0 || $availableQty <= 0) {
-        return;
-    }
-
-    if (!isset($lotsByItem[$itemCode])) {
-        $lotsByItem[$itemCode] = [];
-    }
-
-    $lotKey = strtoupper($lotNo) . '|' . strtoupper($warehouseCode);
-
-    if (!isset($lotsByItem[$itemCode][$lotKey])) {
-        $lotsByItem[$itemCode][$lotKey] = [
-            'lot_no' => $lotNo,
-            'warehouse_code' => $warehouseCode,
-            'on_hand_qty' => 0.0,
-            'committed_qty' => 0.0,
-            'available_qty' => 0.0
-        ];
-    }
-
-    $lotsByItem[$itemCode][$lotKey]['on_hand_qty'] += $onHandQty;
-    $lotsByItem[$itemCode][$lotKey]['committed_qty'] += $committedQty;
-    $lotsByItem[$itemCode][$lotKey]['available_qty'] = max(
-        0,
-        $lotsByItem[$itemCode][$lotKey]['on_hand_qty'] - $lotsByItem[$itemCode][$lotKey]['committed_qty']
-    );
-}
-
 /*
-    Build all WH 01 lot suggestions per item.
-    Primary source: OBTQ + OBTN, which is the normal SAP B1 batch quantity table.
-    Fallback source: OIBT, for older/custom SAP B1 databases where batch balances are exposed there.
-    The frontend can only suggest the lots returned here, so this must return every positive-balance lot.
+    FAST MODE:
+    Do not load all SAP WH 01 batch/lot balances during initial request loading.
+
+    Reason:
+    The old logic queried OBTQ/OBTN and OIBT for every open ItemCode. On SAP B1 with
+    many batch rows, this makes api/get_open_issue_requests.php slow or stuck on
+    "Loading requests / Fetching records".
+
+    The issuer screen should load request records quickly. Lot balance is still
+    validated live through api/issuer/check_lot_balance.php before printing/saving.
+
+    available_lots is intentionally left empty here. If lot suggestions are needed,
+    create a separate endpoint that fetches lots only for the selected request/item.
 */
-$hasBatchBalance =
-    count($itemCodes) > 0 &&
-    fetch_one($erp, "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'OBTQ'") &&
-    fetch_one($erp, "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'OBTN'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'ItemCode'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'SysNumber'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'WhsCode'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'Quantity'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = 'ItemCode'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = 'SysNumber'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = 'DistNumber'");
-
-if ($hasBatchBalance) {
-    $codes = array_keys($itemCodes);
-    $placeholders = implode(',', array_fill(0, count($codes), '?'));
-    $hasCommitQty = fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'CommitQty'");
-    $commitExpr = $hasCommitQty ? 'ISNULL(Q.CommitQty, 0)' : '0';
-
-    $lotRows = fetch_all(
-        $erp,
-        "SELECT
-             Q.ItemCode,
-             B.DistNumber AS LotNo,
-             Q.WhsCode,
-             ISNULL(SUM(ISNULL(Q.Quantity, 0)), 0) AS OnHandQty,
-             ISNULL(SUM({$commitExpr}), 0) AS CommittedQty
-         FROM OBTQ Q
-         INNER JOIN OBTN B
-            ON B.ItemCode = Q.ItemCode
-           AND B.SysNumber = Q.SysNumber
-         WHERE Q.WhsCode = ?
-           AND Q.ItemCode IN ({$placeholders})
-         GROUP BY Q.ItemCode, B.DistNumber, Q.WhsCode
-         HAVING ISNULL(SUM(ISNULL(Q.Quantity, 0)), 0) > 0
-         ORDER BY Q.ItemCode, B.DistNumber",
-        array_merge(['01'], $codes)
-    );
-
-    foreach ($lotRows as $lotRow) {
-        add_lot_row(
-            $lotsByItem,
-            $lotRow['ItemCode'] ?? '',
-            $lotRow['LotNo'] ?? '',
-            $lotRow['WhsCode'] ?? '01',
-            $lotRow['OnHandQty'] ?? 0,
-            $lotRow['CommittedQty'] ?? 0
-        );
-    }
-}
-
-$hasOibtBatchBalance =
-    count($itemCodes) > 0 &&
-    fetch_one($erp, "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'OIBT'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OIBT' AND COLUMN_NAME = 'ItemCode'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OIBT' AND COLUMN_NAME = 'WhsCode'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OIBT' AND COLUMN_NAME = 'Quantity'");
-
-if ($hasOibtBatchBalance) {
-    $codes = array_keys($itemCodes);
-    $placeholders = implode(',', array_fill(0, count($codes), '?'));
-
-    $batchColumn = null;
-    foreach (['BatchNum', 'DistNumber', 'LotNo'] as $candidateColumn) {
-        if (fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OIBT' AND COLUMN_NAME = ?", [$candidateColumn])) {
-            $batchColumn = $candidateColumn;
-            break;
-        }
-    }
-
-    if ($batchColumn !== null) {
-        $hasIsCommitted = fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OIBT' AND COLUMN_NAME = 'IsCommited'");
-        $commitExpr = $hasIsCommitted ? 'ISNULL(IsCommited, 0)' : '0';
-
-        $lotRows = fetch_all(
-            $erp,
-            "SELECT
-                 ItemCode,
-                 {$batchColumn} AS LotNo,
-                 WhsCode,
-                 ISNULL(SUM(ISNULL(Quantity, 0)), 0) AS OnHandQty,
-                 ISNULL(SUM({$commitExpr}), 0) AS CommittedQty
-             FROM OIBT
-             WHERE WhsCode = ?
-               AND ItemCode IN ({$placeholders})
-             GROUP BY ItemCode, {$batchColumn}, WhsCode
-             HAVING ISNULL(SUM(ISNULL(Quantity, 0)), 0) > 0
-             ORDER BY ItemCode, {$batchColumn}",
-            array_merge(['01'], $codes)
-        );
-
-        foreach ($lotRows as $lotRow) {
-            add_lot_row(
-                $lotsByItem,
-                $lotRow['ItemCode'] ?? '',
-                $lotRow['LotNo'] ?? '',
-                $lotRow['WhsCode'] ?? '01',
-                $lotRow['OnHandQty'] ?? 0,
-                $lotRow['CommittedQty'] ?? 0
-            );
-        }
-    }
-}
-
-foreach ($lotsByItem as $itemCode => $lotMap) {
-    $lots = array_values($lotMap);
-
-    usort($lots, function ($a, $b) {
-        $availableA = (float)($a['available_qty'] ?? 0);
-        $availableB = (float)($b['available_qty'] ?? 0);
-
-        if ($availableA !== $availableB) {
-            return $availableB <=> $availableA;
-        }
-
-        return strcmp((string)($a['lot_no'] ?? ''), (string)($b['lot_no'] ?? ''));
-    });
-
-    $lotsByItem[$itemCode] = $lots;
-}
+$lotsByItem = [];
 
 $documents = [];
 $requests = [];
