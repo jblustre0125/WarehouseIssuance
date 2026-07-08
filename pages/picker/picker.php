@@ -1005,7 +1005,7 @@ $defaultPickPrinter = $defaultPickPrinter === 'zebra' ? 'zebra' : 'nitto';
                                 <div class="tab-pane fade" id="purchaseOrdersPane" role="tabpanel" aria-labelledby="purchaseOrdersTab" tabindex="0">
                                     <div class="po-toolbar">
                                         <input class="form-control form-control-sm" id="poSearchInput" placeholder="Search PO, vendor, item" oninput="queuePurchaseOrderSearch()">
-                                        <button class="btn btn-sm btn-outline-primary" type="button" onclick="loadOpenPurchaseOrders()">Search</button>
+                                        <button class="btn btn-sm btn-outline-primary" type="button" onclick="loadOpenPurchaseOrders(false)">Search</button>
                                     </div>
                                     <div class="small text-muted mb-2" id="poStatus">Loading open purchase orders...</div>
                                     <div id="poList" class="request-list"></div>
@@ -1168,22 +1168,65 @@ async function loadOpenRequests() {
     }
 }
 
-async function loadOpenPurchaseOrders() {
+async function loadOpenPurchaseOrders(forceLoad = false) {
     const status = document.getElementById('poStatus');
-    const search = (document.getElementById('poSearchInput')?.value || '').trim();
-    status.textContent = search ? 'Searching open purchase orders...' : 'Open POs load when needed. Use Search or Refresh.';
+    const searchInput = document.getElementById('poSearchInput');
+    const search = (searchInput?.value || '').trim();
 
-    if (!search && openPurchaseOrders.length === 0 && document.getElementById('purchaseOrdersTab')?.classList.contains('active') !== true) {
-        status.textContent = 'Open POs are paused until you open this tab or search.';
+    /*
+        Do not load every open PO automatically.
+        SAP PO queries can become very slow when there are many open PO lines.
+        The picker now loads PO records only after the user searches a PO number,
+        vendor, or item code. This prevents the page from hanging on "Loading PO".
+    */
+    if (!forceLoad && search.length < 2) {
+        openPurchaseOrders = [];
+        document.getElementById('poCount').textContent = '0';
+        renderPurchaseOrders();
+        status.textContent = 'Type at least 2 characters, then Search. This avoids loading all open POs from SAP.';
         return;
     }
 
-    try {
-        const url = 'api/picker/open_purchase_orders.php?q=' + encodeURIComponent(search);
-        const res = await fetch(url, { cache: 'no-store' });
-        const data = await res.json();
+    status.textContent = search
+        ? 'Searching open purchase orders...'
+        : 'Loading latest open purchase orders...';
 
-        if (!data.ok) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 25000);
+
+    try {
+        const params = new URLSearchParams();
+
+        if (search !== '') {
+            params.set('q', search);
+        }
+
+        /*
+            Ask the backend to limit results if it supports max.
+            If the API ignores max, this does not break anything.
+        */
+        params.set('max', search ? '50' : '20');
+
+        const url = 'api/picker/open_purchase_orders.php?' + params.toString();
+        const res = await fetch(url, {
+            cache: 'no-store',
+            signal: controller.signal,
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+
+        const text = await res.text();
+        let data = null;
+
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            throw new Error('PO API returned invalid JSON. Check api/picker/open_purchase_orders.php');
+        }
+
+        if (!res.ok || !data.ok) {
             openPurchaseOrders = [];
             document.getElementById('poCount').textContent = '0';
             renderPurchaseOrders();
@@ -1194,12 +1237,21 @@ async function loadOpenPurchaseOrders() {
         openPurchaseOrders = data.documents || [];
         document.getElementById('poCount').textContent = openPurchaseOrders.length;
         renderPurchaseOrders();
-        status.textContent = openPurchaseOrders.length + ' open PO(s) found' + (data.limited ? ' (limited)' : '') + '.';
+
+        status.textContent = openPurchaseOrders.length + ' open PO(s) found'
+            + (data.limited ? ' (limited)' : '')
+            + (search ? ' for "' + search + '"' : ' latest only')
+            + '.';
     } catch (e) {
         openPurchaseOrders = [];
         document.getElementById('poCount').textContent = '0';
         renderPurchaseOrders();
-        status.textContent = 'Unable to load open purchase orders. Check SAP connection or login session.';
+
+        status.textContent = e.name === 'AbortError'
+            ? 'PO search timed out after 25 seconds. Please search a more specific PO number, vendor, or item code.'
+            : (e.message || 'Unable to load open purchase orders. Check SAP connection or login session.');
+    } finally {
+        window.clearTimeout(timeoutId);
     }
 }
 
@@ -1216,7 +1268,9 @@ function queuePurchaseOrderSearch() {
         clearTimeout(poSearchTimer);
     }
 
-    poSearchTimer = setTimeout(loadOpenPurchaseOrders, 350);
+    poSearchTimer = setTimeout(function () {
+        loadOpenPurchaseOrders(false);
+    }, 450);
 }
 
 function renderRequests() {
@@ -1710,7 +1764,13 @@ const purchaseOrdersTab = document.getElementById('purchaseOrdersTab');
 
 if (purchaseOrdersTab) {
     purchaseOrdersTab.addEventListener('shown.bs.tab', function () {
-        pickerRefresh.run('pickerPurchaseOrders', loadOpenPurchaseOrders);
+        openPurchaseOrders = [];
+        document.getElementById('poCount').textContent = '0';
+        renderPurchaseOrders();
+        const status = document.getElementById('poStatus');
+        if (status) {
+            status.textContent = 'Type at least 2 characters, then Search. Full PO auto-loading is disabled to prevent slow SAP loading.';
+        }
     });
 }
 </script>
