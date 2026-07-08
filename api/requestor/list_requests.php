@@ -20,7 +20,11 @@ $conn = get_whpokayoke_connection();
 $u = current_user();
 $role = strtolower($u['role'] ?? '');
 
-$where = ["H.Status IN ('OPEN','PARTIAL')"];
+$where = [
+    "H.Status IN ('OPEN','PARTIAL')",
+    "L.Status IN ('OPEN','PARTIAL')",
+    "L.RequestedQty > ISNULL(L.IssuedQty, 0)"
+];
 $params = [];
 
 if ($role !== ROLE_ADMIN) {
@@ -29,9 +33,16 @@ if ($role !== ROLE_ADMIN) {
     $params[] = (string)($u['username'] ?? '');
 }
 
+/*
+    Requestor Pending Queue must use the same pending logic as Issuer Open Requests.
+    Important:
+    - Do not load already issued lines.
+    - Do not use TOP 100 line rows because many issued lines can consume the limit and hide older pending requests.
+    - Show only request lines where RequestedQty > IssuedQty.
+*/
 $rows = fetch_all(
     $conn,
-    "SELECT TOP 100
+    "SELECT
         H.RequestID,
         H.RequestNo,
         H.ITRNumber,
@@ -48,12 +59,12 @@ $rows = fetch_all(
         L.PartName,
         L.RequestedQty,
         ISNULL(L.IssuedQty, 0) AS IssuedQty,
+        L.RequestedQty - ISNULL(L.IssuedQty, 0) AS RemainingQty,
         L.LotNo,
         L.Status AS LineStatus
      FROM WarehouseIssueRequestHeader H
      INNER JOIN WarehouseIssueRequestLines L ON L.RequestID = H.RequestID
      WHERE " . implode(' AND ', $where) . "
-       AND L.Status <> 'CANCELLED'
      ORDER BY H.RequestedAt DESC, H.RequestNo DESC, L.RequestLineID ASC",
     $params
 );
@@ -65,6 +76,7 @@ foreach ($rows as $sigRow) {
         $sigRow['RequestLineID'] ?? '',
         $sigRow['RequestedQty'] ?? '',
         $sigRow['IssuedQty'] ?? '',
+        $sigRow['RemainingQty'] ?? '',
         $sigRow['LotNo'] ?? '',
         $sigRow['LineStatus'] ?? ''
     ]);
@@ -73,6 +85,7 @@ foreach ($rows as $sigRow) {
 $cacheKey = sap_cache_make_key('sap.requestor.list_requests', [
     'role' => $role,
     'user' => $role === ROLE_ADMIN ? 'admin' : (string)($u['username'] ?? ''),
+    'pending_logic' => 'issuer_matching_remaining_lines_v2',
     'signature' => hash('sha256', implode('|', $rowSignatureParts))
 ]);
 
@@ -121,6 +134,7 @@ if ($hasOitw && $hasWtq1 && count($itemCodes) > 0 && count($docEntries) > 0) {
     $entries = array_keys($docEntries);
     $entryPlaceholders = implode(',', array_fill(0, count($entries), '?'));
     $codePlaceholders = implode(',', array_fill(0, count($codes), '?'));
+
     $stockRows = fetch_all(
         $erp,
         "SELECT
@@ -154,6 +168,7 @@ $documents = [];
 
 foreach ($rows as $r) {
     $requestId = (int)$r['RequestID'];
+    $headerStatus = strtoupper((string)$r['HeaderStatus']);
 
     if (!isset($documents[$requestId])) {
         $documents[$requestId] = [
@@ -171,13 +186,19 @@ foreach ($rows as $r) {
             'remaining_qty' => 0.0,
             'source_stock_qty' => 0.0,
             'destination_stock_qty' => 0.0,
-            'editable' => true,
+            /*
+                Editable only while the whole request is still OPEN.
+                PARTIAL requests are view-only / Load Remaining because some issuance was already done.
+            */
+            'editable' => $headerStatus === 'OPEN',
             'lines' => []
         ];
     }
 
     $requestedQty = (float)$r['RequestedQty'];
     $issuedQty = (float)$r['IssuedQty'];
+    $remainingQty = max(0, (float)($r['RemainingQty'] ?? ($requestedQty - $issuedQty)));
+
     $stockKey = (string)($r['LineSAPDocEntry'] ?? $r['SAP_IT_DocEntry']) . '|' . (string)$r['SAP_IT_LineNum'] . '|' . (string)$r['ItemCode'];
     $stock = $stockByLine[$stockKey] ?? [
         'from_whs_code' => '01',
@@ -186,16 +207,17 @@ foreach ($rows as $r) {
         'destination_stock_qty' => 0.0
     ];
 
-    if ($issuedQty > 0 || strtoupper((string)$r['LineStatus']) !== 'OPEN') {
+    if ($issuedQty > 0 || strtoupper((string)$r['LineStatus']) !== 'OPEN' || $headerStatus !== 'OPEN') {
         $documents[$requestId]['editable'] = false;
     }
 
     $documents[$requestId]['line_count']++;
     $documents[$requestId]['requested_qty'] += $requestedQty;
     $documents[$requestId]['issued_qty'] += $issuedQty;
-    $documents[$requestId]['remaining_qty'] += max(0, $requestedQty - $issuedQty);
+    $documents[$requestId]['remaining_qty'] += $remainingQty;
     $documents[$requestId]['source_stock_qty'] += (float)$stock['source_stock_qty'];
     $documents[$requestId]['destination_stock_qty'] += (float)$stock['destination_stock_qty'];
+
     $documents[$requestId]['lines'][] = [
         'request_line_id' => (int)$r['RequestLineID'],
         'doc_entry' => $r['LineSAPDocEntry'] !== null ? (int)$r['LineSAPDocEntry'] : ($r['SAP_IT_DocEntry'] !== null ? (int)$r['SAP_IT_DocEntry'] : null),
@@ -205,7 +227,7 @@ foreach ($rows as $r) {
         'part_name' => (string)$r['PartName'],
         'requested_qty' => $requestedQty,
         'issued_qty' => $issuedQty,
-        'remaining_qty' => max(0, $requestedQty - $issuedQty),
+        'remaining_qty' => $remainingQty,
         'lot_no' => (string)($r['LotNo'] ?? ''),
         'source_stock_qty' => (float)$stock['source_stock_qty'],
         'destination_stock_qty' => (float)$stock['destination_stock_qty'],

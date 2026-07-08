@@ -62,6 +62,7 @@ if ($stmt === false) app_error(sqlsrv_fail_message());
 $row = fetch_one($conn, 'SELECT TraceID FROM RawmatTraceHeader WHERE TraceNo = ?', [$traceNo]);
 $traceId = (int)$row['TraceID'];
 $saved = []; $failed = [];
+$affectedRequestIds = [];
 
 $lineHasSapDocEntry = whp_has_column($conn, 'RawmatTraceLines', 'SAP_IT_DocEntry');
 $lineHasSapDocNum = whp_has_column($conn, 'RawmatTraceLines', 'SAP_IT_DocNum');
@@ -88,7 +89,7 @@ foreach ($items as $item) {
     $requestLineId = trim($item['request_line_id'] ?? '');
     $method = strtoupper(trim($item['entry_method'] ?? 'SCAN')); $reason = trim($item['manual_reason'] ?? '');
     if ($itemCode === '' || $qty === '' || $lot === '') { $failed[] = ['item'=>$item,'reason'=>'Missing item, qty, or GRPO lot']; continue; }
-    if ($warehouseLot === '') { $failed[] = ['item'=>$item,'reason'=>'Missing warehouse lot']; continue; }
+    // WH Lot No is optional. Do not block issuance when blank.
     if (!is_numeric($qty) || (float)$qty <= 0) { $failed[] = ['item'=>$item,'reason'=>'Quantity must be greater than zero']; continue; }
     if ($method === 'MANUAL' && $reason === '') { $failed[] = ['item'=>$item,'reason'=>'Manual entry requires reason']; continue; }
     // Resolve SAP item by ItemCode, OITM.CodeBars, or OBCD.BcdCode.
@@ -144,46 +145,96 @@ foreach ($items as $item) {
     if ($txHasWarehouseLot) { $txCols[] = 'WarehouseLotNo'; $txParams[] = $warehouseLot; }
     sqlsrv_query($conn, 'INSERT INTO IssuanceTransactions (' . implode(', ', $txCols) . ') VALUES (' . implode(', ', array_fill(0, count($txCols), '?')) . ')', $txParams);
     if ($requestLineId !== '') {
-        $requestUpdateSql = "UPDATE WarehouseIssueRequestLines
-             SET IssuedQty = ISNULL(IssuedQty, 0) + ?,
-                 LotNo = COALESCE(NULLIF(LotNo, ''), ?),";
-        $requestUpdateParams = [$qty, $lot];
+        $issueQty = (float)$qty;
 
-        if ($requestLineHasWarehouseLot) {
+        $requestUpdateSql = "UPDATE WarehouseIssueRequestLines
+             SET IssuedQty = CASE
+                     WHEN ISNULL(IssuedQty, 0) + ? >= RequestedQty THEN RequestedQty
+                     ELSE ISNULL(IssuedQty, 0) + ?
+                 END,
+                 LotNo = COALESCE(NULLIF(LotNo, ''), ?),";
+
+        $requestUpdateParams = [$issueQty, $issueQty, $lot];
+
+        if ($requestLineHasWarehouseLot && $warehouseLot !== '') {
             $requestUpdateSql .= "
-                 WarehouseLotNo = ?,";
+                 WarehouseLotNo = COALESCE(NULLIF(WarehouseLotNo, ''), ?),";
             $requestUpdateParams[] = $warehouseLot;
         }
 
         $requestUpdateSql .= "
-                 Status = CASE WHEN ISNULL(IssuedQty, 0) + ? >= RequestedQty THEN 'ISSUED' ELSE 'PARTIAL' END
+                 Status = CASE
+                     WHEN ISNULL(IssuedQty, 0) + ? >= RequestedQty THEN 'ISSUED'
+                     WHEN ISNULL(IssuedQty, 0) + ? > 0 THEN 'PARTIAL'
+                     ELSE 'OPEN'
+                 END
              WHERE RequestLineID = ?";
-        $requestUpdateParams[] = $qty;
+
+        $requestUpdateParams[] = $issueQty;
+        $requestUpdateParams[] = $issueQty;
         $requestUpdateParams[] = $requestLineId;
 
-        sqlsrv_query($conn, $requestUpdateSql, $requestUpdateParams);
+        $requestUpdateStmt = sqlsrv_query($conn, $requestUpdateSql, $requestUpdateParams);
+
+        if ($requestUpdateStmt === false) {
+            $failed[] = ['item' => $item, 'reason' => 'Unable to update request issued quantity: ' . sqlsrv_fail_message()];
+            continue;
+        }
+
+        $rowsAffected = sqlsrv_rows_affected($requestUpdateStmt);
+
+        if ($rowsAffected === false || $rowsAffected < 1) {
+            $failed[] = ['item' => $item, 'reason' => 'Request line was not updated. RequestLineID ' . $requestLineId . ' was not found.'];
+            continue;
+        }
+
         if ($requestId !== '') {
-            $open = fetch_one(
-                $conn,
-                "SELECT COUNT(*) AS OpenCount
-                 FROM WarehouseIssueRequestLines
-                 WHERE RequestID = ? AND RequestedQty > ISNULL(IssuedQty, 0)",
-                [$requestId]
-            );
-            $newRequestStatus = ((int)($open['OpenCount'] ?? 0) === 0) ? 'ISSUED' : 'PARTIAL';
-            // Issuer save should mark the request as ISSUED/PARTIAL only.
-            // Do not set ClosedAt here; receiver completion should be the only step that closes the request.
-            sqlsrv_query(
-                $conn,
-                "UPDATE WarehouseIssueRequestHeader
-                 SET Status = ?, IssuedTraceNo = ?
-                 WHERE RequestID = ?",
-                [$newRequestStatus, $traceNo, $requestId]
-            );
+            $affectedRequestIds[(int)$requestId] = true;
         }
     }
     $item['item_code'] = $itemCode; $item['part_name'] = $partName; $item['warehouse_lot_no'] = $warehouseLot; $saved[] = $item;
 }
+
+foreach (array_keys($affectedRequestIds) as $affectedRequestId) {
+    $summary = fetch_one(
+        $conn,
+        "SELECT
+             COUNT(*) AS TotalLines,
+             SUM(CASE WHEN RequestedQty <= ISNULL(IssuedQty, 0) THEN 1 ELSE 0 END) AS FullyIssuedLines,
+             SUM(CASE WHEN ISNULL(IssuedQty, 0) > 0 THEN 1 ELSE 0 END) AS LinesWithIssue
+         FROM WarehouseIssueRequestLines
+         WHERE RequestID = ?",
+        [$affectedRequestId]
+    );
+
+    $totalLines = (int)($summary['TotalLines'] ?? 0);
+    $fullyIssuedLines = (int)($summary['FullyIssuedLines'] ?? 0);
+    $linesWithIssue = (int)($summary['LinesWithIssue'] ?? 0);
+
+    if ($totalLines > 0 && $fullyIssuedLines >= $totalLines) {
+        $newRequestStatus = 'ISSUED';
+    } elseif ($linesWithIssue > 0) {
+        $newRequestStatus = 'PARTIAL';
+    } else {
+        $newRequestStatus = 'OPEN';
+    }
+
+    $headerUpdate = sqlsrv_query(
+        $conn,
+        "UPDATE WarehouseIssueRequestHeader
+         SET Status = ?, IssuedTraceNo = ?
+         WHERE RequestID = ?",
+        [$newRequestStatus, $traceNo, $affectedRequestId]
+    );
+
+    if ($headerUpdate === false) {
+        $failed[] = [
+            'item' => ['request_id' => $affectedRequestId],
+            'reason' => 'Unable to update request header status: ' . sqlsrv_fail_message()
+        ];
+    }
+}
+
 $pageTitle = 'Issuance Saved';
 $backUrl = 'pages/issuer/issuer.php';
 include __DIR__ . '/../pages/results/save_issue_result.php';

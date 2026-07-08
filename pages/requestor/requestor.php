@@ -1369,10 +1369,27 @@ async function loadMyRequests() {
             return;
         }
 
-        myRequests = data.requests || [];
+        /*
+            Hide fully issued requests from Pending Queue.
+            A request should remain visible only when:
+            - it is still editable/open before issuance, or
+            - it still has Not Received / remaining quantity.
+        */
+        myRequests = (data.requests || []).filter(doc => {
+            const requestedQty = Number(doc.requested_qty || 0);
+            const issuedQty = Number(doc.issued_qty || 0);
+            const pendingQty = Math.max(0, requestedQty - issuedQty);
+
+            if (doc.editable) {
+                return true;
+            }
+
+            return pendingQty > 0;
+        });
+
         document.getElementById('myRequestCount').textContent = myRequests.length;
         renderMyRequests();
-        status.textContent = myRequests.length + ' open request(s), updated ' + new Date().toLocaleTimeString([], {
+        status.textContent = myRequests.length + ' pending request(s), updated ' + new Date().toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit',
             second: '2-digit'
@@ -1805,7 +1822,7 @@ function renderMyRequests() {
     list.innerHTML = '';
 
     if (myRequests.length === 0) {
-        list.innerHTML = '<div class="alert alert-light border info-box">No open requests found.</div>';
+        list.innerHTML = '<div class="alert alert-light border info-box">No pending requests found.</div>';
         return;
     }
 

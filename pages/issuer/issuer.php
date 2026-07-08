@@ -7,6 +7,24 @@ $currentUser = current_user();
 $currentRole = strtolower($currentUser['role'] ?? '');
 $defaultIssuePrinter = strtolower(trim((string)(defined('PICK_TAG_DEFAULT_PRINTER') ? PICK_TAG_DEFAULT_PRINTER : 'nitto')));
 $defaultIssuePrinter = $defaultIssuePrinter === 'zebra' ? 'zebra' : 'nitto';
+
+$currentUserWarehouse = '';
+foreach ([
+    'warehouse_code',
+    'whs_code',
+    'WhsCode',
+    'warehouse',
+    'section_warehouse',
+    'requestor_warehouse',
+    'production_code',
+    'department_code',
+    'section_code'
+] as $warehouseField) {
+    if (!empty($currentUser[$warehouseField])) {
+        $currentUserWarehouse = trim((string)$currentUser[$warehouseField]);
+        break;
+    }
+}
 ?>
 <!doctype html>
 <html lang="en">
@@ -547,6 +565,42 @@ $defaultIssuePrinter = $defaultIssuePrinter === 'zebra' ? 'zebra' : 'nitto';
             margin-top: 3px;
         }
 
+        .warehouse-route {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 5px;
+            margin-top: 8px;
+            font-size: 11px;
+            font-weight: 800;
+        }
+
+        .warehouse-pill {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 3px 8px;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #075985;
+            max-width: 100%;
+        }
+
+        .warehouse-arrow {
+            color: #64748b;
+            font-weight: 950;
+        }
+
+        .request-search-box {
+            margin-bottom: 10px;
+        }
+
+        .request-search-box .form-control {
+            min-height: 38px;
+            font-size: 13px;
+            border-radius: 10px;
+        }
+
         .qty-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -867,7 +921,7 @@ $defaultIssuePrinter = $defaultIssuePrinter === 'zebra' ? 'zebra' : 'nitto';
             <div>
                 <h4 class="page-title">Issuer - Warehouse</h4>
                 <div class="page-subtitle">
-                    Load open issue requests, keep the GRPO lot for app scanning, enter GRPO lot numbers, then save issuance. WH Lot No is optional.
+                    Load open issue requests, keep the GRPO lot for app scanning, enter GRPO lot numbers, then save issuance. Destination warehouse is based on the logged-in user account. WH Lot No is optional.
                 </div>
             </div>
 
@@ -1001,6 +1055,15 @@ $defaultIssuePrinter = $defaultIssuePrinter === 'zebra' ? 'zebra' : 'nitto';
                     <div class="content-card-body">
                         <div class="tab-content">
                             <div class="tab-pane fade show active" id="issueRequestsPane" role="tabpanel" aria-labelledby="issueRequestsTab" tabindex="0">
+                                <div class="request-search-box">
+                                    <input
+                                        class="form-control form-control-sm"
+                                        id="requestSearchInput"
+                                        placeholder="Search request, ITR, item, WH, requester..."
+                                        oninput="renderRequests()"
+                                    >
+                                </div>
+
                                 <div class="small text-muted mb-2" id="requestStatus">
                                     Loading requests...
                                 </div>
@@ -1136,6 +1199,7 @@ let pendingRemoveItemIdx = null;
 let stockRows = [];
 let lotsByItemCode = {};
 let lotSuggestionRequests = {};
+const currentUserWarehouse = <?= json_encode($currentUserWarehouse, JSON_UNESCAPED_SLASHES) ?>;
 
 function fmtQty(v) {
     const n = Number(v || 0);
@@ -1225,9 +1289,27 @@ async function loadOpenRequests() {
             return;
         }
 
-        openRequests = data.requests || [];
-        openDocuments = data.documents || groupRequestsByDocument(openRequests);
+        openRequests = (data.requests || []).filter(row => Number(row.remaining_qty || 0) > 0);
+        openDocuments = (data.documents || groupRequestsByDocument(openRequests))
+            .map(doc => ({
+                ...doc,
+                lines: Array.isArray(doc.lines)
+                    ? doc.lines.filter(line => Number(line.remaining_qty || 0) > 0)
+                    : []
+            }))
+            .filter(doc => Number(doc.remaining_qty || 0) > 0 && Array.isArray(doc.lines) && doc.lines.length > 0);
+
         document.getElementById('requestCount').textContent = openDocuments.length;
+
+        if (selectedDocument) {
+            const selectedKey = String(selectedDocument.request_no || selectedDocument.doc_num || '');
+            const stillOpen = openDocuments.some(doc => String(doc.request_no || doc.doc_num || '') === selectedKey);
+
+            if (!stillOpen && items.length === 0) {
+                selectedDocument = null;
+                document.getElementById('selectedRequestBox').classList.add('d-none');
+            }
+        }
 
         renderRequests();
 
@@ -1333,6 +1415,184 @@ function renderStocks() {
     });
 }
 
+function firstNonEmptyValue(obj, keys) {
+    if (!obj || typeof obj !== 'object') {
+        return '';
+    }
+
+    for (const key of keys) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+            const value = String(obj[key] ?? '').trim();
+
+            if (value !== '') {
+                return value;
+            }
+        }
+    }
+
+    return '';
+}
+
+function requestorSectionToWarehouse(section) {
+    const value = String(section || '').trim().toLowerCase();
+
+    if (value === '') {
+        return '';
+    }
+
+    if (
+        value.includes('cut') ||
+        value.includes('crimp') ||
+        value.includes('cnc')
+    ) {
+        return 'CNC';
+    }
+
+    if (
+        value.includes('kitting') ||
+        value === 'kit'
+    ) {
+        return 'KIT';
+    }
+
+    if (
+        value.includes('sub') ||
+        value.includes('assy') ||
+        value === 'sa'
+    ) {
+        return 'SA';
+    }
+
+    if (
+        value.includes('backend') ||
+        value.includes('hotmelt') ||
+        value.includes('hot melt') ||
+        value.includes('contact') ||
+        value.includes('csw') ||
+        value.includes('mr')
+    ) {
+        return 'BACKEND';
+    }
+
+    return section;
+}
+
+function getDocumentRequestorSection(doc) {
+    const lines = Array.isArray(doc?.lines) ? doc.lines : [];
+
+    const sectionKeys = [
+        'requestor_section', 'RequestorSection', 'section', 'request_section',
+        'requested_by_section', 'department', 'requestor_department'
+    ];
+
+    const docSection = firstNonEmptyValue(doc, sectionKeys);
+
+    if (docSection !== '') {
+        return docSection;
+    }
+
+    for (const line of lines) {
+        const lineSection = firstNonEmptyValue(line, sectionKeys);
+
+        if (lineSection !== '') {
+            return lineSection;
+        }
+    }
+
+    return '';
+}
+
+function getDocumentWarehouseText(doc) {
+    const lines = Array.isArray(doc?.lines) ? doc.lines : [];
+
+    const fromKeys = [
+        'from_whs_code', 'from_whs', 'from_warehouse', 'from_warehouse_code',
+        'source_whs_code', 'source_whs', 'source_warehouse', 'stock_whs_code',
+        'warehouse_code', 'whs_code', 'whscode', 'WhsCode', 'FromWhsCod',
+        'fromWhsCode', 'fromWarehouse'
+    ];
+
+    const toKeys = [
+        'to_whs_code', 'to_whs', 'to_warehouse', 'to_warehouse_code',
+        'destination_whs_code', 'destination_whs', 'destination_warehouse',
+        'requestor_whs_code', 'requestor_whs', 'requestor_warehouse',
+        'target_whs_code', 'target_whs', 'target_warehouse',
+        'issue_to_whs_code', 'issue_to_whs', 'toWhsCode', 'toWarehouse',
+        'ToWhsCod'
+    ];
+
+    const requestorSection = getDocumentRequestorSection(doc);
+    const sectionWarehouse = requestorSectionToWarehouse(requestorSection);
+
+    const docFrom = firstNonEmptyValue(doc, fromKeys);
+    const docTo = firstNonEmptyValue(doc, toKeys);
+
+    const fromList = [...new Set([
+        docFrom,
+        ...lines.map(line => firstNonEmptyValue(line, fromKeys))
+    ].map(v => String(v || '').trim()).filter(Boolean))];
+
+    const toList = [...new Set([
+        docTo,
+        sectionWarehouse,
+        ...lines.map(line => firstNonEmptyValue(line, toKeys))
+    ].map(v => String(v || '').trim()).filter(Boolean))];
+
+    return {
+        from: fromList.length ? fromList.join(', ') : '01',
+        to: toList.length ? toList.join(', ') : '-',
+        requestor_section: requestorSection
+    };
+}
+
+function getDocumentSearchText(doc) {
+    const wh = getDocumentWarehouseText(doc);
+    const lines = Array.isArray(doc?.lines) ? doc.lines : [];
+
+    return [
+        doc?.request_no,
+        doc?.doc_num,
+        doc?.itr_number,
+        doc?.doc_date,
+        doc?.needed_date,
+        doc?.requested_by,
+        doc?.requestor_section,
+        doc?.RequestorSection,
+        doc?.remarks,
+        wh.from,
+        wh.to,
+        wh.requestor_section,
+        ...lines.flatMap(line => [
+            line.item_code,
+            line.part_name,
+            line.doc_num,
+            line.itr_number,
+            line.request_no,
+            line.requestor_section,
+            line.RequestorSection,
+            line.from_whs_code,
+            line.to_whs_code,
+            line.stock_whs_code,
+            line.destination_whs_code,
+            line.requestor_whs_code
+        ])
+    ].join(' ').toLowerCase();
+}
+
+function getDocumentWarehouseRouteHtml(doc) {
+    const wh = getDocumentWarehouseText(doc);
+    const sectionText = wh.requestor_section ? ` (${esc(wh.requestor_section)})` : '';
+
+    return `
+        <div class="warehouse-route">
+            <span class="warehouse-pill">From WH: ${esc(wh.from)}</span>
+            <span class="warehouse-arrow">→</span>
+            <span class="warehouse-pill">To WH: ${esc(wh.to)}${sectionText}</span>
+        </div>
+    `;
+}
+
+
 function groupRequestsByDocument(lines) {
     const docs = {};
 
@@ -1350,8 +1610,21 @@ function groupRequestsByDocument(lines) {
                 issued_qty: 0,
                 remaining_qty: 0,
                 warehouse_stock_qty: 0,
+                from_warehouses: [],
+                to_warehouses: [],
                 lines: []
             };
+        }
+
+        const fromWh = String(line.from_whs_code || line.stock_whs_code || line.source_whs_code || line.whs_code || '01').trim();
+        const toWh = String(line.to_whs_code || line.destination_whs_code || line.requestor_whs_code || line.target_whs_code || '').trim();
+
+        if (fromWh && !docs[key].from_warehouses.includes(fromWh)) {
+            docs[key].from_warehouses.push(fromWh);
+        }
+
+        if (toWh && !docs[key].to_warehouses.includes(toWh)) {
+            docs[key].to_warehouses.push(toWh);
         }
 
         docs[key].line_count++;
@@ -1416,15 +1689,30 @@ function requestLotListHtml(doc) {
 
 function renderRequests() {
     const list = document.getElementById('requestList');
+    const search = (document.getElementById('requestSearchInput')?.value || '').trim().toLowerCase();
     list.innerHTML = '';
+
+    const visibleDocs = openDocuments
+        .map((doc, docIdx) => ({ doc, docIdx }))
+        .filter(row => !search || getDocumentSearchText(row.doc).includes(search));
 
     if (openDocuments.length === 0) {
         list.innerHTML = '<div class="alert alert-light border">No open issue requests found.</div>';
         return;
     }
 
-    openDocuments.forEach((doc, docIdx) => {
-        const docActive = selectedDocument && (selectedDocument.request_no || selectedDocument.doc_num) === (doc.request_no || doc.doc_num) ? ' active' : '';
+    if (visibleDocs.length === 0) {
+        list.innerHTML = '<div class="alert alert-light border">No request found for that search.</div>';
+        return;
+    }
+
+    visibleDocs.forEach(({ doc, docIdx }) => {
+        const docActive = selectedDocument &&
+            (selectedDocument.request_no || selectedDocument.doc_num) === (doc.request_no || doc.doc_num)
+                ? ' active'
+                : '';
+
+        const wh = getDocumentWarehouseText(doc);
 
         list.insertAdjacentHTML('beforeend', `
             <div class="itr-card${docActive}">
@@ -1432,9 +1720,18 @@ function renderRequests() {
                     <div class="d-flex justify-content-between align-items-start gap-2">
                         <div>
                             <div class="request-title">${esc(doc.request_no || doc.doc_num)}</div>
-                            <div class="request-meta">ITR ${esc(doc.itr_number || doc.doc_num)} | Needed ${esc(doc.needed_date || doc.doc_date)} | ${esc(doc.line_count)} item(s)</div>
-                            <div class="request-meta">By ${esc(doc.requested_by || '')}${doc.remarks ? ' | ' + esc(doc.remarks) : ''}</div>
+                            <div class="request-meta">
+                                ITR ${esc(doc.itr_number || doc.doc_num)}
+                                | Needed ${esc(doc.needed_date || doc.doc_date)}
+                                | ${esc(doc.line_count)} item(s)
+                            </div>
+                            <div class="request-meta">
+                                By ${esc(doc.requested_by || '')}${doc.remarks ? ' | ' + esc(doc.remarks) : ''}
+                            </div>
+
+                            ${getDocumentWarehouseRouteHtml(doc)}
                         </div>
+
                         <span class="badge text-bg-primary rounded-pill">Load</span>
                     </div>
 
@@ -1455,8 +1752,13 @@ function renderRequests() {
                         </div>
 
                         <div class="qty-box">
-                            <div class="label">WH 01 Stock</div>
+                            <div class="label">From WH Stock</div>
                             <div class="value">${fmtQty(doc.warehouse_stock_qty)}</div>
+                        </div>
+
+                        <div class="qty-box">
+                            <div class="label">Warehouse</div>
+                            <div class="value">${esc(wh.from)} → ${esc(wh.to)}</div>
                         </div>
                     </div>
 
@@ -1852,7 +2154,11 @@ function loadDocumentItemsConfirmed(docIdx) {
 
     document.getElementById('selectedRequestBox').classList.remove('d-none');
     document.getElementById('selectedRequestTitle').textContent = (doc.request_no || 'Request') + ' / ITR ' + (doc.itr_number || doc.doc_num);
-    document.getElementById('selectedRequestDetails').textContent = doc.line_count + ' item(s), ' + items.length + ' issue row(s), needed ' + (doc.needed_date || doc.doc_date) + ', remaining total ' + fmtQty(doc.remaining_qty);
+    const wh = getDocumentWarehouseText(doc);
+    document.getElementById('selectedRequestDetails').textContent =
+        doc.line_count + ' item(s), ' + items.length + ' issue row(s), needed ' +
+        (doc.needed_date || doc.doc_date) + ', remaining total ' + fmtQty(doc.remaining_qty) +
+        ', WH ' + wh.from + ' to ' + wh.to;
 
     renderRequests();
     render();

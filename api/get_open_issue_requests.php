@@ -12,6 +12,40 @@ function json_out($payload)
     exit;
 }
 
+function requestor_section_to_warehouse($section)
+{
+    $value = strtolower(trim((string)$section));
+
+    if ($value === '') {
+        return '';
+    }
+
+    if (strpos($value, 'cut') !== false || strpos($value, 'crimp') !== false || strpos($value, 'cnc') !== false) {
+        return 'CNC';
+    }
+
+    if (strpos($value, 'kitting') !== false || $value === 'kit') {
+        return 'KIT';
+    }
+
+    if (strpos($value, 'sub') !== false || strpos($value, 'assy') !== false || $value === 'sa') {
+        return 'SA';
+    }
+
+    if (
+        strpos($value, 'backend') !== false ||
+        strpos($value, 'hotmelt') !== false ||
+        strpos($value, 'hot melt') !== false ||
+        strpos($value, 'contact') !== false ||
+        strpos($value, 'csw') !== false ||
+        strpos($value, 'mr') !== false
+    ) {
+        return 'BACKEND';
+    }
+
+    return trim((string)$section);
+}
+
 $conn = get_whpokayoke_connection();
 $hasHeader = fetch_one($conn, "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'WarehouseIssueRequestHeader'");
 $hasLines = fetch_one($conn, "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'WarehouseIssueRequestLines'");
@@ -43,6 +77,37 @@ $hasWarehouseLotNo = fetch_one(
 $warehouseLotSelect = $hasWarehouseLotNo
     ? 'L.WarehouseLotNo,'
     : "CAST('' AS NVARCHAR(80)) AS WarehouseLotNo,";
+
+$hasAppUsers = fetch_one(
+    $conn,
+    "SELECT 1 AS HasTable
+     FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_NAME = 'AppUsers'"
+);
+
+$hasAppUsersRequestorSection = $hasAppUsers ? fetch_one(
+    $conn,
+    "SELECT 1 AS HasColumn
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_NAME = 'AppUsers'
+       AND COLUMN_NAME = 'RequestorSection'"
+) : false;
+
+$hasAppUsersUsername = $hasAppUsers ? fetch_one(
+    $conn,
+    "SELECT 1 AS HasColumn
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_NAME = 'AppUsers'
+       AND COLUMN_NAME = 'Username'"
+) : false;
+
+$requestorSectionSelect = ($hasAppUsers && $hasAppUsersRequestorSection && $hasAppUsersUsername)
+    ? "COALESCE(U.RequestorSection, '') AS RequestorSection,"
+    : "CAST('' AS NVARCHAR(80)) AS RequestorSection,";
+
+$appUsersJoin = ($hasAppUsers && $hasAppUsersRequestorSection && $hasAppUsersUsername)
+    ? "LEFT JOIN AppUsers U ON U.Username = H.RequestedByUsername"
+    : "";
 $rows = fetch_all(
     $conn,
     "SELECT TOP 200
@@ -56,6 +121,7 @@ $rows = fetch_all(
         H.Status HeaderStatus,
         H.Remarks,
         H.RequestedByUsername,
+        {$requestorSectionSelect}
         H.RequestedAt,
         L.RequestLineID,
         L.SAP_IT_LineNum,
@@ -68,6 +134,7 @@ $rows = fetch_all(
         L.Status LineStatus
      FROM WarehouseIssueRequestHeader H
      INNER JOIN WarehouseIssueRequestLines L ON H.RequestID = L.RequestID
+     {$appUsersJoin}
      WHERE H.Status IN ('OPEN','PARTIAL')
        AND L.Status IN ('OPEN','PARTIAL')
        AND L.RequestedQty > ISNULL(L.IssuedQty, 0)
@@ -90,7 +157,7 @@ foreach ($rows as $sigRow) {
 $cacheKey = sap_cache_make_key('sap.open_issue_requests', [
     'signature' => hash('sha256', implode('|', $rowSignatureParts)),
     'pack_sizes' => itr_pack_sizes_cache_token(),
-    'lot_query_version' => 'fifo_initial_one_lot_v1'
+    'lot_query_version' => 'fifo_initial_one_lot_requestor_section_v2'
 ]);
 
 if (!sap_cache_should_refresh()) {
@@ -295,6 +362,8 @@ foreach ($rows as $r) {
         'needed_date' => $neededDate,
         'destination_area' => (string)($r['DestinationArea'] ?? ''),
         'requested_by' => (string)$r['RequestedByUsername'],
+        'requestor_section' => (string)($r['RequestorSection'] ?? ''),
+        'to_whs_code' => requestor_section_to_warehouse($r['RequestorSection'] ?? ''),
         'remarks' => (string)$r['Remarks']
     ];
     $requests[] = $line;
@@ -311,6 +380,8 @@ foreach ($rows as $r) {
             'needed_date' => $neededDate,
             'destination_area' => (string)($r['DestinationArea'] ?? ''),
             'requested_by' => (string)$r['RequestedByUsername'],
+            'requestor_section' => (string)($r['RequestorSection'] ?? ''),
+            'to_whs_code' => requestor_section_to_warehouse($r['RequestorSection'] ?? ''),
             'requested_at' => $requestedAt,
             'remarks' => (string)$r['Remarks'],
             'line_count' => 0,
