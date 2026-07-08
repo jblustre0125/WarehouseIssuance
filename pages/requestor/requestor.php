@@ -1792,6 +1792,14 @@ function renderItrs() {
     });
 }
 
+function pendingQtyForRequestDoc(doc) {
+    return Math.max(0, Number(doc.requested_qty || 0) - Number(doc.issued_qty || 0));
+}
+
+function linePendingQty(line) {
+    return Math.max(0, Number(line.requested_qty || 0) - Number(line.issued_qty || 0));
+}
+
 function renderMyRequests() {
     const list = document.getElementById('myRequestList');
     list.innerHTML = '';
@@ -1803,8 +1811,14 @@ function renderMyRequests() {
 
     myRequests.forEach((doc, idx) => {
         const active = editingRequest && Number(editingRequest.request_id) === Number(doc.request_id) ? ' active' : '';
-        const disabled = doc.editable ? '' : ' disabled';
-        const note = doc.editable ? 'Ready to edit' : 'Already issued or partially issued';
+        const pendingQty = pendingQtyForRequestDoc(doc);
+        const canLoad = doc.editable || pendingQty > 0;
+        const loadDisabled = canLoad ? '' : ' disabled';
+        const deleteDisabled = doc.editable ? '' : ' disabled';
+        const note = doc.editable
+            ? 'Ready to edit'
+            : (pendingQty > 0 ? 'Partially issued - click Load Remaining to view unreceived items' : 'Fully issued');
+        const loadLabel = doc.editable ? 'Edit' : 'Load Remaining';
 
         list.insertAdjacentHTML('beforeend', `
             <div class="itr-card${active}">
@@ -1828,13 +1842,18 @@ function renderMyRequests() {
                             <div class="label">Issued</div>
                             <div class="value">${fmtQty(doc.issued_qty)}</div>
                         </div>
+
+                        <div class="qty-box">
+                            <div class="label">Not Received</div>
+                            <div class="value">${fmtQty(pendingQty)}</div>
+                        </div>
                     </div>
 
                     <div class="request-actions">
-                        <button type="button" class="btn btn-outline-primary" onclick="loadSavedRequest(${idx})"${disabled}>
-                            Edit
+                        <button type="button" class="btn btn-outline-primary" onclick="loadSavedRequest(${idx})"${loadDisabled}>
+                            ${esc(loadLabel)}
                         </button>
-                        <button type="button" class="btn btn-outline-danger" onclick="deleteSavedRequest(${idx})"${disabled}>
+                        <button type="button" class="btn btn-outline-danger" onclick="deleteSavedRequest(${idx})"${deleteDisabled}>
                             Delete
                         </button>
                     </div>
@@ -1897,8 +1916,16 @@ function loadItr(idx) {
 function loadSavedRequest(idx) {
     const doc = myRequests[idx];
 
-    if (!doc || !doc.editable) {
-        alert('This request is no longer editable.');
+    if (!doc) {
+        alert('Request was not found.');
+        return;
+    }
+
+    const pendingQty = pendingQtyForRequestDoc(doc);
+    const canLoad = doc.editable || pendingQty > 0;
+
+    if (!canLoad) {
+        alert('This request has no remaining unreceived quantity to load.');
         return;
     }
 
@@ -1906,35 +1933,59 @@ function loadSavedRequest(idx) {
         return;
     }
 
-    editingRequest = doc;
+    const isEditableRequest = Boolean(doc.editable);
+
+    editingRequest = isEditableRequest ? doc : null;
     selectedDocument = null;
     selectedSapIt = null;
 
     document.getElementById('neededDate').value = doc.needed_date || '';
     document.getElementById('remarksInput').value = doc.remarks || '';
 
-    requestItems = (doc.lines || []).map(line => ({
-        request_line_id: line.request_line_id,
-        doc_entry: line.doc_entry,
-        doc_num: line.doc_num || doc.itr_number,
-        line_num: line.line_num,
-        item_code: line.item_code,
-        part_name: line.part_name || '',
-        lot_no: line.lot_no || '',
-        app_requested_qty: line.issued_qty || 0,
-        remaining_qty: line.requested_qty,
-        uom: line.uom || '',
-        num_per_msr: line.num_per_msr || 1,
-        source_stock_qty: line.source_stock_qty || 0,
-        destination_stock_qty: line.destination_stock_qty || 0,
-        from_whs_code: line.from_whs_code || '01',
-        to_whs_code: line.to_whs_code || '',
-        request_qty: line.requested_qty
-    }));
+    requestItems = (doc.lines || [])
+        .map(line => {
+            const requestedQty = Number(line.requested_qty || 0);
+            const issuedQty = Number(line.issued_qty || 0);
+            const pendingLineQty = Math.max(0, requestedQty - issuedQty);
 
-    document.getElementById('loadedInfo').className = 'alert alert-warning info-box';
-    document.getElementById('loadedInfo').textContent = 'Editing ' + doc.request_no + '. Remove a line to cancel that line, or use Delete to cancel the whole request.';
-    document.getElementById('saveBtn').textContent = 'Update Issue Request';
+            return {
+                request_line_id: line.request_line_id,
+                doc_entry: line.doc_entry,
+                doc_num: line.doc_num || doc.itr_number,
+                line_num: line.line_num,
+                item_code: line.item_code,
+                part_name: line.part_name || '',
+                lot_no: line.lot_no || '',
+                app_requested_qty: issuedQty,
+                remaining_qty: pendingLineQty,
+                uom: line.uom || '',
+                num_per_msr: line.num_per_msr || 1,
+                source_stock_qty: line.source_stock_qty || 0,
+                destination_stock_qty: line.destination_stock_qty || 0,
+                from_whs_code: line.from_whs_code || '01',
+                to_whs_code: line.to_whs_code || '',
+                request_qty: isEditableRequest ? pendingLineQty : '',
+                readonly_remaining_request: !isEditableRequest
+            };
+        })
+        .filter(line => Number(line.remaining_qty || 0) > 0);
+
+    if (requestItems.length === 0) {
+        alert('This request has no remaining unreceived line quantity.');
+        return;
+    }
+
+    document.getElementById('loadedInfo').className = isEditableRequest ? 'alert alert-warning info-box' : 'alert alert-info info-box';
+
+    if (isEditableRequest) {
+        document.getElementById('loadedInfo').textContent = 'Editing ' + doc.request_no + '. Remove a line to cancel that line, or use Delete to cancel the whole request.';
+        document.getElementById('saveBtn').disabled = false;
+        document.getElementById('saveBtn').textContent = 'Update Issue Request';
+    } else {
+        document.getElementById('loadedInfo').textContent = 'Loaded remaining unreceived items from ' + doc.request_no + '. This partial request is view-only because some quantity has already been issued.';
+        document.getElementById('saveBtn').disabled = true;
+        document.getElementById('saveBtn').textContent = 'Partial Request View Only';
+    }
 
     renderItrs();
     renderMyRequests();
@@ -2034,14 +2085,15 @@ function renderTable() {
                         max="${esc(it.remaining_qty)}"
                         step="0.001"
                         id="qty_${idx}"
-                        value="${esc(it.request_qty)}"
+                        value="${esc(it.readonly_remaining_request ? it.remaining_qty : it.request_qty)}"
+                        ${it.readonly_remaining_request ? 'disabled' : ''}
                         onchange="requestItems[${idx}].request_qty=this.value"
                     >
                 </td>
                 <td class="col-action">
-                    <button class="btn btn-sm btn-outline-danger remove-btn" onclick="removeLine(${idx})">
-                        Remove
-                    </button>
+                    ${it.readonly_remaining_request
+                        ? '<span class="badge text-bg-warning rounded-pill">Pending</span>'
+                        : `<button class="btn btn-sm btn-outline-danger remove-btn" onclick="removeLine(${idx})">Remove</button>`}
                 </td>
             </tr>
         `);
@@ -2049,9 +2101,14 @@ function renderTable() {
 
     document.getElementById('countBadge').textContent = itemSearch ? visibleItems.length + ' of ' + requestItems.length + ' line(s)' : requestItems.length + ' line(s)';
 
+    const readonlyRemainingMode = requestItems.some(it => it.readonly_remaining_request);
+
     if (sapItMode) {
         document.getElementById('saveBtn').disabled = true;
         document.getElementById('saveBtn').textContent = 'SAP IT View Only';
+    } else if (readonlyRemainingMode) {
+        document.getElementById('saveBtn').disabled = true;
+        document.getElementById('saveBtn').textContent = 'Partial Request View Only';
     } else {
         document.getElementById('saveBtn').disabled = requestItems.length === 0;
         document.getElementById('saveBtn').textContent = editingRequest ? 'Update Issue Request' : 'Submit Issue Request';
