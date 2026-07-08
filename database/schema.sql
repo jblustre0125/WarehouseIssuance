@@ -8,7 +8,7 @@ BEGIN
         Username NVARCHAR(60) NOT NULL UNIQUE,
         FullName NVARCHAR(120) NULL,
         PasswordHash NVARCHAR(255) NOT NULL,
-        RoleName NVARCHAR(20) NOT NULL CHECK (RoleName IN ('picker','issuer','requestor','receiver','admin')),
+        RoleName NVARCHAR(20) NOT NULL CHECK (RoleName IN ('warehouse','picker','issuer','requestor','receiver','sap_encoder','admin')),
         ReceiverArea NVARCHAR(80) NULL,
         RequestorSection NVARCHAR(80) NULL,
         DeviceHostname NVARCHAR(120) NULL,
@@ -47,7 +47,7 @@ BEGIN
         EXEC sp_executesql @dropAppUserRoleConstraintsSql;
     END
 
-    ALTER TABLE dbo.AppUsers ADD CONSTRAINT CK_AppUsers_RoleName CHECK (RoleName IN ('picker','issuer','requestor','receiver','admin'));
+    ALTER TABLE dbo.AppUsers ADD CONSTRAINT CK_AppUsers_RoleName CHECK (RoleName IN ('warehouse','picker','issuer','requestor','receiver','sap_encoder','admin'));
 END
 GO
 
@@ -345,6 +345,37 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_SapDataCache_ScopeName' AND object_id = OBJECT_ID('dbo.SapDataCache'))
 BEGIN
     CREATE INDEX IX_SapDataCache_ScopeName ON dbo.SapDataCache(ScopeName, ExpiresAt);
+END
+GO
+
+IF OBJECT_ID('dbo.RawMaterialItemLocations', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.RawMaterialItemLocations (
+        ItemCode NVARCHAR(50) NOT NULL PRIMARY KEY,
+        PartsCode NVARCHAR(120) NULL,
+        ItemName NVARCHAR(255) NULL,
+        LocationCode NVARCHAR(120) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME NULL,
+        UpdatedByUsername NVARCHAR(60) NULL
+    );
+END
+GO
+
+IF COL_LENGTH('dbo.RawMaterialItemLocations', 'PartsCode') IS NULL ALTER TABLE dbo.RawMaterialItemLocations ADD PartsCode NVARCHAR(120) NULL;
+IF COL_LENGTH('dbo.RawMaterialItemLocations', 'ItemName') IS NULL ALTER TABLE dbo.RawMaterialItemLocations ADD ItemName NVARCHAR(255) NULL;
+IF COL_LENGTH('dbo.RawMaterialItemLocations', 'LocationCode') IS NULL ALTER TABLE dbo.RawMaterialItemLocations ADD LocationCode NVARCHAR(120) NULL;
+IF COL_LENGTH('dbo.RawMaterialItemLocations', 'IsActive') IS NULL ALTER TABLE dbo.RawMaterialItemLocations ADD IsActive BIT NOT NULL DEFAULT 1;
+IF COL_LENGTH('dbo.RawMaterialItemLocations', 'CreatedAt') IS NULL ALTER TABLE dbo.RawMaterialItemLocations ADD CreatedAt DATETIME NOT NULL DEFAULT GETDATE();
+IF COL_LENGTH('dbo.RawMaterialItemLocations', 'UpdatedAt') IS NULL ALTER TABLE dbo.RawMaterialItemLocations ADD UpdatedAt DATETIME NULL;
+IF COL_LENGTH('dbo.RawMaterialItemLocations', 'UpdatedByUsername') IS NULL ALTER TABLE dbo.RawMaterialItemLocations ADD UpdatedByUsername NVARCHAR(60) NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_RawMaterialItemLocations_Search' AND object_id = OBJECT_ID('dbo.RawMaterialItemLocations'))
+BEGIN
+    CREATE INDEX IX_RawMaterialItemLocations_Search
+    ON dbo.RawMaterialItemLocations(IsActive, LocationCode, PartsCode, ItemName);
 END
 GO
 

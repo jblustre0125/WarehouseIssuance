@@ -201,7 +201,12 @@ function scanplus_cache_read($conn, array $refs, $ttlSeconds = SCANPLUS_CACHE_TT
                     ROW_NUMBER() OVER (
                         PARTITION BY Ref.RefIdx
                         ORDER BY
-                            CASE WHEN ISNULL(C.LotNo, '') = ISNULL(Ref.LotNo, '') THEN 0 ELSE 1 END,
+                            CASE
+                                WHEN ISNULL(C.LotNo, '') = ISNULL(Ref.LotNo, '') THEN 0
+                                WHEN ISNULL(C.ReceivedLotNo, '') = ISNULL(Ref.LotNo, '') THEN 1
+                                WHEN ISNULL(C.LotNo, '') = '' THEN 2
+                                ELSE 3
+                            END,
                             C.LastSyncedAt DESC
                     ) AS RowNum
                 FROM Ref
@@ -209,10 +214,6 @@ function scanplus_cache_read($conn, array $refs, $ttlSeconds = SCANPLUS_CACHE_TT
                     ON C.SAP_IT_DocEntry = Ref.SAP_IT_DocEntry
                    AND ISNULL(C.SAP_IT_LineNum, -1) = ISNULL(Ref.SAP_IT_LineNum, -1)
                    AND C.ItemCode = Ref.ItemCode
-                   AND (
-                        ISNULL(C.LotNo, '') = ISNULL(Ref.LotNo, '')
-                        OR (ISNULL(Ref.LotNo, '') <> '' AND ISNULL(C.LotNo, '') = '')
-                   )
              )
              SELECT
                 RefIdx,

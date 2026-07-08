@@ -24,6 +24,7 @@ $ip = trim($_POST['device_ip'] ?? '');
 $isActive = isset($_POST['is_active']) ? 1 : 0;
 
 $validRoles = [
+    ROLE_WAREHOUSE,
     ROLE_ISSUER,
     ROLE_PICKER,
     ROLE_REQUESTOR,

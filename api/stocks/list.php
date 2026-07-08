@@ -48,14 +48,14 @@ $role = strtolower((string)($u['role'] ?? ''));
 $whp = get_whpokayoke_connection();
 
 if ($scope === '') {
-    $scope = in_array($role, [ROLE_PICKER, ROLE_ISSUER], true) ? 'issuer' : 'requestor';
+    $scope = role_is_warehouse_staff($role) ? 'issuer' : 'requestor';
 }
 
 $warehouses = [];
 $sectionLabel = '';
 
 if ($scope === 'issuer') {
-    if (!in_array($role, [ROLE_PICKER, ROLE_ISSUER, ROLE_ADMIN], true)) {
+    if (!role_is_warehouse_staff($role) && $role !== ROLE_ADMIN) {
         stock_json_out(['ok' => false, 'message' => 'Access denied for issuer stock.'], 403);
     }
 

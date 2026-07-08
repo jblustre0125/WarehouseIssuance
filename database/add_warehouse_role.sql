@@ -1,4 +1,4 @@
--- Run this on WHPOKAYOKE to allow the picker, warehouse, and SAP encoder roles in AppUsers.
+-- Run this on WHPOKAYOKE to allow the universal warehouse role in AppUsers.
 
 IF OBJECT_ID('dbo.AppUsers', 'U') IS NOT NULL
 BEGIN

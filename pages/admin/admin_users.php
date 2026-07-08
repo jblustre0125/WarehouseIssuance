@@ -26,6 +26,7 @@ foreach ($users as $userRow) {
 }
 
 $roleOptions = [
+    ROLE_WAREHOUSE,
     ROLE_PICKER,
     ROLE_ISSUER,
     ROLE_RECEIVER,

@@ -33,7 +33,6 @@ $dateFrom = report_date_value('date_from', $today);
 $dateTo = report_date_value('date_to', $today);
 $export = strtolower(trim((string)($_GET['export'] ?? ''))) === 'excel';
 $q = trim((string)($_GET['q'] ?? ''));
-$refreshScanPlus = in_array(strtolower(trim((string)($_GET['refresh_scanplus'] ?? ''))), ['1', 'true', 'yes', 'force'], true);
 
 $pageSize = 50;
 $page = max(1, (int)($_GET['page'] ?? 1));
@@ -58,11 +57,14 @@ function issuer_report_has_column($conn, $table, $column)
 }
 
 $traceHasReceiveStatus = issuer_report_has_column($conn, 'RawmatTraceLines', 'VerificationStatus');
+$traceHasReceivedQty = issuer_report_has_column($conn, 'RawmatTraceLines', 'ReceivedQty');
 $traceHasReceivedBy = issuer_report_has_column($conn, 'RawmatTraceLines', 'ReceivedByUsername');
 $traceHasReceivedAt = issuer_report_has_column($conn, 'RawmatTraceLines', 'ReceivedAt');
 $traceHasReceivedScanAt = issuer_report_has_column($conn, 'RawmatTraceLines', 'ReceivedScanAt');
+$traceHasWarehouseLotNo = issuer_report_has_column($conn, 'RawmatTraceLines', 'WarehouseLotNo');
 
 $localReceiveStatusExpr = $traceHasReceiveStatus ? 'TL.VerificationStatus' : "CAST('' AS NVARCHAR(80))";
+$localReceivedQtyExpr = $traceHasReceivedQty ? 'TL.ReceivedQty' : 'CAST(NULL AS DECIMAL(18,3))';
 $localScannedByExpr = $traceHasReceivedBy ? 'TL.ReceivedByUsername' : "CAST('' AS NVARCHAR(120))";
 if ($traceHasReceivedScanAt && $traceHasReceivedAt) {
     $localReceivedAtExpr = 'COALESCE(TL.ReceivedScanAt, TL.ReceivedAt)';
@@ -74,12 +76,22 @@ if ($traceHasReceivedScanAt && $traceHasReceivedAt) {
     $localReceivedAtExpr = 'CAST(NULL AS DATETIME)';
 }
 
+$localWarehouseLotMatchSql = $traceHasWarehouseLotNo
+    ? "
+                OR (
+                    LEN(LTRIM(RTRIM(ISNULL(TL.WarehouseLotNo, N'')))) > 0
+                    AND LEN(LTRIM(RTRIM(ISNULL(IT.WarehouseLotNo, N'')))) > 0
+                    AND LTRIM(RTRIM(TL.WarehouseLotNo)) = LTRIM(RTRIM(IT.WarehouseLotNo))
+                )"
+    : '';
+
 // Local receiver confirmation is the safest sign that the receiver process has run.
 // SAP/ScanPlus can sometimes return transfer data before local receiving is finalized.
 $localReceiverApply = "
     OUTER APPLY (
         SELECT TOP 1
             {$localReceiveStatusExpr} AS LocalReceiveStatus,
+            {$localReceivedQtyExpr} AS LocalReceivedQty,
             {$localScannedByExpr} AS LocalScannedBy,
             {$localReceivedAtExpr} AS LocalReceivedAt
         FROM RawmatTraceLines TL
@@ -90,6 +102,7 @@ $localReceiverApply = "
                 ISNULL(TL.LotNo, NCHAR(0)) = ISNULL(IT.LotNo, NCHAR(0))
                 OR LEN(LTRIM(RTRIM(ISNULL(TL.LotNo, NCHAR(0))))) = 0
                 OR LEN(LTRIM(RTRIM(ISNULL(IT.LotNo, NCHAR(0))))) = 0
+                {$localWarehouseLotMatchSql}
           )
         ORDER BY TL.TraceLineID DESC
     ) LocalRx";
@@ -132,7 +145,7 @@ $params = [
     $dateTo
 ];
 
-if (($u['role'] ?? '') !== ROLE_ADMIN) {
+if (!in_array($currentRole, [ROLE_ADMIN, ROLE_WAREHOUSE], true)) {
     $where[] = 'IT.IssuedByUsername = ?';
     $params[] = $u['username'] ?? '';
 }
@@ -217,6 +230,7 @@ $sql = '
         Req.RequestHeaderStatus,
         Req.RequestLineStatus,
         LocalRx.LocalReceiveStatus,
+        LocalRx.LocalReceivedQty,
         LocalRx.LocalScannedBy,
         LocalRx.LocalReceivedAt,
         IT.Quantity,
@@ -311,13 +325,36 @@ function enrich_issuer_scan_rows_with_scanplus(&$rows, $whpConn, $allowLiveRefre
     $scanplusRows = $cache['rows'];
     $freshKeys = $cache['fresh_keys'];
     $refsToRefresh = [];
+    $scanHasReceivedData = static function ($scan): bool {
+        if (!is_array($scan)) {
+            return false;
+        }
+
+        if (trim((string)($scan['scan_status'] ?? '')) !== '') {
+            return true;
+        }
+
+        if (trim((string)($scan['barcode_user'] ?? '')) !== '') {
+            return true;
+        }
+
+        if (trim((string)($scan['received_at'] ?? '')) !== '') {
+            return true;
+        }
+
+        $qty = trim((string)($scan['received_qty'] ?? ''));
+        return $qty !== '' && is_numeric($qty) && (float)$qty > 0;
+    };
 
     foreach ($scanRefs as $ref) {
         $scanKey = scanplus_key($ref['doc_entry'], $ref['line_num'], $ref['item_code']);
         $scanLotKey = scanplus_lot_key($ref['doc_entry'], $ref['line_num'], $ref['item_code'], $ref['lot_no']);
         $targetKey = $scanLotKey !== '' ? $scanLotKey : $scanKey;
+        $cachedScan = $scanLotKey !== ''
+            ? ($scanplusRows[$scanLotKey] ?? ($scanplusRows[$scanKey] ?? null))
+            : ($scanKey !== '' ? ($scanplusRows[$scanKey] ?? null) : null);
 
-        if ($targetKey !== '' && !isset($freshKeys[$targetKey])) {
+        if ($targetKey !== '' && (!isset($freshKeys[$targetKey]) || !$scanHasReceivedData($cachedScan))) {
             $refsToRefresh[] = $ref;
         }
     }
@@ -359,7 +396,7 @@ function enrich_issuer_scan_rows_with_scanplus(&$rows, $whpConn, $allowLiveRefre
     unset($row);
 }
 
-enrich_issuer_scan_rows_with_scanplus($rows, $conn, $refreshScanPlus);
+enrich_issuer_scan_rows_with_scanplus($rows, $conn, false);
 
 function issuer_report_valid_datetime($value): bool
 {
@@ -379,6 +416,8 @@ function issuer_row_is_received($row): bool
         issuer_report_received_status($row['RequestLineStatus'] ?? '') ||
         issuer_report_received_status($row['LocalReceiveStatus'] ?? '') ||
         issuer_report_received_status($row['ScanStatus'] ?? '') ||
+        ((float)($row['LocalReceivedQty'] ?? 0) > 0) ||
+        ((float)($row['ReceivedQty'] ?? 0) > 0) ||
         trim((string)($row['LocalScannedBy'] ?? '')) !== '' ||
         issuer_report_valid_datetime($row['LocalReceivedAt'] ?? '') ||
         issuer_report_valid_datetime($row['ReceivedAt'] ?? '');
@@ -444,6 +483,12 @@ function report_received_value($row, $field)
     }
 
     if ($field === 'ReceivedQty') {
+        $localQty = $row['LocalReceivedQty'] ?? '';
+
+        if (trim((string)$localQty) !== '' && is_numeric($localQty) && (float)$localQty > 0) {
+            return issuer_cap_received_qty($localQty, $row);
+        }
+
         return issuer_cap_received_qty($row[$field] ?? 0, $row);
     }
 
@@ -470,10 +515,6 @@ if ($q !== '') {
     $baseQuery['q'] = $q;
 }
 
-if ($refreshScanPlus) {
-    $baseQuery['refresh_scanplus'] = '1';
-}
-
 function issuer_scan_report_url($query)
 {
     return 'pages/issuer/issuer_scan_report.php?' . http_build_query($query);
@@ -485,7 +526,7 @@ $columns = [
     'Part Name',
     'Req Qty',
     'Iss Qty',
-    'Received Qty (SAP)',
+    'Received Qty',
     'Variance',
     'GRPO Lot No',
     'WH Lot No',
@@ -1131,10 +1172,7 @@ if ($export) {
                         </div>
 
                         <div class="col-sm-6 col-md-3 d-grid">
-                            <a
-                                class="btn btn-success"
-                                href="<?= h(issuer_scan_report_url($baseQuery + ['export' => 'excel'])) ?>"
-                            >
+                            <a class="btn btn-success" href="<?= h(issuer_scan_report_url($baseQuery + ['export' => 'excel'])) ?>">
                                 Export Excel
                             </a>
                         </div>
@@ -1167,7 +1205,7 @@ if ($export) {
                                 <th class="col-part">Part Name</th>
                                 <th class="col-qty">Req Qty</th>
                                 <th class="col-qty">Iss Qty</th>
-                                <th class="col-qty">Received Qty (SAP)</th>
+                                <th class="col-qty">Received Qty</th>
                                 <th class="col-variance">Variance</th>
                                 <th class="col-lot">GRPO Lot No</th>
                                 <th class="col-wh-lot">WH Lot No</th>
@@ -1215,11 +1253,11 @@ if ($export) {
                                             <?= h(report_cell($r['Quantity'] ?? '')) ?>
                                         </td>
 
-                                        <td class="col-qty" title="SAP received qty: <?= h(report_cell($r['DisplayReceivedQty'] ?? '')) ?>">
+                                        <td class="col-qty" title="Received qty: <?= h(report_cell($r['DisplayReceivedQty'] ?? '')) ?>">
                                             <?= h(report_cell($r['DisplayReceivedQty'] ?? '')) ?>
                                         </td>
 
-                                        <td class="col-variance" title="Issued minus SAP received: <?= h(report_cell($r['QtyVariance'] ?? '')) ?>">
+                                        <td class="col-variance" title="Issued minus received: <?= h(report_cell($r['QtyVariance'] ?? '')) ?>">
                                             <?= h(report_cell($r['QtyVariance'] ?? '')) ?>
                                         </td>
 
@@ -1273,7 +1311,7 @@ if ($export) {
 
                 <div class="small text-muted mt-2">
                     Showing page <?= number_format($page) ?> of <?= number_format($totalPages) ?>.
-                    Issue status shows the issuer transaction state. Receiver quantity, barcode user, and scanned date are still read from the WHPOKAYOKE cache when available.
+                    Issue status shows the issuer transaction state. Receiver quantity uses local receiving first, then ScanPlus/SAP cache when available.
                 </div>
 
                 <?php if (!$export && $totalPages > 1): ?>

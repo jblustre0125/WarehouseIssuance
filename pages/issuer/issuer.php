@@ -338,15 +338,15 @@ foreach ([
             white-space: nowrap;
         }
 
-        .col-scanned {
-            width: 13%;
-            white-space: nowrap;
-        }
-
         .col-part {
-            width: 16%;
+            width: 18%;
             white-space: normal;
             line-height: 1.25;
+        }
+
+        .col-location {
+            width: 8%;
+            white-space: nowrap;
         }
 
         .col-stock {
@@ -845,7 +845,7 @@ foreach ([
             }
 
             .issuer-table {
-                min-width: 1000px;
+                min-width: 900px;
                 table-layout: auto;
                 font-size: 12px;
             }
@@ -861,8 +861,8 @@ foreach ([
             }
 
             .col-item,
-            .col-scanned,
             .col-part,
+            .col-location,
             .col-stock,
             .col-requested,
             .col-qty,
@@ -980,8 +980,8 @@ foreach ([
                                 <thead>
                                     <tr>
                                         <th class="col-item">SAP ItemCode</th>
-                                        <th class="col-scanned">Scanned Code</th>
                                         <th class="col-part">Part Name</th>
+                                        <th class="col-location">Location</th>
                                         <th class="col-stock">WH 01 Stock</th>
                                         <th class="col-requested">Qty Requested</th>
                                         <th class="col-qty">Qty to Issue</th>
@@ -1565,6 +1565,7 @@ function getDocumentSearchText(doc) {
         ...lines.flatMap(line => [
             line.item_code,
             line.part_name,
+            line.location_code,
             line.doc_num,
             line.itr_number,
             line.request_no,
@@ -2070,6 +2071,8 @@ function buildIssueItemFromRequest(req) {
         item_code: req.item_code,
         scanned_code: (req.request_no ? req.request_no + ' / ' : '') + 'ITR ' + req.doc_num + ' line ' + req.line_num,
         part_name: req.part_name || '',
+        parts_code: req.parts_code || '',
+        location_code: req.location_code || '',
         quantity: req.remaining_qty,
         requested_qty: req.requested_qty || req.original_requested_qty || req.request_qty || req.remaining_qty,
         open_qty: req.open_qty,
@@ -2465,8 +2468,8 @@ function render() {
         tb.insertAdjacentHTML('beforeend', `
             <tr>
                 <td class="col-item" title="${esc(it.item_code)}">${esc(it.item_code)}</td>
-                <td class="col-scanned" title="${esc(it.scanned_code)}">${esc(it.scanned_code)}</td>
                 <td class="col-part" title="${esc(it.part_name)}">${esc(it.part_name)}</td>
+                <td class="col-location" title="${esc(it.location_code || '')}">${esc(it.location_code || '')}</td>
                 <td class="col-stock" title="${esc(it.stock_whs_code || '01')} stock: ${fmtQty(it.warehouse_stock_qty)}">
                     <div>${fmtQty(it.warehouse_stock_qty)}</div>
                     <div class="small text-muted">${esc(it.stock_whs_code || '01')}</div>

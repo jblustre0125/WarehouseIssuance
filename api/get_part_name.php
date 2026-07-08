@@ -2,6 +2,7 @@
 header('Content-Type: application/json');
 require_once __DIR__ . '/../includes/db_connect.php';
 require_once __DIR__ . '/../includes/sap_cache.php';
+require_once __DIR__ . '/../includes/item_locations.php';
 
 function clean_lookup_value($value) {
     $value = trim((string)$value);
@@ -116,7 +117,8 @@ if ($item_code === '') {
 
 $whp = get_whpokayoke_connection();
 $cacheKey = sap_cache_make_key('sap.item_lookup', [
-    'item_code' => strtoupper($item_code)
+    'item_code' => strtoupper($item_code),
+    'location_lookup' => 'v1'
 ]);
 
 if (!sap_cache_should_refresh()) {
@@ -141,6 +143,9 @@ if (!$item) {
 }
 
 $item['ok'] = true;
+$location = item_location_for_code($whp, $item['item_code'] ?? $item_code);
+$item['parts_code'] = $location['parts_code'] ?? '';
+$item['location_code'] = $location['location_code'] ?? '';
 sap_cache_put($whp, 'sap.item_lookup', $cacheKey, $item, 86400);
 echo json_encode($item);
 ?>

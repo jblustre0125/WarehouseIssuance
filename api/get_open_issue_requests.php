@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/sap_cache.php';
 require_once __DIR__ . '/../includes/itr_pack_sizes.php';
+require_once __DIR__ . '/../includes/item_locations.php';
 require_role([ROLE_PICKER, ROLE_ISSUER, ROLE_ADMIN]);
 
 header('Content-Type: application/json; charset=utf-8');
@@ -157,7 +158,7 @@ foreach ($rows as $sigRow) {
 $cacheKey = sap_cache_make_key('sap.open_issue_requests', [
     'signature' => hash('sha256', implode('|', $rowSignatureParts)),
     'pack_sizes' => itr_pack_sizes_cache_token(),
-    'lot_query_version' => 'fifo_initial_one_lot_requestor_section_v2'
+    'lot_query_version' => 'fifo_initial_one_lot_requestor_section_location_v3'
 ]);
 
 if (!sap_cache_should_refresh()) {
@@ -328,6 +329,7 @@ if ($hasBatchBalance) {
 
 $documents = [];
 $requests = [];
+$itemLocationByCode = item_locations_by_codes($conn, array_keys($itemCodes));
 foreach ($rows as $r) {
     $neededDate = $r['NeededDate'] instanceof DateTimeInterface ? $r['NeededDate']->format('Y-m-d') : (string)$r['NeededDate'];
     $requestedAt = $r['RequestedAt'] instanceof DateTimeInterface ? $r['RequestedAt']->format('Y-m-d H:i:s') : (string)$r['RequestedAt'];
@@ -336,6 +338,7 @@ foreach ($rows as $r) {
     $remainingQty = max(0, $requestedQty - $issuedQty);
     $stockQty = $stockByItem[(string)$r['ItemCode']] ?? 0.0;
     $qtyPerPack = itr_qty_per_pack_for_item($r['ItemCode']);
+    $itemLocation = $itemLocationByCode[(string)$r['ItemCode']] ?? [];
     $line = [
         'request_id' => (int)$r['RequestID'],
         'request_line_id' => (int)$r['RequestLineID'],
@@ -346,6 +349,8 @@ foreach ($rows as $r) {
         'line_num' => $r['SAP_IT_LineNum'] !== null ? (int)$r['SAP_IT_LineNum'] : null,
         'item_code' => (string)$r['ItemCode'],
         'part_name' => (string)$r['PartName'],
+        'parts_code' => (string)($itemLocation['parts_code'] ?? ''),
+        'location_code' => (string)($itemLocation['location_code'] ?? ''),
         'requested_qty' => $requestedQty,
         'open_qty' => $requestedQty,
         'issued_qty' => $issuedQty,

@@ -11,7 +11,7 @@ if ($role === ROLE_ISSUER) {
     exit;
 }
 
-if ($role === ROLE_PICKER) {
+if ($role === ROLE_PICKER || $role === ROLE_WAREHOUSE) {
     header('Location: ' . app_path('pages/picker/picker.php'));
     exit;
 }

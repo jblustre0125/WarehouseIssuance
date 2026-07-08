@@ -4,6 +4,7 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 
 const ROLE_ISSUER = 'issuer';
 const ROLE_PICKER = 'picker';
+const ROLE_WAREHOUSE = 'warehouse';
 const ROLE_REQUESTOR = 'requestor';
 const ROLE_RECEIVER = 'receiver';
 const ROLE_ADMIN = 'admin';
@@ -23,11 +24,39 @@ function require_role($roles)
 {
     require_login();
     $roles = is_array($roles) ? $roles : [$roles];
-    if (!in_array($_SESSION['user']['role'], $roles, true)) { http_response_code(403); die('Access denied.'); }
+    if (!role_can_access($_SESSION['user']['role'] ?? '', $roles)) { http_response_code(403); die('Access denied.'); }
+}
+function role_can_access($userRole, $roles)
+{
+    $userRole = strtolower((string)$userRole);
+    $roles = is_array($roles) ? $roles : [$roles];
+    $roles = array_map(static fn($role) => strtolower((string)$role), $roles);
+
+    if (in_array($userRole, $roles, true)) {
+        return true;
+    }
+
+    if ($userRole === ROLE_WAREHOUSE) {
+        return in_array(ROLE_PICKER, $roles, true) || in_array(ROLE_ISSUER, $roles, true);
+    }
+
+    return false;
+}
+function role_is_warehouse_staff($role)
+{
+    return in_array(strtolower((string)$role), [ROLE_PICKER, ROLE_ISSUER, ROLE_WAREHOUSE], true);
 }
 function role_label($role)
 {
-    return [ROLE_ISSUER => 'Issuer - Warehouse', ROLE_PICKER => 'Picker - Warehouse', ROLE_REQUESTOR => 'Requestor - Production', ROLE_ADMIN => 'Admin'][$role] ?? $role;
+    return [
+        ROLE_ISSUER => 'Issuer - Warehouse',
+        ROLE_PICKER => 'Picker - Warehouse',
+        ROLE_WAREHOUSE => 'Warehouse',
+        ROLE_REQUESTOR => 'Requestor - Production',
+        ROLE_RECEIVER => 'Receiver',
+        ROLE_SAP_ENCODER => 'SAP Encoder',
+        ROLE_ADMIN => 'Admin'
+    ][strtolower((string)$role)] ?? $role;
 }
 function receiver_areas()
 {
@@ -48,6 +77,7 @@ function app_url($path)
 function navbar($active = '')
 {
     $u = current_user();
+    $role = strtolower((string)($u['role'] ?? ''));
     ?>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container-fluid">
@@ -57,12 +87,12 @@ function navbar($active = '')
             <?php if ($u): ?>
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item"><a class="nav-link <?= $active === 'home' ? 'active' : '' ?>" href="<?= h(app_path('index.php')) ?>">Home</a></li>
-                    <?php if ($u['role'] === ROLE_PICKER || $u['role'] === ROLE_ADMIN): ?><li class="nav-item"><a class="nav-link <?= $active === 'picker' ? 'active' : '' ?>" href="<?= h(app_path('pages/picker/picker.php')) ?>">Pick Tags</a></li><?php endif; ?>
-                    <?php if ($u['role'] === ROLE_ISSUER || $u['role'] === ROLE_ADMIN): ?><li class="nav-item"><a class="nav-link <?= $active === 'issuer' ? 'active' : '' ?>" href="<?= h(app_path('pages/issuer/issuer.php')) ?>">Issue Scan</a></li><li class="nav-item"><a class="nav-link <?= $active === 'issuer_report' ? 'active' : '' ?>" href="<?= h(app_path('pages/issuer/issuer_scan_report.php')) ?>">Issue Report</a></li><?php endif; ?>
-                    <?php if ($u['role'] === ROLE_REQUESTOR || $u['role'] === ROLE_ADMIN): ?><li class="nav-item"><a class="nav-link <?= $active === 'requestor' ? 'active' : '' ?>" href="<?= h(app_path('pages/requestor/requestor.php')) ?>">Issue Request</a></li><li class="nav-item"><a class="nav-link <?= $active === 'requestor_report' ? 'active' : '' ?>" href="<?= h(app_path('pages/requestor/requestor_report.php')) ?>">Request Report</a></li><?php endif; ?>
+                    <?php if (role_can_access($role, [ROLE_PICKER, ROLE_ADMIN])): ?><li class="nav-item"><a class="nav-link <?= $active === 'picker' ? 'active' : '' ?>" href="<?= h(app_path('pages/picker/picker.php')) ?>">Pick Tags</a></li><?php endif; ?>
+                    <?php if (role_can_access($role, [ROLE_ISSUER, ROLE_ADMIN])): ?><li class="nav-item"><a class="nav-link <?= $active === 'issuer' ? 'active' : '' ?>" href="<?= h(app_path('pages/issuer/issuer.php')) ?>">Issue Scan</a></li><li class="nav-item"><a class="nav-link <?= $active === 'issuer_report' ? 'active' : '' ?>" href="<?= h(app_path('pages/issuer/issuer_scan_report.php')) ?>">Issue Report</a></li><?php endif; ?>
+                    <?php if (role_can_access($role, [ROLE_REQUESTOR, ROLE_ADMIN])): ?><li class="nav-item"><a class="nav-link <?= $active === 'requestor' ? 'active' : '' ?>" href="<?= h(app_path('pages/requestor/requestor.php')) ?>">Issue Request</a></li><li class="nav-item"><a class="nav-link <?= $active === 'requestor_report' ? 'active' : '' ?>" href="<?= h(app_path('pages/requestor/requestor_report.php')) ?>">Request Report</a></li><?php endif; ?>
                     <li class="nav-item"><a class="nav-link <?= $active === 'dashboard' ? 'active' : '' ?>" href="<?= h(app_path('pages/dashboard/verification_dashboard.php')) ?>">Verification</a></li>
                     <li class="nav-item"><a class="nav-link <?= $active === 'transactions' ? 'active' : '' ?>" href="<?= h(app_path('pages/reports/view_transactions.php')) ?>">Transactions</a></li>
-                    <?php if ($u['role'] === ROLE_ADMIN): ?><li class="nav-item"><a class="nav-link <?= $active === 'admin' ? 'active' : '' ?>" href="<?= h(app_path('pages/admin/admin_users.php')) ?>">Users</a></li><?php endif; ?>
+                    <?php if ($role === ROLE_ADMIN): ?><li class="nav-item"><a class="nav-link <?= $active === 'admin' ? 'active' : '' ?>" href="<?= h(app_path('pages/admin/admin_users.php')) ?>">Users</a></li><?php endif; ?>
                 </ul>
                 <span class="navbar-text me-3"><?= h($u['full_name'] ?: $u['username']) ?> (<?= h(role_label($u['role'])) ?>)</span>
                 <a class="btn btn-sm btn-outline-light" href="<?= h(app_path('pages/auth/logout.php')) ?>">Logout</a>
