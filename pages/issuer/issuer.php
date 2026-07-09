@@ -2566,10 +2566,10 @@ function render() {
                             class="btn btn-sm btn-outline-primary remove-btn"
                             type="button"
                             id="print_single_${idx}"
-                            onclick="printSingleIssueTag(${idx}, false, false); return false;"
-                            title="Print this tag only"
+                            onclick="printSingleIssueTag(${idx}, false, true); return false;"
+                            title="Print this tag and save the issuance"
                         >
-                            Print
+                            Print & Save
                         </button>
                         <button
                             class="btn btn-sm btn-outline-danger remove-btn"

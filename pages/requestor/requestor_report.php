@@ -186,6 +186,120 @@ function request_report_qty_variance($issuedQty, $receivedQty)
     return rtrim(rtrim(number_format($variance, 3, '.', ''), '0'), '.');
 }
 
+function request_report_positive_qty($value)
+{
+    $qtyText = trim((string)($value ?? ''));
+
+    if ($qtyText === '' || !is_numeric($qtyText) || (float)$qtyText <= 0) {
+        return '';
+    }
+
+    return $qtyText;
+}
+
+function request_report_apply_sap_issued_fallback(array &$row)
+{
+    if (request_report_positive_qty($row['IssuedQty'] ?? '') !== '') {
+        return;
+    }
+
+    foreach (['SAPTransferQty', 'SAPReceivedQty'] as $fallbackField) {
+        $fallbackQty = request_report_positive_qty($row[$fallbackField] ?? '');
+
+        if ($fallbackQty !== '') {
+            $row['IssuedQty'] = $fallbackQty;
+            return;
+        }
+    }
+}
+
+function request_report_enrich_cached_lots($conn, array &$rows)
+{
+    if (
+        empty($rows) ||
+        !request_report_has_table($conn, 'RawmatTraceScanPlusCache') ||
+        !request_report_has_column($conn, 'RawmatTraceScanPlusCache', 'ReceivedLotNo')
+    ) {
+        return;
+    }
+
+    $refs = [];
+
+    foreach ($rows as $idx => $row) {
+        if (trim((string)($row['LotNo'] ?? '')) !== '') {
+            continue;
+        }
+
+        $docEntry = (int)($row['LineSAPDocEntry'] ?? $row['HeaderSAPDocEntry'] ?? 0);
+        $lineNum = $row['SAP_IT_LineNum'] ?? null;
+        $itemCode = trim((string)($row['ItemCode'] ?? ''));
+
+        if (request_report_sap_key($docEntry, $lineNum, $itemCode) === '') {
+            continue;
+        }
+
+        $refs[] = [
+            'row_idx' => $idx,
+            'doc_entry' => $docEntry,
+            'line_num' => $lineNum === null || trim((string)$lineNum) === '' ? null : (int)$lineNum,
+            'item_code' => $itemCode
+        ];
+    }
+
+    if (empty($refs)) {
+        return;
+    }
+
+    $lotsByRow = [];
+
+    foreach (array_chunk($refs, 80) as $chunk) {
+        $refRows = [];
+        $params = [];
+
+        foreach ($chunk as $ref) {
+            $refRows[] = 'SELECT ? AS RowIdx, ? AS SAP_IT_DocEntry, ? AS SAP_IT_LineNum, ? AS ItemCode';
+            array_push($params, $ref['row_idx'], $ref['doc_entry'], $ref['line_num'], $ref['item_code']);
+        }
+
+        $refSql = implode(' UNION ALL ', $refRows);
+        $cacheRows = fetch_all(
+            $conn,
+            "SELECT
+                Ref.RowIdx,
+                COALESCE(NULLIF(LTRIM(RTRIM(C.ReceivedLotNo)), ''), NULLIF(LTRIM(RTRIM(C.LotNo)), '')) AS LotNo
+             FROM ({$refSql}) Ref
+             INNER JOIN RawmatTraceScanPlusCache C
+                ON C.SAP_IT_DocEntry = Ref.SAP_IT_DocEntry
+               AND ISNULL(C.SAP_IT_LineNum, -1) = ISNULL(Ref.SAP_IT_LineNum, -1)
+               AND C.ItemCode = Ref.ItemCode
+             WHERE COALESCE(NULLIF(LTRIM(RTRIM(C.ReceivedLotNo)), ''), NULLIF(LTRIM(RTRIM(C.LotNo)), '')) IS NOT NULL
+             ORDER BY C.LastSyncedAt DESC",
+            $params
+        );
+
+        foreach ($cacheRows as $cacheRow) {
+            $rowIdx = (int)($cacheRow['RowIdx'] ?? -1);
+            $lotNo = trim((string)($cacheRow['LotNo'] ?? ''));
+
+            if ($rowIdx < 0 || $lotNo === '') {
+                continue;
+            }
+
+            if (!isset($lotsByRow[$rowIdx])) {
+                $lotsByRow[$rowIdx] = [];
+            }
+
+            $lotsByRow[$rowIdx][$lotNo] = true;
+        }
+    }
+
+    foreach ($lotsByRow as $rowIdx => $lots) {
+        if (isset($rows[$rowIdx]) && trim((string)($rows[$rowIdx]['LotNo'] ?? '')) === '') {
+            $rows[$rowIdx]['LotNo'] = implode(', ', array_keys($lots));
+        }
+    }
+}
+
 function request_report_enrich_scanplus(array &$rows)
 {
     if (empty($rows)) {
@@ -319,6 +433,7 @@ function request_report_enrich_scanplus(array &$rows)
             {$toWhsExpr} AS SAPScanArea,
             {$lineStatusExpr} AS ITRLineStatus,
             {$openQtyExpr} AS ITROpenQty,
+            L.LineNum AS ITLineNum,
             L.Quantity AS TransferQty
          FROM OWTR T
          INNER JOIN WTR1 L ON L.DocEntry = T.DocEntry
@@ -360,7 +475,8 @@ function request_report_enrich_scanplus(array &$rows)
                 'receive_status' => $status,
                 'closed_at' => $closeAt,
                 'it_numbers' => [],
-                'transfer_qty' => 0.0
+                'transfer_qty' => 0.0,
+                'transfer_line_keys' => []
             ];
         }
 
@@ -370,7 +486,12 @@ function request_report_enrich_scanplus(array &$rows)
             $scanPlusByLine[$key]['it_numbers'][$itNumber] = true;
         }
 
-        $scanPlusByLine[$key]['transfer_qty'] += (float)($sapRow['TransferQty'] ?? 0);
+        $transferLineKey = (string)($sapRow['ITDocEntry'] ?? '') . '|' . (string)($sapRow['ITLineNum'] ?? '');
+
+        if ($transferLineKey !== '|' && !isset($scanPlusByLine[$key]['transfer_line_keys'][$transferLineKey])) {
+            $scanPlusByLine[$key]['transfer_qty'] += (float)($sapRow['TransferQty'] ?? 0);
+            $scanPlusByLine[$key]['transfer_line_keys'][$transferLineKey] = true;
+        }
 
         if ($scanAt !== '' && strcmp($scanAt, (string)$scanPlusByLine[$key]['scanned_at']) > 0) {
             $scanPlusByLine[$key]['scanned_by'] = trim((string)($sapRow['SAPScannedBy'] ?? ''));
@@ -383,6 +504,11 @@ function request_report_enrich_scanplus(array &$rows)
             $scanPlusByLine[$key]['closed_at'] = $closeAt;
         }
     }
+
+    foreach ($scanPlusByLine as &$scanPlusLine) {
+        unset($scanPlusLine['transfer_line_keys']);
+    }
+    unset($scanPlusLine);
 
     foreach ($rows as &$row) {
         $key = request_report_sap_key(
@@ -407,7 +533,8 @@ function request_report_enrich_scanplus(array &$rows)
             continue;
         }
 
-        $row['SAPReceivedQty'] = request_report_cap_received_qty($scanPlus['transfer_qty'] ?? 0, $row);
+        $row['SAPTransferQty'] = request_report_cap_received_qty($scanPlus['transfer_qty'] ?? 0, $row);
+        $row['SAPReceivedQty'] = $row['SAPTransferQty'];
 
         if (trim((string)($row['ScannedBy'] ?? '')) === '') {
             $row['ScannedBy'] = $scanPlus['scanned_by'];
@@ -474,6 +601,75 @@ $traceQtyExpr = $traceQtyColumn !== ''
     ? 'TRY_CONVERT(DECIMAL(18,3), TL.' . $traceQtyColumn . ')'
     : 'CAST(NULL AS DECIMAL(18,3))';
 
+$traceHasWarehouseLot = request_report_has_column($conn, 'RawmatTraceLines', 'WarehouseLotNo');
+$requestLineHasWarehouseLot = request_report_has_column($conn, 'WarehouseIssueRequestLines', 'WarehouseLotNo');
+
+$traceWarehouseLotExpr = $traceHasWarehouseLot
+    ? "NULLIF(LTRIM(RTRIM(TL.WarehouseLotNo)), '')"
+    : "CAST(NULL AS NVARCHAR(80))";
+$requestWarehouseLotExpr = $requestLineHasWarehouseLot
+    ? "NULLIF(LTRIM(RTRIM(L.WarehouseLotNo)), '')"
+    : "CAST(NULL AS NVARCHAR(80))";
+
+$hasIssuanceTransactions = request_report_has_table($conn, 'IssuanceTransactions');
+$txHasTraceNo = $hasIssuanceTransactions && request_report_has_column($conn, 'IssuanceTransactions', 'TraceNo');
+$txHasItrDocEntry = $hasIssuanceTransactions && request_report_has_column($conn, 'IssuanceTransactions', 'ITRDocEntry');
+$txHasItrLineNum = $hasIssuanceTransactions && request_report_has_column($conn, 'IssuanceTransactions', 'ITRLineNum');
+$txHasRequestId = $hasIssuanceTransactions && request_report_has_column($conn, 'IssuanceTransactions', 'IssueRequestID');
+$txHasRequestLineId = $hasIssuanceTransactions && request_report_has_column($conn, 'IssuanceTransactions', 'IssueRequestLineID');
+$txHasWarehouseLot = $hasIssuanceTransactions && request_report_has_column($conn, 'IssuanceTransactions', 'WarehouseLotNo');
+$txHasIssuedAt = $hasIssuanceTransactions && request_report_has_column($conn, 'IssuanceTransactions', 'IssuedAt');
+
+$issuanceApply = "OUTER APPLY (
+        SELECT
+            CAST(NULL AS NVARCHAR(80)) AS LotNo,
+            CAST(NULL AS NVARCHAR(80)) AS WarehouseLotNo,
+            CAST(NULL AS DECIMAL(18,3)) AS Quantity
+    ) ITX";
+
+if ($hasIssuanceTransactions) {
+    $txMatch = [];
+    $txOrder = [];
+
+    if ($txHasRequestLineId) {
+        $txMatch[] = 'IT0.IssueRequestLineID = L.RequestLineID';
+        $txOrder[] = 'CASE WHEN IT0.IssueRequestLineID = L.RequestLineID THEN 0 ELSE 1 END';
+    }
+
+    if ($txHasRequestId) {
+        $txMatch[] = '(IT0.IssueRequestID = H.RequestID AND IT0.ItemCode = L.ItemCode)';
+        $txOrder[] = 'CASE WHEN IT0.IssueRequestID = H.RequestID THEN 0 ELSE 1 END';
+    }
+
+    if ($txHasTraceNo) {
+        $txMatch[] = "(NULLIF(LTRIM(RTRIM(H.IssuedTraceNo)), '') IS NOT NULL AND IT0.TraceNo = H.IssuedTraceNo AND IT0.ItemCode = L.ItemCode)";
+        $txOrder[] = "CASE WHEN IT0.TraceNo = H.IssuedTraceNo THEN 0 ELSE 1 END";
+    }
+
+    if ($txHasItrDocEntry && $txHasItrLineNum) {
+        $txMatch[] = '(IT0.ITRDocEntry = COALESCE(L.SAP_IT_DocEntry, H.SAP_IT_DocEntry) AND IT0.ITRLineNum = L.SAP_IT_LineNum AND IT0.ItemCode = L.ItemCode)';
+        $txOrder[] = 'CASE WHEN IT0.ITRDocEntry = COALESCE(L.SAP_IT_DocEntry, H.SAP_IT_DocEntry) AND IT0.ITRLineNum = L.SAP_IT_LineNum THEN 0 ELSE 1 END';
+    }
+
+    if (!empty($txMatch)) {
+        $txWarehouseLotSelect = $txHasWarehouseLot
+            ? "NULLIF(LTRIM(RTRIM(IT0.WarehouseLotNo)), '') AS WarehouseLotNo"
+            : "CAST(NULL AS NVARCHAR(80)) AS WarehouseLotNo";
+        $txOrder[] = $txHasIssuedAt ? 'IT0.IssuedAt DESC' : 'IT0.TransactionID DESC';
+        $txOrder[] = 'IT0.TransactionID DESC';
+
+        $issuanceApply = "OUTER APPLY (
+        SELECT TOP 1
+            NULLIF(LTRIM(RTRIM(IT0.LotNo)), '') AS LotNo,
+            {$txWarehouseLotSelect},
+            TRY_CONVERT(DECIMAL(18,3), IT0.Quantity) AS Quantity
+        FROM IssuanceTransactions IT0
+        WHERE " . implode(' OR ', $txMatch) . "
+        ORDER BY " . implode(', ', array_unique($txOrder)) . "
+    ) ITX";
+    }
+}
+
 $sql = "
     SELECT
         H.RequestNo,
@@ -493,8 +689,9 @@ $sql = "
         L.ItemCode,
         L.PartName,
         L.RequestedQty,
-        COALESCE({$traceQtyExpr}, L.IssuedQty) AS IssuedQty,
-        COALESCE(NULLIF(LTRIM(RTRIM(TL.LotNo)), ''), L.LotNo) AS LotNo,
+        COALESCE(NULLIF({$traceQtyExpr}, 0), NULLIF(ITX.Quantity, 0), L.IssuedQty) AS IssuedQty,
+        COALESCE(NULLIF(LTRIM(RTRIM(TL.LotNo)), ''), ITX.LotNo, L.LotNo) AS LotNo,
+        COALESCE({$traceWarehouseLotExpr}, ITX.WarehouseLotNo, {$requestWarehouseLotExpr}) AS WarehouseLotNo,
 
         TL.ReceivedByUsername AS ScannedBy,
         TL.ReceiverArea AS ScannedArea,
@@ -515,11 +712,14 @@ $sql = "
            )
     ) TL
 
+    {$issuanceApply}
+
     WHERE " . implode(' AND ', $where) . "
     ORDER BY H.RequestedAt DESC, H.RequestID DESC, L.RequestLineID ASC, TL.TraceLineID ASC
 ";
 
 $rows = fetch_all($conn, $sql, $params);
+request_report_enrich_cached_lots($conn, $rows);
 request_report_enrich_scanplus($rows);
 
 foreach ($rows as &$requestReportRow) {
@@ -537,6 +737,7 @@ foreach ($rows as &$requestReportRow) {
         $requestReportRow['SAPReceivedQty'] = '';
     }
 
+    request_report_apply_sap_issued_fallback($requestReportRow);
     $requestReportRow['QtyVariance'] = request_report_qty_variance($requestReportRow['IssuedQty'] ?? '', $requestReportRow['SAPReceivedQty'] ?? '');
 }
 unset($requestReportRow);
@@ -552,10 +753,10 @@ $columns = [
     'Issued Qty',
     'Received Qty (SAP)',
     'Variance',
-    'Lot',
+    'GRPO Lot No',
+    'WH Lot No',
     'Requested By',
     'Requested At',
-    'Issued Trace No',
     'Scanned By',
     'Scan Area',
     'Scanned At',
@@ -606,9 +807,9 @@ if ($export) {
                     <td><?= request_excel_cell($r['SAPReceivedQty'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['QtyVariance'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['LotNo'] ?? '') ?></td>
+                    <td><?= request_excel_cell($r['WarehouseLotNo'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['RequestedByUsername'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['RequestedAt'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['IssuedTraceNo'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['ScannedBy'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['ScannedArea'] ?? '') ?></td>
                     <td><?= request_excel_cell($r['ScannedAt'] ?? '') ?></td>
@@ -953,7 +1154,6 @@ if ($export) {
         .col-lot { width: 7%; white-space: nowrap; }
         .col-user { width: 8%; white-space: nowrap; }
         .col-date { width: 10%; white-space: nowrap; }
-        .col-trace { width: 9%; white-space: nowrap; }
         .col-closed { width: 10%; white-space: nowrap; }
         .col-remarks { width: 10%; white-space: nowrap; }
 
@@ -1096,7 +1296,6 @@ if ($export) {
             .col-lot,
             .col-user,
             .col-date,
-            .col-trace,
             .col-closed,
             .col-remarks {
                 width: auto;
@@ -1213,7 +1412,7 @@ if ($export) {
                 <input
                     id="searchReport"
                     class="form-control form-control-sm mb-3"
-                    placeholder="Search request, ITR, item, status, received qty, scanned by..."
+                    placeholder="Search request, ITR, item, GRPO lot, WH lot, status, received qty, scanned by..."
                 >
 
                 <div class="report-table-wrap">
@@ -1230,10 +1429,10 @@ if ($export) {
                                 <th class="col-qty">Iss Qty</th>
                                 <th class="col-qty">Received Qty (SAP)</th>
                                 <th class="col-qty">Variance</th>
-                                <th class="col-lot">Lot / Qty</th>
+                                <th class="col-lot">GRPO Lot No</th>
+                                <th class="col-lot">WH Lot No</th>
                                 <th class="col-user">Req By</th>
                                 <th class="col-date">Requested At</th>
-                                <th class="col-trace">Trace No</th>
                                 <th class="col-user">Scanned By</th>
                                 <th class="col-user">Scan Area</th>
                                 <th class="col-date">Scanned At</th>
@@ -1303,16 +1502,16 @@ if ($export) {
                                             <?= h(request_report_cell($r['LotNo'] ?? '')) ?>
                                         </td>
 
+                                        <td class="col-lot" title="<?= h(request_report_cell($r['WarehouseLotNo'] ?? '')) ?>">
+                                            <?= h(request_report_cell($r['WarehouseLotNo'] ?? '')) ?>
+                                        </td>
+
                                         <td class="col-user" title="<?= h(request_report_cell($r['RequestedByUsername'] ?? '')) ?>">
                                             <?= h(request_report_cell($r['RequestedByUsername'] ?? '')) ?>
                                         </td>
 
                                         <td class="col-date" title="<?= h(request_report_cell($r['RequestedAt'] ?? '')) ?>">
                                             <?= h(request_report_cell($r['RequestedAt'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-trace" title="<?= h(request_report_cell($r['IssuedTraceNo'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['IssuedTraceNo'] ?? '')) ?>
                                         </td>
 
                                         <td class="col-user" title="<?= h(request_report_cell($r['ScannedBy'] ?? '')) ?>">
