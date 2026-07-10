@@ -1007,8 +1007,8 @@ foreach ([
                             </div>
 
                             <div class="d-flex flex-wrap justify-content-end gap-2">
-                                <button id="printBtn" class="btn btn-outline-primary" onclick="printAllIssueTags(false, false); return false;" disabled>
-                                    Print All Tags
+                                <button id="printBtn" class="btn btn-outline-primary" onclick="printAllIssueTags(false, true); return false;" disabled>
+                                    Print All Tags & Save
                                 </button>
                                 <button id="saveBtn" class="btn btn-success" onclick="saveItems()" disabled>
                                     Save Issuance and Generate Trace QR
@@ -3152,7 +3152,7 @@ async function savePrintedItemsAjax(printedItems, message = '') {
         body.append('success_message', message);
     }
 
-    const res = await fetch('actions/save_issue_with_lot_validation.php', {
+    const res = await fetch('actions/save_issue.php', {
         method: 'POST',
         headers: {
             'Accept': 'application/json',
@@ -3241,8 +3241,9 @@ async function printSingleIssueTag(idx, silent = false, saveAfterPrint = true, s
     }
 
     try {
+        const printedItem = { ...it };
         const body = new FormData();
-        body.append('batch_items', JSON.stringify([it]));
+        body.append('batch_items', JSON.stringify([printedItem]));
         body.append('issue_printer', selectedIssuePrinter());
         body.append('pick_printer', selectedIssuePrinter());
 
@@ -3278,15 +3279,10 @@ async function printSingleIssueTag(idx, silent = false, saveAfterPrint = true, s
         const printedMessage = data.message || ('Printed line ' + (idx + 1) + '.' + (data.printer_name ? ' Printer: ' + data.printer_name + '.' : ''));
 
         if (saveAfterPrint) {
-            if (printBtn) {
-                printBtn.disabled = true;
-                printBtn.textContent = 'Saving...';
-            }
-
-            let saveData = null;
+            removePrintedRowFromTable(idx);
 
             try {
-                saveData = await savePrintedItemsAjax([it], printedMessage + ' Issuance saved.');
+                await savePrintedItemsAjax([printedItem], '');
             } catch (saveError) {
                 console.error(saveError);
 
@@ -3297,12 +3293,7 @@ async function printSingleIssueTag(idx, silent = false, saveAfterPrint = true, s
                 return false;
             }
 
-            removePrintedRowFromTable(idx);
             loadOpenRequests();
-
-            if (!silent) {
-                showMessage(saveData.message || (printedMessage + ' Issuance saved.'));
-            }
 
             return true;
         }
@@ -3376,8 +3367,9 @@ async function printAllIssueTags(silent = false, saveAfterPrint = false, skipLot
     }
 
     try {
+        const printedItems = items.map(item => ({ ...item }));
         const body = new FormData();
-        body.append('batch_items', JSON.stringify(items));
+        body.append('batch_items', JSON.stringify(printedItems));
         body.append('issue_printer', selectedIssuePrinter());
         body.append('pick_printer', selectedIssuePrinter());
 
@@ -3413,12 +3405,31 @@ async function printAllIssueTags(silent = false, saveAfterPrint = false, skipLot
         const printedMessage = data.message || ('Printed ' + (data.printed || 0) + ' tag(s).' + (data.printer_name ? ' Printer: ' + data.printer_name + '.' : ''));
 
         if (saveAfterPrint) {
-            if (printBtn) {
-                printBtn.disabled = true;
-                printBtn.textContent = 'Saving...';
+            items = [];
+            selectedDocument = null;
+
+            const selectedBox = document.getElementById('selectedRequestBox');
+            if (selectedBox) {
+                selectedBox.classList.add('d-none');
             }
 
-            submitPrintedItemsForSave(items, printedMessage + ' Issuance saved.');
+            render();
+            renderRequests();
+
+            try {
+                await savePrintedItemsAjax(printedItems, '');
+            } catch (saveError) {
+                console.error(saveError);
+
+                if (!silent) {
+                    showMessage('Tags printed, but issuance was not saved: ' + (saveError.message || 'Unknown save error.'));
+                }
+
+                return false;
+            }
+
+            loadOpenRequests();
+
             return true;
         }
 
@@ -3436,7 +3447,7 @@ async function printAllIssueTags(silent = false, saveAfterPrint = false, skipLot
     } finally {
         if (printBtn) {
             printBtn.disabled = items.length === 0;
-            printBtn.textContent = oldText || 'Print All Tags';
+            printBtn.textContent = oldText || 'Print All Tags & Save';
         }
     }
 }
@@ -3488,24 +3499,6 @@ async function saveItems(skipOverQtyCheck = false) {
 
     const saveBtn = document.getElementById('saveBtn');
     const oldSaveText = saveBtn ? saveBtn.textContent : '';
-
-    if (saveBtn) {
-        saveBtn.disabled = true;
-        saveBtn.textContent = 'Printing tags...';
-    }
-
-    const printOk = await printAllIssueTags(true, false, true);
-
-    if (!printOk) {
-        if (saveBtn) {
-            saveBtn.disabled = items.length === 0;
-            saveBtn.textContent = oldSaveText || 'Save Issuance and Generate Trace QR';
-        }
-
-        if (!confirm('Printing failed or was cancelled. Do you still want to save the issuance?')) {
-            return;
-        }
-    }
 
     if (saveBtn) {
         saveBtn.disabled = true;
