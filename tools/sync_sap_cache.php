@@ -70,7 +70,7 @@ function sync_run_api($route, $role = 'admin', $username = 'cache_sync', $userId
         'route' => $route,
         'message' => (string)($payload['message'] ?? 'OK'),
         'seconds' => $seconds,
-        'count' => count($payload['documents'] ?? $payload['requests'] ?? $payload['stocks'] ?? $payload['lines'] ?? []),
+        'count' => count($payload['documents'] ?? $payload['requests'] ?? $payload['stocks'] ?? $payload['lines'] ?? $payload['rows'] ?? []),
         'cache' => $payload['_cache'] ?? null,
     ];
 }
@@ -124,6 +124,12 @@ $tasks = [
     ['route' => 'api/stocks/list.php?scope=issuer', 'role' => 'admin', 'username' => 'cache_sync'],
     ['route' => 'api/stocks/list.php?scope=requestor', 'role' => 'admin', 'username' => 'cache_sync'],
     ['route' => 'api/picker/open_purchase_orders.php', 'role' => 'admin', 'username' => 'cache_sync'],
+    // Preload the first five small page-cache payloads for the picker report.
+    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=1', 'role' => 'admin', 'username' => 'cache_sync'],
+    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=2', 'role' => 'admin', 'username' => 'cache_sync'],
+    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=3', 'role' => 'admin', 'username' => 'cache_sync'],
+    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=4', 'role' => 'admin', 'username' => 'cache_sync'],
+    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=5', 'role' => 'admin', 'username' => 'cache_sync'],
     ['route' => 'api/get_open_itr_requests.php', 'role' => 'admin', 'username' => 'cache_sync'],
     ['route' => 'api/requestor/list_sap_inventory_transfers.php?max=50', 'role' => 'admin', 'username' => 'cache_sync'],
     ['route' => 'api/requestor/list_requests.php', 'role' => 'admin', 'username' => 'cache_sync'],

@@ -884,6 +884,7 @@ $defaultPickPrinter = $defaultPickPrinter === 'zebra' ? 'zebra' : 'nitto';
                     <div class="page-subtitle">Load a request or open PO, enter actual lot details, split quantities when needed, then print pick tags for issuer scanning.</div>
                 </div>
                 <div class="hero-actions">
+                    <a class="btn btn-light" href="<?= h(app_path('pages/picker/picker_report.php')) ?>">GRPO Report</a>
                     <span class="count-pill" id="countBadge">0 tag(s)</span>
                 </div>
             </section>

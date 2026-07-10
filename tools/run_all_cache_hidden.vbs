@@ -10,7 +10,7 @@ shell.Run sapCommand, 0, False
 
 ' Refresh the dashboard ScanPlus cache without opening PowerShell or a browser window.
 Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
-http.open "GET", "http://192.168.21.144/warehouseIssuance/pages/dashboard/sync_scanplus_cache.php", False
+http.open "GET", "http://192.168.23.64/warehouseIssuance/pages/dashboard/sync_scanplus_cache.php", False
 http.setRequestHeader "Cache-Control", "no-cache"
 http.send
 

@@ -1,0 +1,26 @@
+[2026-07-10 15:25:46] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 15:30:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 15:35:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 15:40:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 15:45:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 15:50:01] Refreshing 2026-06-11 through 2026-07-10 (30 days).
+[2026-07-10 15:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-10 15:55:01] Refreshing 2026-06-11 through 2026-07-10 (30 days).
+[2026-07-10 15:56:10] SAP rows retrieved: 1199
+[2026-07-10 15:56:19] Successfully refreshed 1199 GRPO cache rows.
+[2026-07-10 16:00:01] Refreshing 2026-06-11 through 2026-07-10 (30 days).
+[2026-07-10 16:00:48] SAP rows retrieved: 1199
+[2026-07-10 16:00:53] Successfully refreshed 1199 GRPO cache rows.

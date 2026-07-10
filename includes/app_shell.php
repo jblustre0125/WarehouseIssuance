@@ -9,6 +9,7 @@ function app_sidebar_icon($name)
         'dashboard' => '<rect x="4" y="5" width="6" height="5" rx="1.25"></rect><rect x="14" y="5" width="6" height="5" rx="1.25"></rect><rect x="4" y="14" width="6" height="5" rx="1.25"></rect><rect x="14" y="14" width="6" height="5" rx="1.25"></rect>',
         'requestor' => '<rect x="6" y="4" width="12" height="16" rx="2"></rect><path d="M9 8h6"></path><path d="M9 12h6"></path><path d="M9 16h4"></path>',
         'picker' => '<path d="M5 8.5 12 4l7 4.5v7L12 20l-7-4.5v-7Z"></path><path d="M12 12.5 19 8"></path><path d="M12 12.5 5 8"></path><path d="M12 12.5V20"></path><path d="m9 6 7 4.5"></path>',
+        'picker_report' => '<path d="M7 3h10a2 2 0 0 1 2 2v16H5V5a2 2 0 0 1 2-2Z"></path><path d="M9 8h6"></path><path d="M9 12h6"></path><path d="M9 16h3"></path><path d="m15 17 2 2 4-5"></path>',
         'issuer' => '<path d="M4 7h8"></path><path d="M4 12h10"></path><path d="M4 17h8"></path><path d="M15 8l5 4-5 4"></path>',
         'receiver' => '<path d="M5 4h14v11H5V4Z"></path><path d="M8 20h8"></path><path d="M12 15v5"></path><path d="m9 12 3 3 3-3"></path>',
         'issuer_report' => '<path d="M7 3h7l4 4v14H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"></path><path d="M14 3v5h5"></path><path d="M9 16l2-2 2 1 2-4"></path>',
@@ -80,6 +81,7 @@ function app_sidebar($active = '')
                 <?php app_sidebar_link($active, 'receiver', 'pages/receiver/receiver.php', 'receiver', 'Receiver'); ?>
 
                 <?php app_sidebar_section('Reports'); ?>
+                <?php app_sidebar_link($active, 'picker_report', 'pages/picker/picker_report.php', 'picker_report', 'Picker GRPO Report'); ?>
                 <?php app_sidebar_link($active, 'issuer_report', 'pages/issuer/issuer_scan_report.php', 'issuer_report', 'Issuer Scan Report'); ?>
                 <?php app_sidebar_link($active, 'requestor_report', 'pages/requestor/requestor_report.php', 'requestor_report', 'Requestor Report'); ?>
                 <?php app_sidebar_link($active, 'transactions', 'pages/reports/view_transactions.php', 'transactions', 'View Transactions'); ?>
@@ -109,6 +111,7 @@ function app_sidebar($active = '')
                 <?php app_sidebar_link($active, 'issuer', 'pages/issuer/issuer.php', 'issuer', 'Issuer Warehouse'); ?>
 
                 <?php app_sidebar_section('Reports'); ?>
+                <?php app_sidebar_link($active, 'picker_report', 'pages/picker/picker_report.php', 'picker_report', 'Picker GRPO Report'); ?>
                 <?php app_sidebar_link($active, 'issuer_report', 'pages/issuer/issuer_scan_report.php', 'issuer_report', 'Issuer Scan Report'); ?>
 
                 <?php if ($canMaintainItemLocations): ?>
@@ -120,6 +123,9 @@ function app_sidebar($active = '')
 
                 <?php app_sidebar_section('Transactions'); ?>
                 <?php app_sidebar_link($active, 'picker', 'pages/picker/picker.php', 'picker', 'Pick Barcode Tags'); ?>
+
+                <?php app_sidebar_section('Reports'); ?>
+                <?php app_sidebar_link($active, 'picker_report', 'pages/picker/picker_report.php', 'picker_report', 'Picker GRPO Report'); ?>
 
                 <?php if ($canMaintainItemLocations): ?>
                     <?php app_sidebar_section('Maintenance'); ?>

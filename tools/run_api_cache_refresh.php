@@ -15,6 +15,7 @@ $allowedRoutes = [
     'api/get_open_issue_requests.php',
     'api/stocks/list.php',
     'api/picker/open_purchase_orders.php',
+    'api/picker/open_grpo_receipts.php',
     'api/requestor/list_sap_inventory_transfers.php',
     'api/requestor/list_requests.php',
 ];
