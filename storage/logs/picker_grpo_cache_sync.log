@@ -24,3 +24,129 @@
 [2026-07-10 16:00:01] Refreshing 2026-06-11 through 2026-07-10 (30 days).
 [2026-07-10 16:00:48] SAP rows retrieved: 1199
 [2026-07-10 16:00:53] Successfully refreshed 1199 GRPO cache rows.
+[2026-07-10 16:05:01] Refreshing 2026-06-11 through 2026-07-10 (30 days).
+[2026-07-10 16:05:47] SAP rows retrieved: 1199
+[2026-07-10 16:05:52] Successfully refreshed 1199 GRPO cache rows.
+[2026-07-10 16:10:01] Refreshing 2026-06-11 through 2026-07-10 (30 days).
+[2026-07-10 16:10:46] SAP rows retrieved: 1199
+[2026-07-10 16:10:52] Successfully refreshed 1199 GRPO cache rows.
+[2026-07-10 16:15:01] Refreshing 2026-06-11 through 2026-07-10 (30 days).
+[2026-07-10 16:15:55] SAP rows retrieved: 1199
+[2026-07-10 16:15:59] Successfully refreshed 1199 GRPO cache rows.
+[2026-07-10 16:20:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 16:25:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 16:30:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 16:35:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 16:40:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 16:45:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 16:50:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 16:55:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 17:00:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 17:05:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 17:10:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 17:15:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 17:20:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 17:25:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 17:30:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 17:35:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 17:40:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 17:45:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 17:50:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 17:55:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 18:00:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 18:05:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 18:10:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 18:15:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 18:20:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 18:25:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 18:30:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 18:35:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 18:40:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 18:45:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 18:50:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-10 18:55:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 06:50:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 06:55:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 07:00:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 07:05:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 07:10:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 07:15:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 07:20:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 07:25:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 07:30:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 07:35:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 07:40:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 07:45:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 07:50:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 07:55:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 08:00:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 08:05:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 08:10:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 08:15:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 08:20:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 08:25:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 08:30:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 08:35:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 08:40:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 08:45:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 08:50:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 08:55:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 09:00:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 09:05:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 09:10:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 09:15:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 09:20:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 09:25:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 09:30:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 09:35:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 09:40:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 09:45:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 09:50:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 09:55:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 10:00:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 10:05:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 10:10:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 10:15:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 10:20:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 10:25:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 10:30:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 10:35:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 10:40:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 10:45:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 10:50:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 10:55:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 11:00:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 11:05:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 11:10:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 11:15:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 11:20:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 11:25:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 11:30:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 11:35:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 11:40:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 11:45:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 11:50:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 11:55:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 12:00:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 12:05:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 12:10:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 12:15:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 12:20:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 12:25:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 12:30:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 12:35:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 12:40:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 12:45:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 12:50:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 12:55:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 13:00:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 13:05:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 13:10:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 13:15:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 13:20:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 13:25:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 13:30:02] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 13:35:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 13:40:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 13:45:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-13 13:50:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.

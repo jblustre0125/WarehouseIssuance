@@ -379,6 +379,37 @@ BEGIN
 END
 GO
 
+IF OBJECT_ID('dbo.RawMaterialQtyPerPack', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.RawMaterialQtyPerPack (
+        ItemCode NVARCHAR(50) NOT NULL PRIMARY KEY,
+        PartName NVARCHAR(255) NULL,
+        QtyPerPack DECIMAL(18,3) NOT NULL,
+        SourceName NVARCHAR(160) NULL,
+        IsActive BIT NOT NULL DEFAULT 1,
+        CreatedAt DATETIME NOT NULL DEFAULT GETDATE(),
+        UpdatedAt DATETIME NULL,
+        UpdatedByUsername NVARCHAR(60) NULL
+    );
+END
+GO
+
+IF COL_LENGTH('dbo.RawMaterialQtyPerPack', 'PartName') IS NULL ALTER TABLE dbo.RawMaterialQtyPerPack ADD PartName NVARCHAR(255) NULL;
+IF COL_LENGTH('dbo.RawMaterialQtyPerPack', 'QtyPerPack') IS NULL ALTER TABLE dbo.RawMaterialQtyPerPack ADD QtyPerPack DECIMAL(18,3) NOT NULL DEFAULT 0;
+IF COL_LENGTH('dbo.RawMaterialQtyPerPack', 'SourceName') IS NULL ALTER TABLE dbo.RawMaterialQtyPerPack ADD SourceName NVARCHAR(160) NULL;
+IF COL_LENGTH('dbo.RawMaterialQtyPerPack', 'IsActive') IS NULL ALTER TABLE dbo.RawMaterialQtyPerPack ADD IsActive BIT NOT NULL DEFAULT 1;
+IF COL_LENGTH('dbo.RawMaterialQtyPerPack', 'CreatedAt') IS NULL ALTER TABLE dbo.RawMaterialQtyPerPack ADD CreatedAt DATETIME NOT NULL DEFAULT GETDATE();
+IF COL_LENGTH('dbo.RawMaterialQtyPerPack', 'UpdatedAt') IS NULL ALTER TABLE dbo.RawMaterialQtyPerPack ADD UpdatedAt DATETIME NULL;
+IF COL_LENGTH('dbo.RawMaterialQtyPerPack', 'UpdatedByUsername') IS NULL ALTER TABLE dbo.RawMaterialQtyPerPack ADD UpdatedByUsername NVARCHAR(60) NULL;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_RawMaterialQtyPerPack_Search' AND object_id = OBJECT_ID('dbo.RawMaterialQtyPerPack'))
+BEGIN
+    CREATE INDEX IX_RawMaterialQtyPerPack_Search
+    ON dbo.RawMaterialQtyPerPack(IsActive, ItemCode, QtyPerPack);
+END
+GO
+
 IF OBJECT_ID('dbo.RawmatTraceScanPlusCache', 'U') IS NULL
 BEGIN
     CREATE TABLE dbo.RawmatTraceScanPlusCache (

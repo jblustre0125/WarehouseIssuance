@@ -42,6 +42,26 @@ function role_can_access($userRole, $roles)
 
     return false;
 }
+function raw_material_qr_print_can_access($user = null)
+{
+    $user = $user ?: (function_exists('current_user') ? current_user() : []);
+    $role = strtolower((string)($user['role'] ?? ''));
+    $username = strtolower(trim((string)($user['username'] ?? '')));
+    $fullName = strtolower(trim((string)($user['full_name'] ?? '')));
+
+    return role_can_access($role, [ROLE_ISSUER, ROLE_ADMIN]) ||
+        $username === '2111-002' ||
+        in_array($fullName, ['michael banaban', 'edwin sanchez'], true);
+}
+function raw_material_qr_print_require_access()
+{
+    require_login();
+
+    if (!raw_material_qr_print_can_access(current_user())) {
+        http_response_code(403);
+        die('Access denied.');
+    }
+}
 function role_is_warehouse_staff($role)
 {
     return in_array(strtolower((string)$role), [ROLE_PICKER, ROLE_ISSUER, ROLE_WAREHOUSE], true);
