@@ -21,8 +21,8 @@ $u = current_user();
 $role = strtolower($u['role'] ?? '');
 
 $where = [
-    "H.Status IN ('OPEN','PARTIAL')",
-    "L.Status IN ('OPEN','PARTIAL')",
+    "H.Status IN ('OPEN','PARTIAL','RETURNED_NO_STOCK')",
+    "L.Status IN ('OPEN','PARTIAL','RETURNED_NO_STOCK')",
     "L.RequestedQty > ISNULL(L.IssuedQty, 0)"
 ];
 $params = [];
@@ -85,7 +85,7 @@ foreach ($rows as $sigRow) {
 $cacheKey = sap_cache_make_key('sap.requestor.list_requests', [
     'role' => $role,
     'user' => $role === ROLE_ADMIN ? 'admin' : (string)($u['username'] ?? ''),
-    'pending_logic' => 'issuer_matching_remaining_lines_v2',
+    'pending_logic' => 'issuer_matching_remaining_lines_returned_no_stock_top_v2',
     'signature' => hash('sha256', implode('|', $rowSignatureParts))
 ]);
 
@@ -186,11 +186,13 @@ foreach ($rows as $r) {
             'remaining_qty' => 0.0,
             'source_stock_qty' => 0.0,
             'destination_stock_qty' => 0.0,
+            'returned_no_stock_count' => 0,
+            'has_returned_no_stock' => false,
             /*
                 Editable only while the whole request is still OPEN.
                 PARTIAL requests are view-only / Load Remaining because some issuance was already done.
             */
-            'editable' => $headerStatus === 'OPEN',
+            'editable' => in_array($headerStatus, ['OPEN', 'RETURNED_NO_STOCK'], true),
             'lines' => []
         ];
     }
@@ -207,7 +209,18 @@ foreach ($rows as $r) {
         'destination_stock_qty' => 0.0
     ];
 
-    if ($issuedQty > 0 || strtoupper((string)$r['LineStatus']) !== 'OPEN' || $headerStatus !== 'OPEN') {
+    $lineStatus = strtoupper((string)$r['LineStatus']);
+
+    if ($lineStatus === 'RETURNED_NO_STOCK') {
+        $documents[$requestId]['returned_no_stock_count']++;
+        $documents[$requestId]['has_returned_no_stock'] = true;
+    }
+
+    if (
+        $issuedQty > 0 ||
+        !in_array($lineStatus, ['OPEN', 'RETURNED_NO_STOCK'], true) ||
+        !in_array($headerStatus, ['OPEN', 'RETURNED_NO_STOCK'], true)
+    ) {
         $documents[$requestId]['editable'] = false;
     }
 
@@ -236,6 +249,36 @@ foreach ($rows as $r) {
         'status' => (string)$r['LineStatus']
     ];
 }
+
+foreach ($documents as &$doc) {
+    $returnedCount = (int)($doc['returned_no_stock_count'] ?? 0);
+    $lineCount = (int)($doc['line_count'] ?? 0);
+    $issuedQty = (float)($doc['issued_qty'] ?? 0);
+
+    if ($returnedCount > 0) {
+        $doc['has_returned_no_stock'] = true;
+        $doc['display_status'] = 'RETURNED_NO_STOCK';
+
+        if ($issuedQty <= 0.0005 && $returnedCount >= $lineCount) {
+            $doc['status'] = 'RETURNED_NO_STOCK';
+            $doc['editable'] = true;
+        }
+    } else {
+        $doc['display_status'] = $doc['status'];
+    }
+}
+unset($doc);
+
+usort($documents, static function ($a, $b) {
+    $aReturned = !empty($a['has_returned_no_stock']) ? 1 : 0;
+    $bReturned = !empty($b['has_returned_no_stock']) ? 1 : 0;
+
+    if ($aReturned !== $bReturned) {
+        return $bReturned <=> $aReturned;
+    }
+
+    return strcmp((string)($b['requested_at'] ?? ''), (string)($a['requested_at'] ?? ''));
+});
 
 $payload = [
     'ok' => true,

@@ -140,7 +140,7 @@ $rows = fetch_all(
      WHERE H.Status IN ('OPEN','PARTIAL')
        AND L.Status IN ('OPEN','PARTIAL')
        AND L.RequestedQty > ISNULL(L.IssuedQty, 0)
-     ORDER BY H.NeededDate ASC, H.RequestedAt ASC, H.RequestNo ASC, L.RequestLineID ASC"
+     ORDER BY H.RequestedAt DESC, H.RequestNo DESC, L.RequestLineID ASC"
 );
 
 $rowSignatureParts = [];
@@ -159,7 +159,7 @@ foreach ($rows as $sigRow) {
 $cacheKey = sap_cache_make_key('sap.open_issue_requests', [
     'signature' => hash('sha256', implode('|', $rowSignatureParts)),
     'pack_sizes' => itr_pack_sizes_cache_token(),
-    'lot_query_version' => 'fifo_initial_available_lots_requestor_section_location_v4'
+    'lot_query_version' => 'fifo_initial_available_lots_requestor_section_location_v5_latest_first'
 ]);
 
 if (!sap_cache_should_refresh()) {

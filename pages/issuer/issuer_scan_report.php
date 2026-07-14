@@ -506,6 +506,75 @@ foreach ($rows as &$issuerReportRow) {
 }
 unset($issuerReportRow);
 
+$noStockRows = [];
+$noStockTotalRows = 0;
+
+if (issuer_report_has_column($conn, 'IssuerNoStockReturns', 'ReturnID')) {
+    $noStockWhere = [
+        'R.ReturnedAt >= ?',
+        'R.ReturnedAt < DATEADD(day, 1, ?)'
+    ];
+    $noStockParams = [
+        $dateFrom,
+        $dateTo
+    ];
+
+    if (!in_array($currentRole, [ROLE_ADMIN, ROLE_WAREHOUSE], true)) {
+        $noStockWhere[] = 'R.ReturnedByUsername = ?';
+        $noStockParams[] = $u['username'] ?? '';
+    }
+
+    if ($q !== '') {
+        $noStockWhere[] = '(
+            R.RequestNo LIKE ?
+            OR R.ITRNumber LIKE ?
+            OR R.ItemCode LIKE ?
+            OR R.PartName LIKE ?
+            OR R.ReturnedByUsername LIKE ?
+            OR R.ReturnReason LIKE ?
+        )';
+
+        $like = '%' . $q . '%';
+        array_push($noStockParams, $like, $like, $like, $like, $like, $like);
+    }
+
+    $noStockWhereSql = implode(' AND ', $noStockWhere);
+    $noStockCountRows = fetch_all(
+        $conn,
+        'SELECT COUNT(*) AS TotalRows FROM IssuerNoStockReturns R WHERE ' . $noStockWhereSql,
+        $noStockParams
+    );
+    $noStockTotalRows = (int)($noStockCountRows[0]['TotalRows'] ?? 0);
+    $noStockTopSql = $export ? '' : 'TOP 200';
+
+    $noStockRows = fetch_all(
+        $conn,
+        "SELECT {$noStockTopSql}
+            R.ReturnID,
+            R.RequestNo,
+            R.ITRNumber,
+            R.SAP_IT_DocEntry,
+            R.SAP_IT_DocNum,
+            R.SAP_IT_LineNum,
+            R.ItemCode,
+            R.PartName,
+            R.RequestedQty,
+            R.IssuedQty,
+            R.RemainingQty,
+            R.StockWhsCode,
+            R.StockQty,
+            R.ReturnReason,
+            R.ReturnedByUsername,
+            R.DeviceHostname,
+            R.DeviceIPAddress,
+            R.ReturnedAt
+         FROM IssuerNoStockReturns R
+         WHERE {$noStockWhereSql}
+         ORDER BY R.ReturnedAt DESC, R.ReturnID DESC",
+        $noStockParams
+    );
+}
+
 $baseQuery = [
     'date_from' => $dateFrom,
     'date_to' => $dateTo
@@ -540,6 +609,43 @@ $columns = [
     'Issued At'
 ];
 
+$noStockColumns = [
+    'Request No',
+    'Part No',
+    'Part Name',
+    'Req Qty',
+    'Issued Qty',
+    'Remaining Qty',
+    'WH Stock',
+    'Stock WH',
+    'ITR/IT',
+    'Line',
+    'Returned By',
+    'Issue Status',
+    'Reason',
+    'Hostname',
+    'IP Address',
+    'Returned At'
+];
+
+function excel_xml_cell($value, $styleId = 'Text')
+{
+    $text = htmlspecialchars(report_cell($value), ENT_QUOTES | ENT_XML1, 'UTF-8');
+    return '<Cell ss:StyleID="' . $styleId . '"><Data ss:Type="String">' . $text . '</Data></Cell>';
+}
+
+function excel_xml_row(array $values, $styleId = 'Text')
+{
+    $cells = array_map(
+        static function ($value) use ($styleId) {
+            return excel_xml_cell($value, $styleId);
+        },
+        $values
+    );
+
+    return '<Row>' . implode('', $cells) . '</Row>';
+}
+
 if ($export) {
     $filename = 'issuer_scans_' . $dateFrom . '_to_' . $dateTo . '.xls';
 
@@ -547,54 +653,79 @@ if ($export) {
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     header('Pragma: no-cache');
     header('Expires: 0');
+    echo '<?xml version="1.0"?>' . "\n";
+    echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
     ?>
-<!doctype html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Issuer Scans</title>
-</head>
-<body>
-<table border="1">
-    <thead>
-        <tr>
-            <?php foreach ($columns as $c): ?>
-                <th><?= excel_cell($c) ?></th>
-            <?php endforeach; ?>
-        </tr>
-    </thead>
-    <tbody>
-        <?php if (empty($rows)): ?>
-            <tr>
-                <td colspan="<?= count($columns) ?>">No records found.</td>
-            </tr>
-        <?php else: ?>
-            <?php foreach ($rows as $r): ?>
-                <tr>
-                    <td><?= excel_cell($r['TraceNo'] ?? '') ?></td>
-                    <td><?= excel_cell($r['ItemCode'] ?? '') ?></td>
-                    <td><?= excel_cell($r['PartName'] ?? '') ?></td>
-                    <td><?= excel_cell($r['RequestedQty'] ?? '') ?></td>
-                    <td><?= excel_cell($r['Quantity'] ?? '') ?></td>
-                    <td><?= excel_cell($r['DisplayReceivedQty'] ?? '') ?></td>
-                    <td><?= excel_cell($r['QtyVariance'] ?? '') ?></td>
-                    <td><?= excel_cell($r['LotNo'] ?? '') ?></td>
-                    <td><?= excel_cell($r['WarehouseLotNo'] ?? '') ?></td>
-                    <td><?= excel_cell($r['ITRNumber'] ?? '') ?></td>
-                    <td><?= excel_cell($r['IssuedByUsername'] ?? '') ?></td>
-                    <td><?= excel_cell($r['IssueStatus'] ?? 'ISSUED') ?></td>
-                    <td><?= excel_cell($r['DisplayBarcodeUser'] ?? '') ?></td>
-                    <td><?= excel_cell($r['DisplayReceivedAt'] ?? '') ?></td>
-                    <td><?= excel_cell($r['DeviceHostname'] ?? '') ?></td>
-                    <td><?= excel_cell($r['DeviceIPAddress'] ?? '') ?></td>
-                    <td><?= excel_cell($r['IssuedAt'] ?? '') ?></td>
-                </tr>
-            <?php endforeach; ?>
-        <?php endif; ?>
-    </tbody>
-</table>
-</body>
-</html>
+<Workbook
+    xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+    xmlns:o="urn:schemas-microsoft-com:office:office"
+    xmlns:x="urn:schemas-microsoft-com:office:excel"
+    xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+    xmlns:html="http://www.w3.org/TR/REC-html40">
+    <Styles>
+        <Style ss:ID="Text"><Alignment ss:Vertical="Center"/><NumberFormat ss:Format="@"/></Style>
+        <Style ss:ID="Header"><Font ss:Bold="1"/><Interior ss:Color="#D9EAF7" ss:Pattern="Solid"/><NumberFormat ss:Format="@"/></Style>
+    </Styles>
+    <Worksheet ss:Name="Issuer Scans">
+        <Table>
+            <?= excel_xml_row($columns, 'Header') . "\n" ?>
+            <?php if (empty($rows)): ?>
+                <?= excel_xml_row(['No records found.']) . "\n" ?>
+            <?php else: ?>
+                <?php foreach ($rows as $r): ?>
+                    <?= excel_xml_row([
+                        $r['TraceNo'] ?? '',
+                        $r['ItemCode'] ?? '',
+                        $r['PartName'] ?? '',
+                        $r['RequestedQty'] ?? '',
+                        $r['Quantity'] ?? '',
+                        $r['DisplayReceivedQty'] ?? '',
+                        $r['QtyVariance'] ?? '',
+                        $r['LotNo'] ?? '',
+                        $r['WarehouseLotNo'] ?? '',
+                        $r['ITRNumber'] ?? '',
+                        $r['IssuedByUsername'] ?? '',
+                        $r['IssueStatus'] ?? 'ISSUED',
+                        $r['DisplayBarcodeUser'] ?? '',
+                        $r['DisplayReceivedAt'] ?? '',
+                        $r['DeviceHostname'] ?? '',
+                        $r['DeviceIPAddress'] ?? '',
+                        $r['IssuedAt'] ?? ''
+                    ]) . "\n" ?>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </Table>
+    </Worksheet>
+    <Worksheet ss:Name="No Stocks Item">
+        <Table>
+            <?= excel_xml_row($noStockColumns, 'Header') . "\n" ?>
+            <?php if (empty($noStockRows)): ?>
+                <?= excel_xml_row(['No no-stock items found.']) . "\n" ?>
+            <?php else: ?>
+                <?php foreach ($noStockRows as $r): ?>
+                    <?= excel_xml_row([
+                        $r['RequestNo'] ?? '',
+                        $r['ItemCode'] ?? '',
+                        $r['PartName'] ?? '',
+                        $r['RequestedQty'] ?? '',
+                        $r['IssuedQty'] ?? '',
+                        $r['RemainingQty'] ?? '',
+                        $r['StockQty'] ?? '',
+                        $r['StockWhsCode'] ?? '',
+                        $r['ITRNumber'] ?? '',
+                        $r['SAP_IT_LineNum'] ?? '',
+                        $r['ReturnedByUsername'] ?? '',
+                        'RETURNED_NO_STOCK',
+                        $r['ReturnReason'] ?? '',
+                        $r['DeviceHostname'] ?? '',
+                        $r['DeviceIPAddress'] ?? '',
+                        $r['ReturnedAt'] ?? ''
+                    ]) . "\n" ?>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </Table>
+    </Worksheet>
+</Workbook>
     <?php
     exit;
 }
@@ -921,6 +1052,7 @@ if ($export) {
         .col-part { width: 14%; white-space: normal; line-height: 1.25; }
         .col-qty { width: 5%; text-align: right; white-space: nowrap; }
         .col-variance { width: 5%; text-align: right; white-space: nowrap; }
+        .col-stock { width: 6%; text-align: right; white-space: nowrap; }
         .col-lot { width: 7%; white-space: nowrap; }
         .col-wh-lot { width: 7%; white-space: nowrap; }
         .col-itr { width: 6%; white-space: nowrap; }
@@ -952,7 +1084,8 @@ if ($export) {
 
         .status-open,
         .status-pending,
-        .status-pending_receive {
+        .status-pending_receive,
+        .status-returned_no_stock {
             background: #fef3c7;
             color: #92400e;
         }
@@ -1063,6 +1196,7 @@ if ($export) {
             .col-item,
             .col-part,
             .col-qty,
+            .col-stock,
             .col-lot,
             .col-wh-lot,
             .col-itr,
@@ -1341,6 +1475,118 @@ if ($export) {
             </div>
         </div>
 
+        <div class="content-card mt-3">
+            <div class="content-card-header">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div>
+                        <h5 class="content-card-title">No Stocks Item</h5>
+                        <div class="content-card-subtitle">
+                            Request lines returned by issuer because warehouse stock was unavailable.
+                        </div>
+                    </div>
+                    <span class="badge bg-warning text-dark rounded-pill px-3 py-2">
+                        <?= number_format($noStockTotalRows) ?> line(s)
+                    </span>
+                </div>
+            </div>
+
+            <div class="content-card-body">
+                <div class="report-table-wrap">
+                    <table class="table table-bordered table-striped align-middle report-table" id="noStockReportTable">
+                        <thead>
+                            <tr>
+                                <th class="col-trace">Request No</th>
+                                <th class="col-item">Part No</th>
+                                <th class="col-part">Part Name</th>
+                                <th class="col-qty">Req Qty</th>
+                                <th class="col-qty">Issued Qty</th>
+                                <th class="col-qty">Remaining Qty</th>
+                                <th class="col-stock">WH Stock</th>
+                                <th class="col-lot">Stock WH</th>
+                                <th class="col-itr">ITR/IT</th>
+                                <th class="col-itr">Line</th>
+                                <th class="col-user">Returned By</th>
+                                <th class="col-status">Issue Status</th>
+                                <th class="col-part">Reason</th>
+                                <th class="col-host">Hostname</th>
+                                <th class="col-ip">IP Address</th>
+                                <th class="col-date">Returned At</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($noStockRows)): ?>
+                                <tr>
+                                    <td colspan="<?= count($noStockColumns) ?>" class="empty-row">
+                                        No no-stock items found for the selected date range.
+                                    </td>
+                                </tr>
+                            <?php else: ?>
+                                <?php foreach ($noStockRows as $r): ?>
+                                    <tr>
+                                        <td class="col-trace" title="<?= h(report_cell($r['RequestNo'] ?? '')) ?>">
+                                            <?= h(report_cell($r['RequestNo'] ?? '')) ?>
+                                        </td>
+                                        <td class="col-item" title="<?= h(report_cell($r['ItemCode'] ?? '')) ?>">
+                                            <?= h(report_cell($r['ItemCode'] ?? '')) ?>
+                                        </td>
+                                        <td class="col-part" title="<?= h(report_cell($r['PartName'] ?? '')) ?>">
+                                            <?= h(report_cell($r['PartName'] ?? '')) ?>
+                                        </td>
+                                        <td class="col-qty" title="<?= h(report_cell($r['RequestedQty'] ?? '')) ?>">
+                                            <?= h(report_cell($r['RequestedQty'] ?? '')) ?>
+                                        </td>
+                                        <td class="col-qty" title="<?= h(report_cell($r['IssuedQty'] ?? '')) ?>">
+                                            <?= h(report_cell($r['IssuedQty'] ?? '')) ?>
+                                        </td>
+                                        <td class="col-qty" title="<?= h(report_cell($r['RemainingQty'] ?? '')) ?>">
+                                            <?= h(report_cell($r['RemainingQty'] ?? '')) ?>
+                                        </td>
+                                        <td class="col-stock" title="<?= h(report_cell($r['StockQty'] ?? '')) ?>">
+                                            <?= h(report_cell($r['StockQty'] ?? '')) ?>
+                                        </td>
+                                        <td class="col-lot" title="<?= h(report_cell($r['StockWhsCode'] ?? '')) ?>">
+                                            <?= h(report_cell($r['StockWhsCode'] ?? '')) ?>
+                                        </td>
+                                        <td class="col-itr" title="<?= h(report_cell($r['ITRNumber'] ?? '')) ?>">
+                                            <?= h(report_cell($r['ITRNumber'] ?? '')) ?>
+                                        </td>
+                                        <td class="col-itr" title="<?= h(report_cell($r['SAP_IT_LineNum'] ?? '')) ?>">
+                                            <?= h(report_cell($r['SAP_IT_LineNum'] ?? '')) ?>
+                                        </td>
+                                        <td class="col-user" title="<?= h(report_cell($r['ReturnedByUsername'] ?? '')) ?>">
+                                            <?= h(report_cell($r['ReturnedByUsername'] ?? '')) ?>
+                                        </td>
+                                        <td class="col-status" title="RETURNED_NO_STOCK">
+                                            <span class="status-pill status-returned_no_stock">RETURNED_NO_STOCK</span>
+                                        </td>
+                                        <td class="col-part" title="<?= h(report_cell($r['ReturnReason'] ?? '')) ?>">
+                                            <?= h(report_cell($r['ReturnReason'] ?? '')) ?>
+                                        </td>
+                                        <td class="col-host" title="<?= h(report_cell($r['DeviceHostname'] ?? '')) ?>">
+                                            <?= h(report_cell($r['DeviceHostname'] ?? '')) ?>
+                                        </td>
+                                        <td class="col-ip" title="<?= h(report_cell($r['DeviceIPAddress'] ?? '')) ?>">
+                                            <?= h(report_cell($r['DeviceIPAddress'] ?? '')) ?>
+                                        </td>
+                                        <td class="col-date" title="<?= h(report_cell($r['ReturnedAt'] ?? '')) ?>">
+                                            <?= h(report_cell($r['ReturnedAt'] ?? '')) ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="small text-muted mt-2">
+                    Export Excel includes this data in a separate No Stocks Item worksheet.
+                    <?php if (!$export && $noStockTotalRows > count($noStockRows)): ?>
+                        Showing latest <?= number_format(count($noStockRows)) ?> of <?= number_format($noStockTotalRows) ?> returned no-stock line(s).
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+
     </main>
 </div>
 
@@ -1353,7 +1599,7 @@ if (searchInput) {
     searchInput.addEventListener('input', function () {
         const q = this.value.toLowerCase();
 
-        document.querySelectorAll('#reportTable tbody tr').forEach(function (row) {
+        document.querySelectorAll('#reportTable tbody tr, #noStockReportTable tbody tr').forEach(function (row) {
             row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
         });
     });

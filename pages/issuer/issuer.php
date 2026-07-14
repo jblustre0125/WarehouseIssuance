@@ -1092,6 +1092,17 @@ foreach ([
     </main>
 </div>
 
+<div class="modal fade" id="messageModal" tabindex="-1" aria-labelledby="messageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-body text-center py-4">
+                <div class="fw-bold mb-1" id="messageModalLabel">Notice</div>
+                <div class="text-muted small" id="messageModalText"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="loadRequestModal" tabindex="-1" aria-labelledby="loadRequestModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg rounded-4">
@@ -1199,6 +1210,7 @@ let pendingRemoveItemIdx = null;
 let stockRows = [];
 let lotsByItemCode = {};
 let lotSuggestionRequests = {};
+let messageModalTimer = null;
 const currentUserWarehouse = <?= json_encode($currentUserWarehouse, JSON_UNESCAPED_SLASHES) ?>;
 
 function fmtQty(v) {
@@ -1297,12 +1309,12 @@ function lotStatusHtml(it) {
     return `<span class="badge text-bg-secondary">Not checked</span>`;
 }
 
-async function loadOpenRequests() {
+async function loadOpenRequests(forceRefresh = false, keepSelectedRequest = false) {
     const status = document.getElementById('requestStatus');
     status.textContent = 'Refreshing requests...';
 
     try {
-        const res = await fetch('api/get_open_issue_requests.php', { cache: 'no-store' });
+        const res = await fetch('api/get_open_issue_requests.php' + (forceRefresh ? '?refresh=1' : ''), { cache: 'no-store' });
         const data = await res.json();
 
         if (!data.ok) {
@@ -1330,7 +1342,7 @@ async function loadOpenRequests() {
             const selectedKey = String(selectedDocument.request_no || selectedDocument.doc_num || '');
             const stillOpen = openDocuments.some(doc => String(doc.request_no || doc.doc_num || '') === selectedKey);
 
-            if (!stillOpen && items.length === 0) {
+            if (!keepSelectedRequest && !stillOpen && items.length === 0) {
                 selectedDocument = null;
                 document.getElementById('selectedRequestBox').classList.add('d-none');
             }
@@ -2491,6 +2503,19 @@ function render() {
 
     items.forEach((it, idx) => {
         const lotOptions = Array.isArray(it.available_lots) ? it.available_lots : [];
+        const hasNoStock = Number(it.warehouse_stock_qty || 0) <= 0;
+        const noStockButton = hasNoStock && it.request_line_id
+            ? `
+                        <button
+                            class="btn btn-sm btn-outline-warning remove-btn"
+                            type="button"
+                            id="return_no_stock_${idx}"
+                            onclick="returnNoStockItem(${idx}); return false;"
+                            title="Return only this no-stock request item to the requestor"
+                        >
+                            Return No Stock
+                        </button>`
+            : '';
         const lotOptionsHtml = lotOptions.map(lot => {
             const lotNo = String(lot.lot_no || '').trim();
 
@@ -2562,6 +2587,7 @@ function render() {
 
                 <td class="col-action">
                     <div class="d-grid gap-1">
+                        ${noStockButton}
                         <button
                             class="btn btn-sm btn-outline-primary remove-btn"
                             type="button"
@@ -2590,6 +2616,82 @@ function render() {
     const printBtn = document.getElementById('printBtn');
     if (printBtn) {
         printBtn.disabled = items.length === 0;
+    }
+}
+
+async function returnNoStockItem(idx) {
+    syncTableItems();
+
+    const it = items[idx];
+
+    if (!it) {
+        showMessage('Selected line was not found.');
+        return;
+    }
+
+    if (!it.request_line_id) {
+        showMessage('This row is not linked to a request line.');
+        return;
+    }
+
+    const stockQty = Number(it.warehouse_stock_qty || 0);
+
+    if (stockQty > 0) {
+        showMessage('This item still has stock. Refresh the request before returning it.');
+        return;
+    }
+
+    const btn = document.getElementById('return_no_stock_' + idx);
+    const oldText = btn ? btn.textContent : '';
+
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Returning...';
+    }
+
+    try {
+        const body = new FormData();
+        body.append('request_line_id', it.request_line_id);
+        body.append('stock_whs_code', it.stock_whs_code || '01');
+        body.append('stock_qty', String(it.warehouse_stock_qty || 0));
+        body.append('reason', 'No stock in ' + (it.stock_whs_code || '01'));
+
+        const res = await fetch('api/issuer/return_no_stock_item.php', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: body
+        });
+
+        const text = await res.text();
+        let data = null;
+
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            throw new Error('Return API returned invalid response.');
+        }
+
+        if (!res.ok || !data.ok) {
+            throw new Error(data.message || 'Unable to return no-stock item.');
+        }
+
+        items.splice(idx, 1);
+
+        showMessage(data.message || 'No-stock item returned to requestor.');
+        render();
+        renderRequests();
+        await loadOpenRequests(true, true);
+    } catch (e) {
+        console.error(e);
+        showMessage(e.message || 'Unable to return no-stock item.');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = oldText || 'Return No Stock';
+        }
     }
 }
 
@@ -2659,7 +2761,31 @@ function esc(v) {
 }
 
 function showMessage(message) {
-    alert(message);
+    const modalEl = document.getElementById('messageModal');
+    const textEl = document.getElementById('messageModalText');
+
+    if (!modalEl || !textEl || typeof bootstrap === 'undefined') {
+        console.log(message);
+        return;
+    }
+
+    textEl.textContent = message || '';
+
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl, {
+        backdrop: false,
+        keyboard: false
+    });
+
+    modal.show();
+
+    if (messageModalTimer) {
+        window.clearTimeout(messageModalTimer);
+    }
+
+    messageModalTimer = window.setTimeout(function () {
+        modal.hide();
+        messageModalTimer = null;
+    }, 1800);
 }
 
 async function checkLotBalance(itemCode, lotNo, whsCode = '01') {
@@ -3293,6 +3419,7 @@ async function printSingleIssueTag(idx, silent = false, saveAfterPrint = true, s
                 return false;
             }
 
+            showMessage('Tag printed and issuance saved.');
             loadOpenRequests();
 
             return true;
@@ -3428,6 +3555,7 @@ async function printAllIssueTags(silent = false, saveAfterPrint = false, skipLot
                 return false;
             }
 
+            showMessage('Tags printed and issuance saved.');
             loadOpenRequests();
 
             return true;

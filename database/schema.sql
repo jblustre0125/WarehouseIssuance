@@ -237,6 +237,44 @@ BEGIN
 END
 GO
 
+IF OBJECT_ID('dbo.IssuerNoStockReturns', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.IssuerNoStockReturns (
+        ReturnID INT IDENTITY(1,1) PRIMARY KEY,
+        RequestID INT NOT NULL,
+        RequestLineID INT NOT NULL,
+        RequestNo NVARCHAR(80) NULL,
+        ITRNumber NVARCHAR(80) NULL,
+        SAP_IT_DocEntry INT NULL,
+        SAP_IT_DocNum INT NULL,
+        SAP_IT_LineNum INT NULL,
+        ItemCode NVARCHAR(50) NOT NULL,
+        PartName NVARCHAR(255) NULL,
+        RequestedQty DECIMAL(18,3) NOT NULL DEFAULT 0,
+        IssuedQty DECIMAL(18,3) NOT NULL DEFAULT 0,
+        RemainingQty DECIMAL(18,3) NOT NULL DEFAULT 0,
+        StockWhsCode NVARCHAR(20) NULL,
+        StockQty DECIMAL(18,3) NULL,
+        ReturnReason NVARCHAR(255) NULL,
+        ReturnedByUserID INT NULL,
+        ReturnedByUsername NVARCHAR(60) NULL,
+        ReturnedAt DATETIME NOT NULL DEFAULT GETDATE(),
+        DeviceHostname NVARCHAR(120) NULL,
+        DeviceIPAddress NVARCHAR(45) NULL,
+        CONSTRAINT FK_IssuerNoStockReturns_Header FOREIGN KEY (RequestID) REFERENCES dbo.WarehouseIssueRequestHeader(RequestID),
+        CONSTRAINT FK_IssuerNoStockReturns_Line FOREIGN KEY (RequestLineID) REFERENCES dbo.WarehouseIssueRequestLines(RequestLineID)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_IssuerNoStockReturns_ReturnedAt' AND object_id = OBJECT_ID('dbo.IssuerNoStockReturns'))
+BEGIN
+    CREATE INDEX IX_IssuerNoStockReturns_ReturnedAt
+    ON dbo.IssuerNoStockReturns(ReturnedAt DESC, ReturnID DESC)
+    INCLUDE (RequestNo, ITRNumber, ItemCode, ReturnedByUsername);
+END
+GO
+
 IF OBJECT_ID('dbo.ReceivingTransactions', 'U') IS NULL
 BEGIN
     CREATE TABLE dbo.ReceivingTransactions (

@@ -55,7 +55,7 @@ $header = fetch_one(
     "SELECT RequestID, RequestNo, ITRNumber, SAP_IT_DocEntry, Status
      FROM WarehouseIssueRequestHeader
      WHERE RequestID = ? {$ownerWhere}
-       AND Status IN ('OPEN','PARTIAL')",
+       AND Status IN ('OPEN','PARTIAL','RETURNED_NO_STOCK')",
     $params
 );
 
@@ -79,7 +79,7 @@ foreach ($existingRows as $row) {
     $lineId = (int)$row['RequestLineID'];
     $existing[$lineId] = $row;
 
-    if ((float)$row['IssuedQty'] > 0 || strtoupper((string)$row['Status']) !== 'OPEN') {
+    if ((float)$row['IssuedQty'] > 0 || !in_array(strtoupper((string)$row['Status']), ['OPEN', 'RETURNED_NO_STOCK'], true)) {
         $hasIssued = true;
     }
 }
@@ -147,7 +147,7 @@ foreach ($validItems as $line) {
            AND L.SAP_IT_LineNum = ?
            AND L.ItemCode = ?
            AND H.Status <> 'CANCELLED'
-           AND L.Status <> 'CANCELLED'
+           AND L.Status NOT IN ('CANCELLED', 'RETURNED_NO_STOCK')
            AND L.RequestID <> ?",
         [$docNum, $lineNum, $itemCode, $requestId]
     );

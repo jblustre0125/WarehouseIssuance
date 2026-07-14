@@ -398,6 +398,9 @@ $currentRole = strtolower($currentUser['role'] ?? '');
         .itr-card:hover,
         .stock-card:hover { transform: translateY(-1px); border-color: #93c5fd; box-shadow: 0 8px 20px rgba(10,110,209,.12); }
         .itr-card.active { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(10,110,209,.14); }
+        .itr-card.no-stock-return { border-color: #f59e0b; box-shadow: 0 0 0 4px rgba(245,158,11,.14), 0 8px 20px rgba(245,158,11,.12); }
+        .itr-card.no-stock-return .itr-header { background: #fffbeb; }
+        .itr-card.no-stock-return .itr-header:hover { background: #fef3c7; }
         .itr-header { width: 100%; border: 0; background: #fff; text-align: left; padding: 15px; }
         .itr-header:hover { background: #f8fbff; }
         .request-title,
@@ -1385,11 +1388,26 @@ async function loadMyRequests() {
             }
 
             return pendingQty > 0;
+        }).sort((a, b) => {
+            const aReturned = Boolean(a.has_returned_no_stock) || String(a.display_status || a.status || '').toUpperCase() === 'RETURNED_NO_STOCK';
+            const bReturned = Boolean(b.has_returned_no_stock) || String(b.display_status || b.status || '').toUpperCase() === 'RETURNED_NO_STOCK';
+
+            if (aReturned !== bReturned) {
+                return bReturned ? 1 : -1;
+            }
+
+            return String(b.requested_at || '').localeCompare(String(a.requested_at || ''));
         });
 
         document.getElementById('myRequestCount').textContent = myRequests.length;
         renderMyRequests();
-        status.textContent = myRequests.length + ' pending request(s), updated ' + new Date().toLocaleTimeString([], {
+        const returnedCount = myRequests.filter(doc =>
+            Boolean(doc.has_returned_no_stock) ||
+            String(doc.display_status || doc.status || '').toUpperCase() === 'RETURNED_NO_STOCK'
+        ).length;
+        status.textContent = myRequests.length + ' pending request(s)' +
+            (returnedCount > 0 ? ', ' + returnedCount + ' no-stock return(s)' : '') +
+            ', updated ' + new Date().toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit',
             second: '2-digit'
@@ -1832,13 +1850,16 @@ function renderMyRequests() {
         const canLoad = doc.editable || pendingQty > 0;
         const loadDisabled = canLoad ? '' : ' disabled';
         const deleteDisabled = doc.editable ? '' : ' disabled';
+        const displayStatus = doc.display_status || doc.status;
+        const hasNoStockReturn = Boolean(doc.has_returned_no_stock) || String(displayStatus || '').toUpperCase() === 'RETURNED_NO_STOCK';
+        const cardClass = 'itr-card' + active + (hasNoStockReturn ? ' no-stock-return' : '');
         const note = doc.editable
-            ? 'Ready to edit'
-            : (pendingQty > 0 ? 'Partially issued - click Load Remaining to view unreceived items' : 'Fully issued');
-        const loadLabel = doc.editable ? 'Edit' : 'Load Remaining';
+            ? (hasNoStockReturn ? 'Returned by issuer - no stock' : 'Ready to edit')
+            : (hasNoStockReturn ? 'Returned by issuer - no stock' : (pendingQty > 0 ? 'Partially issued - click Load Remaining to view unreceived items' : 'Fully issued'));
+        const loadLabel = doc.editable ? (hasNoStockReturn ? 'Edit Returned' : 'Edit') : 'Load Remaining';
 
         list.insertAdjacentHTML('beforeend', `
-            <div class="itr-card${active}">
+            <div class="${cardClass}">
                 <div class="itr-header">
                     <div class="d-flex justify-content-between align-items-start gap-2">
                         <div>
@@ -1846,7 +1867,7 @@ function renderMyRequests() {
                             <div class="request-meta">ITR ${esc(doc.itr_number)} | Needed ${esc(doc.needed_date)} | ${esc(doc.line_count)} line(s)</div>
                             <div class="request-meta">${esc(note)}${doc.remarks ? ' | ' + esc(doc.remarks) : ''}</div>
                         </div>
-                        <span class="badge text-bg-warning rounded-pill">${esc(doc.status)}</span>
+                        <span class="badge text-bg-warning rounded-pill">${esc(displayStatus)}</span>
                     </div>
 
                     <div class="qty-grid">
@@ -1995,7 +2016,10 @@ function loadSavedRequest(idx) {
     document.getElementById('loadedInfo').className = isEditableRequest ? 'alert alert-warning info-box' : 'alert alert-info info-box';
 
     if (isEditableRequest) {
-        document.getElementById('loadedInfo').textContent = 'Editing ' + doc.request_no + '. Remove a line to cancel that line, or use Delete to cancel the whole request.';
+        const editMessage = doc.has_returned_no_stock
+            ? 'Editing returned no-stock request ' + doc.request_no + '. Adjust the quantity or remove the line before submitting again.'
+            : 'Editing ' + doc.request_no + '. Remove a line to cancel that line, or use Delete to cancel the whole request.';
+        document.getElementById('loadedInfo').textContent = editMessage;
         document.getElementById('saveBtn').disabled = false;
         document.getElementById('saveBtn').textContent = 'Update Issue Request';
     } else {

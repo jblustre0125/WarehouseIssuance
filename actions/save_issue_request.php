@@ -206,7 +206,7 @@ foreach ($validItems as $line) {
            AND L.SAP_IT_LineNum = ?
            AND L.ItemCode = ?
            AND H.Status <> 'CANCELLED'
-           AND L.Status <> 'CANCELLED'",
+           AND L.Status NOT IN ('CANCELLED', 'RETURNED_NO_STOCK')",
         [
             $line['doc_num'],
             $line['line_num'],

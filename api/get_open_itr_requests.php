@@ -309,7 +309,7 @@ $cacheKey = sap_cache_make_key('sap.open_itr_requests', [
     'period_end' => $monthEnd,
     'include_last_month' => $includeLastMonth ? 'yes' : 'no',
     'last_month_grace_days' => $graceDays,
-    'version' => 'quantity-as-open-v4-last-month-grace-pack-size',
+    'version' => 'quantity-as-open-v5-returned-no-stock-pack-size',
     'pack_sizes' => itr_pack_sizes_cache_token()
 ]);
 
@@ -419,7 +419,7 @@ if ($hasRequestHeader && $hasRequestLines) {
            WHERE L.SAP_IT_DocNum IS NOT NULL
              AND L.SAP_IT_DocNum <> ''
              AND H.Status <> 'CANCELLED'
-             AND L.Status <> 'CANCELLED'
+             AND L.Status NOT IN ('CANCELLED', 'RETURNED_NO_STOCK')
            GROUP BY L.SAP_IT_DocNum, L.ItemCode, L.SAP_IT_LineNum"
         : "SELECT
                 L.SAP_IT_DocNum AS ITRNumber,
@@ -430,7 +430,7 @@ if ($hasRequestHeader && $hasRequestLines) {
            WHERE L.SAP_IT_DocNum IS NOT NULL
              AND L.SAP_IT_DocNum <> ''
              AND H.Status <> 'CANCELLED'
-             AND L.Status <> 'CANCELLED'
+             AND L.Status NOT IN ('CANCELLED', 'RETURNED_NO_STOCK')
            GROUP BY L.SAP_IT_DocNum, L.ItemCode";
 
     $requestedRows = fetch_all($whp, $requestedSql);
