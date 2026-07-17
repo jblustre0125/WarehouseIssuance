@@ -184,6 +184,32 @@ function sync_recent_success($conn, $scope, $withinSeconds)
     return (int)($row['AgeSeconds'] ?? PHP_INT_MAX) < $withinSeconds;
 }
 
+function sync_task_selected($route, $interval, $syncMode, $includeHeavyTasks)
+{
+    if ($syncMode === 'all') {
+        return true;
+    }
+
+    if ($syncMode === 'itr') {
+        return strpos($route, 'api/get_open_itr_requests.php') === 0;
+    }
+
+    if ($syncMode === 'po') {
+        return strpos($route, 'api/picker/open_purchase_orders.php') === 0;
+    }
+
+    if ($syncMode === 'requests') {
+        return strpos($route, 'api/get_open_issue_requests.php') === 0 ||
+            strpos($route, 'api/requestor/list_requests.php') === 0;
+    }
+
+    if (!$includeHeavyTasks && $interval >= SAP_CACHE_HEAVY_REFRESH_SECONDS) {
+        return false;
+    }
+
+    return true;
+}
+
 $lockHandle = sync_acquire_lock();
 
 if ($lockHandle === null) {
@@ -256,8 +282,8 @@ foreach ($tasks as $task) {
     $interval = (int)($task['interval'] ?? SAP_CACHE_FAST_REFRESH_SECONDS);
     $scope = sync_scope_name($route, $role, $username);
 
-    if (!$includeHeavyTasks && $interval >= SAP_CACHE_HEAVY_REFRESH_SECONDS) {
-        sync_log('Skipping heavy cache in light mode ' . $scope);
+    if (!sync_task_selected($route, $interval, $syncMode, $includeHeavyTasks)) {
+        sync_log('Skipping cache outside ' . $syncMode . ' mode ' . $scope);
         continue;
     }
 
