@@ -399,7 +399,7 @@ if ($hasBatchBalance) {
         $lotNo = trim((string)($lotRow['LotNo'] ?? ''));
         $sapAvailableQty = (float)($lotRow['AvailableQty'] ?? 0);
         $appIssuedQty = $appIssuedByItemLot[strtoupper($itemCode) . '|' . strtoupper($lotNo)] ?? 0.0;
-        $availableQty = max(0, $sapAvailableQty - $appIssuedQty);
+        $availableQty = $sapAvailableQty;
 
         if ($itemCode === '' || $lotNo === '' || $availableQty <= 0) {
             continue;

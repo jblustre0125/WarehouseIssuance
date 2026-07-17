@@ -170,14 +170,8 @@ function issuer_lot_balance($erp, $whp, $itemCode, $lotNo, $warehouseCode = '01'
         }
     }
 
-    /*
-        IMPORTANT:
-        Warehouse Issuance can save issued quantity before SAP batch balance is reduced.
-        To prevent the same lot from being suggested again, app IssuedQty is subtracted
-        from the SAP available quantity.
-    */
     $appIssuedQty = issuer_app_issued_qty_for_lot($whp, $itemCode, $lotNo);
-    $systemAvailableQty = max(0, $sapAvailableQty - $appIssuedQty);
+    $systemAvailableQty = $sapAvailableQty;
     $valid = $systemAvailableQty > 0;
 
     return [
@@ -194,8 +188,8 @@ function issuer_lot_balance($erp, $whp, $itemCode, $lotNo, $warehouseCode = '01'
         'available_qty' => $systemAvailableQty,
         'source' => $source,
         'message' => $valid
-            ? 'Lot is available. SAP available: ' . $sapAvailableQty . ', already issued in Warehouse Issuance: ' . $appIssuedQty . ', remaining: ' . $systemAvailableQty . '.'
-            : 'Lot is fully consumed. SAP available: ' . $sapAvailableQty . ', already issued in Warehouse Issuance: ' . $appIssuedQty . ', remaining: 0.'
+            ? 'Lot is available. SAP batch available: ' . $sapAvailableQty . '.'
+            : 'Lot has no SAP batch balance available.'
     ];
 }
 
