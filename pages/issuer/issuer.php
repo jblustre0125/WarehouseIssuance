@@ -2133,10 +2133,17 @@ async function fetchLotSuggestionsForRow(idx, force = false) {
 
     refreshLotSuggestionPopupContent(idx, 'Loading SAP lots...');
 
+    const qtyNeeded = Math.max(
+        Number(items[idx].source_remaining_qty || 0),
+        Number(items[idx].remaining_qty || 0),
+        Number(items[idx].requested_qty || 0),
+        Number(items[idx].quantity || 0)
+    );
+
     lotSuggestionRequests[itemKey] = fetch(
         'api/issuer/get_lot_suggestions.php?item_code=' + encodeURIComponent(itemCode) +
         '&warehouse_code=' + encodeURIComponent(whsCode) +
-        '&qty_needed=' + encodeURIComponent(String(items[idx].quantity || '0')) +
+        '&qty_needed=' + encodeURIComponent(String(qtyNeeded || '0')) +
         (force ? '&force_live=1' : ''),
         {
             cache: 'no-store',
