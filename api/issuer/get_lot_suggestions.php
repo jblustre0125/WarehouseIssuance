@@ -77,9 +77,8 @@ if (issuer_lot_has_column($erp, 'OBTN', 'InDate')) {
 
 /*
     Get FIFO candidates, then validate each candidate against Warehouse Issuance IssuedQty.
-    Return only the FIFO sequence needed to cover the requested quantity, not every available lot.
-    Example: requested 1500, first FIFO lot has 259, second FIFO lot has 5000:
-             return first lot with issue_qty 259 and second lot with issue_qty 1241.
+    Return every validated available candidate so issuers can recover when a later lot was
+    selected manually. suggested_issue_qty still marks the recommended FIFO sequence.
 */
 $candidates = fetch_all(
     $erp,
@@ -127,11 +126,13 @@ foreach ($candidates as $candidate) {
 
     $fifoDate = $candidate['FifoDate'] ?? null;
     $fifoDateText = $fifoDate instanceof DateTimeInterface ? $fifoDate->format('Y-m-d') : (string)$fifoDate;
-    $suggestedIssueQty = $qtyNeeded > 0 ? min($availableQty, max(0, $remainingNeeded)) : $availableQty;
+    $suggestedIssueQty = $qtyNeeded > 0 && $remainingNeeded > 0
+        ? min($availableQty, max(0, $remainingNeeded))
+        : 0;
 
-    if ($qtyNeeded > 0 && $suggestedIssueQty <= 0) {
-        break;
-    }
+    $label = $suggestedIssueQty > 0
+        ? 'FIFO issue ' . $suggestedIssueQty . ' / available ' . $availableQty
+        : 'FIFO available ' . $availableQty;
 
     $lots[] = [
         'lot_no' => $lotNo,
@@ -143,19 +144,13 @@ foreach ($candidates as $candidate) {
         'issued_qty' => $balance['issued_qty'] ?? 0,
         'available_qty' => $availableQty,
         'suggested_issue_qty' => $suggestedIssueQty,
-        'label' => 'FIFO issue ' . $suggestedIssueQty . ' / available ' . $availableQty
+        'label' => $label
     ];
 
     $coveredQty += $suggestedIssueQty;
 
-    if ($qtyNeeded > 0) {
+    if ($qtyNeeded > 0 && $remainingNeeded > 0) {
         $remainingNeeded = max(0, $qtyNeeded - $coveredQty);
-
-        if ($remainingNeeded <= 0.0005) {
-            break;
-        }
-    } else {
-        break;
     }
 }
 
