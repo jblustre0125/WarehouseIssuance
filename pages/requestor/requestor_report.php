@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/app_shell.php';
+require_once __DIR__ . '/../../includes/sap_cache.php';
 require_role([ROLE_REQUESTOR, ROLE_ADMIN]);
 
 function request_report_date_value($name, $default = '')
