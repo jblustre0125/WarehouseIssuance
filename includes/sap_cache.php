@@ -111,6 +111,70 @@ function sap_cache_get($conn, $cacheKey, $allowExpired = false, $maxExpiredAgeSe
     return $payload;
 }
 
+function sap_cache_get_latest_by_scope($conn, $scope, $maxStaleSeconds = null)
+{
+    if (!sap_cache_table_ready($conn)) {
+        return null;
+    }
+
+    $params = [trim((string)$scope)];
+    $whereExpiry = '';
+
+    if ($maxStaleSeconds !== null) {
+        $whereExpiry = 'AND ExpiresAt > DATEADD(second, ?, GETDATE())';
+        $params[] = -max(60, (int)$maxStaleSeconds);
+    } elseif (!sap_cache_stale_reads_enabled()) {
+        $whereExpiry = 'AND ExpiresAt > GETDATE()';
+    }
+
+    $row = fetch_one(
+        $conn,
+        "SELECT TOP 1
+            CacheKey,
+            ScopeName,
+            PayloadJson,
+            CachedAt,
+            ExpiresAt
+         FROM dbo.SapDataCache
+         WHERE ScopeName = ?
+           AND PayloadJson IS NOT NULL
+           AND LTRIM(RTRIM(PayloadJson)) <> ''
+           {$whereExpiry}
+         ORDER BY CachedAt DESC",
+        $params
+    );
+
+    if (!$row) {
+        return null;
+    }
+
+    $payload = json_decode((string)$row['PayloadJson'], true);
+
+    if (!is_array($payload)) {
+        return null;
+    }
+
+    $cachedAt = $row['CachedAt'] instanceof DateTimeInterface
+        ? $row['CachedAt']->format('Y-m-d H:i:s')
+        : (string)($row['CachedAt'] ?? '');
+
+    $expiresAt = $row['ExpiresAt'] instanceof DateTimeInterface
+        ? $row['ExpiresAt']->format('Y-m-d H:i:s')
+        : (string)($row['ExpiresAt'] ?? '');
+
+    $payload['_cache'] = [
+        'hit' => true,
+        'latest_scope_hit' => true,
+        'stale' => $row['ExpiresAt'] instanceof DateTimeInterface ? $row['ExpiresAt'] <= new DateTimeImmutable() : strtotime((string)($row['ExpiresAt'] ?? '')) <= time(),
+        'cached_at' => $cachedAt,
+        'expires_at' => $expiresAt,
+        'key' => (string)($row['CacheKey'] ?? ''),
+        'scope' => (string)($row['ScopeName'] ?? $scope)
+    ];
+
+    return $payload;
+}
+
 function sap_cache_max_stale_seconds()
 {
     if (!defined('SAP_CACHE_MAX_STALE_SECONDS')) {

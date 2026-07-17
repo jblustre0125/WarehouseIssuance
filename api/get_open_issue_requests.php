@@ -169,6 +169,7 @@ if ($cached !== null) {
 }
 
 $sapLiveQueriesEnabled = sap_cache_live_queries_enabled();
+$hydratedFromCache = null;
 $stockByItem = [];
 $uomByItem = [];
 $lotsByItem = [];
@@ -182,7 +183,34 @@ foreach ($rows as $r) {
     }
 }
 
-if ($sapLiveQueriesEnabled) {
+if (!$sapLiveQueriesEnabled) {
+    $latestCached = sap_cache_get_latest_by_scope($conn, 'sap.open_issue_requests', 86400);
+
+    if (is_array($latestCached)) {
+        foreach (($latestCached['requests'] ?? []) as $cachedLine) {
+            $itemCode = trim((string)($cachedLine['item_code'] ?? ''));
+
+            if ($itemCode === '' || !isset($itemCodes[$itemCode])) {
+                continue;
+            }
+
+            $cachedStockQty = (float)($cachedLine['warehouse_stock_qty'] ?? 0);
+            $stockByItem[$itemCode] = max($stockByItem[$itemCode] ?? 0.0, $cachedStockQty);
+
+            $cachedUom = trim((string)($cachedLine['uom'] ?? ''));
+            if ($cachedUom !== '' && !isset($uomByItem[$itemCode])) {
+                $uomByItem[$itemCode] = $cachedUom;
+            }
+
+            $cachedLots = $cachedLine['available_lots'] ?? [];
+            if (is_array($cachedLots) && count($cachedLots) > 0 && !isset($lotsByItem[$itemCode])) {
+                $lotsByItem[$itemCode] = $cachedLots;
+            }
+        }
+
+        $hydratedFromCache = $latestCached['_cache'] ?? null;
+    }
+} elseif ($sapLiveQueriesEnabled) {
     $erp = get_erp_connection();
 
     $hasOitw = fetch_one(
@@ -491,6 +519,16 @@ $payload = [
     'requests' => $requests,
     'documents' => array_values($documents)
 ];
+
+if ($hydratedFromCache !== null) {
+    $payload['_cache'] = [
+        'hit' => false,
+        'hydrated_from_latest_scope' => true,
+        'source_cached_at' => $hydratedFromCache['cached_at'] ?? '',
+        'source_expires_at' => $hydratedFromCache['expires_at'] ?? '',
+        'source_key' => $hydratedFromCache['key'] ?? ''
+    ];
+}
 
 if ($sapLiveQueriesEnabled) {
     sap_cache_put($conn, 'sap.open_issue_requests', $cacheKey, $payload, 60);

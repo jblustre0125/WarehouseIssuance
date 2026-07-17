@@ -1341,10 +1341,24 @@ async function loadOpenRequests(forceRefresh = false, keepSelectedRequest = fals
         if (selectedDocument) {
             const selectedKey = String(selectedDocument.request_no || selectedDocument.doc_num || '');
             const stillOpen = openDocuments.some(doc => String(doc.request_no || doc.doc_num || '') === selectedKey);
+            const refreshedDoc = openDocuments.find(doc => String(doc.request_no || doc.doc_num || '') === selectedKey);
 
             if (!keepSelectedRequest && !stillOpen && items.length === 0) {
                 selectedDocument = null;
                 document.getElementById('selectedRequestBox').classList.add('d-none');
+            } else if (refreshedDoc) {
+                selectedDocument = refreshedDoc;
+
+                if (refreshLoadedItemsFromDocument(refreshedDoc)) {
+                    const wh = getDocumentWarehouseText(refreshedDoc);
+                    document.getElementById('selectedRequestTitle').textContent =
+                        (refreshedDoc.request_no || 'Request') + ' / ITR ' + (refreshedDoc.itr_number || refreshedDoc.doc_num);
+                    document.getElementById('selectedRequestDetails').textContent =
+                        refreshedDoc.line_count + ' item(s), ' + items.length + ' issue row(s), needed ' +
+                        (refreshedDoc.needed_date || refreshedDoc.doc_date) + ', remaining total ' + fmtQty(refreshedDoc.remaining_qty) +
+                        ', WH ' + wh.from + ' to ' + wh.to;
+                    render();
+                }
             }
         }
 
@@ -1919,6 +1933,57 @@ function lotsForItemCode(itemCode) {
     return lotsByItemCode[itemCodeKey(itemCode)] || [];
 }
 
+
+function refreshLoadedItemsFromDocument(doc) {
+    if (!doc || !Array.isArray(doc.lines) || items.length === 0) {
+        return false;
+    }
+
+    const linesByRequestLine = {};
+    const linesBySapLine = {};
+
+    doc.lines.forEach(line => {
+        const requestLineId = String(line.request_line_id || '').trim();
+        const sapLineKey = String(line.doc_entry || '') + '|' +
+            String(line.line_num || '') + '|' +
+            itemCodeKey(line.item_code);
+
+        if (requestLineId) {
+            linesByRequestLine[requestLineId] = line;
+        }
+
+        if (sapLineKey !== '||') {
+            linesBySapLine[sapLineKey] = line;
+        }
+    });
+
+    let changed = false;
+
+    items.forEach(row => {
+        const requestLineId = String(row.request_line_id || row.source_request_line_id || '').trim();
+        const sapLineKey = String(row.itr_doc_entry || '') + '|' +
+            String(row.itr_line_num || '') + '|' +
+            itemCodeKey(row.item_code);
+        const freshLine = (requestLineId && linesByRequestLine[requestLineId]) || linesBySapLine[sapLineKey];
+
+        if (!freshLine) {
+            return;
+        }
+
+        row.warehouse_stock_qty = Number(freshLine.warehouse_stock_qty || 0);
+        row.stock_whs_code = freshLine.stock_whs_code || row.stock_whs_code || '01';
+        row.available_lots = Array.isArray(freshLine.available_lots) ? freshLine.available_lots : [];
+        row.open_qty = freshLine.open_qty;
+        row.remaining_qty = freshLine.remaining_qty;
+        row.requested_qty = freshLine.requested_qty || row.requested_qty;
+        row.uom = freshLine.uom || row.uom || '';
+        changed = true;
+    });
+
+    rebuildLotsByItemCode(doc);
+
+    return changed;
+}
 
 function setLotsForItemCode(itemCode, lots) {
     const key = itemCodeKey(itemCode);
