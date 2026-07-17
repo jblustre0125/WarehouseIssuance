@@ -2007,6 +2007,33 @@ function setLotsForItemCode(itemCode, lots, authoritative = false) {
     }
 }
 
+function replaceDocumentLotsForItem(itemCode, lots) {
+    const key = itemCodeKey(itemCode);
+
+    if (!key) {
+        return;
+    }
+
+    const normalizedLots = Array.isArray(lots)
+        ? lots.map(normalizeLotRow).filter(Boolean)
+        : [];
+
+    function updateDoc(doc) {
+        if (!doc || !Array.isArray(doc.lines)) {
+            return;
+        }
+
+        doc.lines.forEach(line => {
+            if (itemCodeKey(line.item_code) === key) {
+                line.available_lots = normalizedLots;
+            }
+        });
+    }
+
+    updateDoc(selectedDocument);
+    openDocuments.forEach(updateDoc);
+}
+
 function grpoLotSuggestionContentHtml(it, idx) {
     const suggestions = [];
     const seenLots = new Set();
@@ -2077,7 +2104,17 @@ function grpoLotSuggestionContentHtml(it, idx) {
     }
 
     if (suggestions.length === 0) {
-        return '<div class="lot-suggestion-empty">No available lot suggestion</div>';
+        const liveLots = lotsForItemCode(itemCode);
+        const liveTotal = liveLots.reduce((total, lot) => total + Number(lot.available_qty || 0), 0);
+        const pendingTotal = liveLots.reduce(
+            (total, lot) => total + pendingQtyForLot(itemCode, lot.lot_no, whsCode, idx),
+            0
+        );
+        const message = liveLotsByItemCode[itemCodeKey(itemCode)] && liveTotal > 0 && pendingTotal >= liveTotal
+            ? 'All live lot balance is already selected in other rows.'
+            : 'No available lot suggestion';
+
+        return '<div class="lot-suggestion-empty">' + esc(message) + '</div>';
     }
 
     return suggestions.map(s => `
@@ -2168,12 +2205,15 @@ async function fetchLotSuggestionsForRow(idx, force = false) {
             }
 
             setLotsForItemCode(itemCode, data.lots || [], true);
+            replaceDocumentLotsForItem(itemCode, data.lots || []);
 
             items.forEach(row => {
                 if (itemCodeKey(row.item_code) === itemKey) {
                     row.available_lots = lotsForItemCode(itemCode);
                 }
             });
+
+            renderRequests();
         })
         .catch(e => {
             console.error(e);
