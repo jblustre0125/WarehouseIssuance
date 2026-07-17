@@ -118,12 +118,16 @@ $cacheKey = sap_cache_make_key('sap.stock.list', [
     'warehouses' => implode(',', $warehouses)
 ]);
 
-if (!sap_cache_should_refresh()) {
-    $cached = sap_cache_get($whp, $cacheKey);
+$cached = sap_cache_get_preferred($whp, $cacheKey);
 
-    if ($cached !== null) {
-        stock_json_out($cached);
-    }
+if ($cached !== null) {
+    stock_json_out($cached);
+}
+
+if (!sap_cache_live_queries_enabled()) {
+    $payload = sap_cache_live_disabled_payload('Stock data is served from cache only. Please wait for the scheduled SAP cache refresh.');
+    $payload['stocks'] = [];
+    stock_json_out($payload, 503);
 }
 
 $erp = get_erp_connection();

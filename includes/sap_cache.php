@@ -2,6 +2,36 @@
 
 const SAP_CACHE_DEFAULT_TTL_SECONDS = 300;
 
+function sap_cache_config_bool($name, $default = false)
+{
+    if (!defined($name)) {
+        return (bool)$default;
+    }
+
+    $value = constant($name);
+
+    if (is_bool($value)) {
+        return $value;
+    }
+
+    return in_array(strtolower(trim((string)$value)), ['1', 'true', 'yes', 'on'], true);
+}
+
+function sap_cache_browser_live_queries_enabled()
+{
+    return sap_cache_config_bool('SAP_BROWSER_LIVE_QUERIES_ENABLED', true);
+}
+
+function sap_cache_live_queries_enabled()
+{
+    return PHP_SAPI === 'cli' || sap_cache_browser_live_queries_enabled();
+}
+
+function sap_cache_stale_reads_enabled()
+{
+    return sap_cache_config_bool('SAP_CACHE_ALLOW_STALE_READS', true);
+}
+
 function sap_cache_table_ready($conn)
 {
     return (bool)fetch_one(
@@ -20,13 +50,23 @@ function sap_cache_make_key($scope, array $parts = [])
     return strtolower(trim((string)$scope)) . ':' . hash('sha256', json_encode($parts));
 }
 
-function sap_cache_get($conn, $cacheKey, $allowExpired = false)
+function sap_cache_get($conn, $cacheKey, $allowExpired = false, $maxExpiredAgeSeconds = null)
 {
     if (!sap_cache_table_ready($conn)) {
         return null;
     }
 
-    $whereExpiry = $allowExpired ? '' : 'AND ExpiresAt > GETDATE()';
+    $params = [$cacheKey];
+    $whereExpiry = 'AND ExpiresAt > GETDATE()';
+
+    if ($allowExpired) {
+        $whereExpiry = '';
+
+        if ($maxExpiredAgeSeconds !== null) {
+            $whereExpiry = 'AND ExpiresAt > DATEADD(second, ?, GETDATE())';
+            $params[] = -max(1, (int)$maxExpiredAgeSeconds);
+        }
+    }
 
     $row = fetch_one(
         $conn,
@@ -39,7 +79,7 @@ function sap_cache_get($conn, $cacheKey, $allowExpired = false)
          FROM dbo.SapDataCache
          WHERE CacheKey = ?
            {$whereExpiry}",
-        [$cacheKey]
+        $params
     );
 
     if (!$row || trim((string)($row['PayloadJson'] ?? '')) === '') {
@@ -62,12 +102,41 @@ function sap_cache_get($conn, $cacheKey, $allowExpired = false)
 
     $payload['_cache'] = [
         'hit' => true,
+        'stale' => $row['ExpiresAt'] instanceof DateTimeInterface ? $row['ExpiresAt'] <= new DateTimeImmutable() : strtotime((string)($row['ExpiresAt'] ?? '')) <= time(),
         'cached_at' => $cachedAt,
         'expires_at' => $expiresAt,
         'key' => $cacheKey
     ];
 
     return $payload;
+}
+
+function sap_cache_max_stale_seconds()
+{
+    if (!defined('SAP_CACHE_MAX_STALE_SECONDS')) {
+        return 21600;
+    }
+
+    return max(60, (int)constant('SAP_CACHE_MAX_STALE_SECONDS'));
+}
+
+function sap_cache_get_preferred($conn, $cacheKey)
+{
+    if (sap_cache_should_refresh()) {
+        return null;
+    }
+
+    $cached = sap_cache_get($conn, $cacheKey);
+
+    if ($cached !== null) {
+        return $cached;
+    }
+
+    if (!sap_cache_stale_reads_enabled()) {
+        return null;
+    }
+
+    return sap_cache_get($conn, $cacheKey, true, sap_cache_max_stale_seconds());
 }
 
 function sap_cache_put($conn, $scope, $cacheKey, array $payload, $ttlSeconds = SAP_CACHE_DEFAULT_TTL_SECONDS)
@@ -120,7 +189,29 @@ function sap_cache_should_refresh()
 {
     $value = strtolower(trim((string)($_GET['refresh'] ?? $_POST['refresh'] ?? '')));
 
-    return in_array($value, ['1', 'true', 'yes', 'force'], true);
+    if (!in_array($value, ['1', 'true', 'yes', 'force'], true)) {
+        return false;
+    }
+
+    if (PHP_SAPI === 'cli') {
+        return true;
+    }
+
+    return sap_cache_browser_live_queries_enabled() && sap_cache_config_bool('SAP_BROWSER_MANUAL_REFRESH_ENABLED', false);
+}
+
+function sap_cache_live_disabled_payload($message = '')
+{
+    return [
+        'ok' => false,
+        'message' => $message !== ''
+            ? $message
+            : 'Live SAP queries are disabled for browser requests. Please wait for the scheduled SAP cache refresh.',
+        '_cache' => [
+            'hit' => false,
+            'live_queries_enabled' => false
+        ]
+    ];
 }
 
 function sap_cache_json_out($payload, $code = 200)

@@ -36,12 +36,17 @@ $cacheKey = sap_cache_make_key('sap.picker.open_purchase_orders', [
     'sort' => 'recent_docdate_docnum_desc'
 ]);
 
-if (!sap_cache_should_refresh()) {
-    $cached = sap_cache_get($whp, $cacheKey);
+$cached = sap_cache_get_preferred($whp, $cacheKey);
 
-    if ($cached !== null) {
-        picker_po_json_out($cached);
-    }
+if ($cached !== null) {
+    picker_po_json_out($cached);
+}
+
+if (!sap_cache_live_queries_enabled()) {
+    $payload = sap_cache_live_disabled_payload('Open purchase orders are served from cache only. Please wait for the scheduled SAP cache refresh.');
+    $payload['documents'] = [];
+    $payload['lines'] = [];
+    picker_po_json_out($payload, 503);
 }
 
 $erp = get_erp_connection();

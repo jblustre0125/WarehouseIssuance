@@ -89,12 +89,16 @@ $cacheKey = sap_cache_make_key('sap.requestor.list_requests', [
     'signature' => hash('sha256', implode('|', $rowSignatureParts))
 ]);
 
-if (!sap_cache_should_refresh()) {
-    $cached = sap_cache_get($conn, $cacheKey);
+$cached = sap_cache_get_preferred($conn, $cacheKey);
 
-    if ($cached !== null) {
-        requestor_json_out($cached);
-    }
+if ($cached !== null) {
+    requestor_json_out($cached);
+}
+
+if (!sap_cache_live_queries_enabled()) {
+    $payload = sap_cache_live_disabled_payload('Requestor pending requests are served from cache only. Please wait for the scheduled SAP cache refresh.');
+    $payload['requests'] = [];
+    requestor_json_out($payload);
 }
 
 $erp = get_erp_connection();

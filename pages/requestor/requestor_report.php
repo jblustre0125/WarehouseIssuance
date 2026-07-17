@@ -323,6 +323,10 @@ function request_report_enrich_scanplus(array &$rows)
         return;
     }
 
+    if (!sap_cache_live_queries_enabled()) {
+        return;
+    }
+
     $erp = get_erp_connection();
 
     if (

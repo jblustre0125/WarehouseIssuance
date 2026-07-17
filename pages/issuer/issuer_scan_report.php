@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/app_shell.php';
+require_once __DIR__ . '/../../includes/sap_cache.php';
 require_once __DIR__ . '/../../includes/scanplus_lookup.php';
 require_role([ROLE_ISSUER, ROLE_ADMIN]);
 
@@ -359,7 +360,7 @@ function enrich_issuer_scan_rows_with_scanplus(&$rows, $whpConn, $allowLiveRefre
         }
     }
 
-    if ($allowLiveRefresh && !empty($refsToRefresh)) {
+    if ($allowLiveRefresh && !empty($refsToRefresh) && sap_cache_live_queries_enabled()) {
         $freshScanplusRows = scanplus_lookup_by_itr_lines(get_erp_connection(), $refsToRefresh);
 
         foreach ($refsToRefresh as $ref) {

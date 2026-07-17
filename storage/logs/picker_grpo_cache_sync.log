@@ -150,3 +150,4635 @@
 [2026-07-13 13:40:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
 [2026-07-13 13:45:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
 [2026-07-13 13:50:01] Required cache tables do not exist. Run 01_create_picker_grpo_cache.sql first.
+[2026-07-14 08:55:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 08:56:22] SAP rows retrieved: 1202
+[2026-07-14 08:56:26] Successfully refreshed 1202 GRPO cache rows.
+[2026-07-14 09:00:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 09:01:28] SAP rows retrieved: 1205
+[2026-07-14 09:01:30] Successfully refreshed 1205 GRPO cache rows.
+[2026-07-14 09:05:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 09:06:23] SAP rows retrieved: 1205
+[2026-07-14 09:06:26] Successfully refreshed 1205 GRPO cache rows.
+[2026-07-14 09:10:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 09:11:27] SAP rows retrieved: 1205
+[2026-07-14 09:11:29] Successfully refreshed 1205 GRPO cache rows.
+[2026-07-14 09:15:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 09:16:42] SAP rows retrieved: 1221
+[2026-07-14 09:16:45] Successfully refreshed 1221 GRPO cache rows.
+[2026-07-14 09:20:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 09:21:31] SAP rows retrieved: 1221
+[2026-07-14 09:21:33] Successfully refreshed 1221 GRPO cache rows.
+[2026-07-14 09:25:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 09:26:26] SAP rows retrieved: 1221
+[2026-07-14 09:26:29] Successfully refreshed 1221 GRPO cache rows.
+[2026-07-14 09:30:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 09:31:17] SAP rows retrieved: 1225
+[2026-07-14 09:31:25] Successfully refreshed 1225 GRPO cache rows.
+[2026-07-14 09:35:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 09:36:15] SAP rows retrieved: 1225
+[2026-07-14 09:36:19] Successfully refreshed 1225 GRPO cache rows.
+[2026-07-14 09:40:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 09:41:12] SAP rows retrieved: 1225
+[2026-07-14 09:41:14] Successfully refreshed 1225 GRPO cache rows.
+[2026-07-14 09:45:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 09:46:07] SAP rows retrieved: 1225
+[2026-07-14 09:46:09] Successfully refreshed 1225 GRPO cache rows.
+[2026-07-14 09:50:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 09:51:15] SAP rows retrieved: 1225
+[2026-07-14 09:51:22] Successfully refreshed 1225 GRPO cache rows.
+[2026-07-14 09:55:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 09:56:12] SAP rows retrieved: 1225
+[2026-07-14 09:56:14] Successfully refreshed 1225 GRPO cache rows.
+[2026-07-14 10:00:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 10:01:07] SAP rows retrieved: 1229
+[2026-07-14 10:01:10] Successfully refreshed 1229 GRPO cache rows.
+[2026-07-14 10:05:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 10:05:53] SAP rows retrieved: 1232
+[2026-07-14 10:05:57] Successfully refreshed 1232 GRPO cache rows.
+[2026-07-14 10:10:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 10:11:14] SAP rows retrieved: 1235
+[2026-07-14 10:11:16] Successfully refreshed 1235 GRPO cache rows.
+[2026-07-14 10:15:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 10:16:11] SAP rows retrieved: 1235
+[2026-07-14 10:16:14] Successfully refreshed 1235 GRPO cache rows.
+[2026-07-14 10:20:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 10:21:16] SAP rows retrieved: 1238
+[2026-07-14 10:21:21] Successfully refreshed 1238 GRPO cache rows.
+[2026-07-14 10:25:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 10:25:57] SAP rows retrieved: 1240
+[2026-07-14 10:26:00] Successfully refreshed 1240 GRPO cache rows.
+[2026-07-14 10:30:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 10:31:09] SAP rows retrieved: 1243
+[2026-07-14 10:31:12] Successfully refreshed 1243 GRPO cache rows.
+[2026-07-14 10:35:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 10:36:13] SAP rows retrieved: 1247
+[2026-07-14 10:36:22] Successfully refreshed 1247 GRPO cache rows.
+[2026-07-14 10:40:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 10:41:13] SAP rows retrieved: 1247
+[2026-07-14 10:41:15] Successfully refreshed 1247 GRPO cache rows.
+[2026-07-14 10:45:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 10:46:05] SAP rows retrieved: 1247
+[2026-07-14 10:46:07] Successfully refreshed 1247 GRPO cache rows.
+[2026-07-14 10:50:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 10:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 10:55:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 10:57:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 11:00:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 11:00:59] SAP rows retrieved: 1252
+[2026-07-14 11:01:03] Successfully refreshed 1252 GRPO cache rows.
+[2026-07-14 11:05:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 11:06:06] SAP rows retrieved: 1254
+[2026-07-14 11:06:09] Successfully refreshed 1254 GRPO cache rows.
+[2026-07-14 11:10:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 11:10:56] SAP rows retrieved: 1255
+[2026-07-14 11:10:59] Successfully refreshed 1255 GRPO cache rows.
+[2026-07-14 11:15:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 11:15:58] SAP rows retrieved: 1255
+[2026-07-14 11:16:02] Successfully refreshed 1255 GRPO cache rows.
+[2026-07-14 11:20:05] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 11:21:08] SAP rows retrieved: 1256
+[2026-07-14 11:21:11] Successfully refreshed 1256 GRPO cache rows.
+[2026-07-14 11:25:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 11:26:19] SAP rows retrieved: 1256
+[2026-07-14 11:26:28] Successfully refreshed 1256 GRPO cache rows.
+[2026-07-14 11:30:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 11:30:46] SAP rows retrieved: 1256
+[2026-07-14 11:30:48] Successfully refreshed 1256 GRPO cache rows.
+[2026-07-14 11:35:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 11:35:58] SAP rows retrieved: 1256
+[2026-07-14 11:36:02] Successfully refreshed 1256 GRPO cache rows.
+[2026-07-14 11:40:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 11:40:58] SAP rows retrieved: 1258
+[2026-07-14 11:41:02] Successfully refreshed 1258 GRPO cache rows.
+[2026-07-14 11:45:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 11:45:57] SAP rows retrieved: 1258
+[2026-07-14 11:46:02] Successfully refreshed 1258 GRPO cache rows.
+[2026-07-14 11:50:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 11:50:54] SAP rows retrieved: 1258
+[2026-07-14 11:50:58] Successfully refreshed 1258 GRPO cache rows.
+[2026-07-14 11:55:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 11:56:05] SAP rows retrieved: 1330
+[2026-07-14 11:56:08] Successfully refreshed 1330 GRPO cache rows.
+[2026-07-14 12:00:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 12:01:00] SAP rows retrieved: 1332
+[2026-07-14 12:01:03] Successfully refreshed 1332 GRPO cache rows.
+[2026-07-14 12:05:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 12:05:50] SAP rows retrieved: 1332
+[2026-07-14 12:05:52] Successfully refreshed 1332 GRPO cache rows.
+[2026-07-14 12:10:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 12:11:20] SAP rows retrieved: 1332
+[2026-07-14 12:11:28] Successfully refreshed 1332 GRPO cache rows.
+[2026-07-14 12:15:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 12:15:57] SAP rows retrieved: 1332
+[2026-07-14 12:16:00] Successfully refreshed 1332 GRPO cache rows.
+[2026-07-14 12:20:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 12:20:59] SAP rows retrieved: 1332
+[2026-07-14 12:21:02] Successfully refreshed 1332 GRPO cache rows.
+[2026-07-14 12:25:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 12:25:56] SAP rows retrieved: 1332
+[2026-07-14 12:25:59] Successfully refreshed 1332 GRPO cache rows.
+[2026-07-14 12:30:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 12:30:58] SAP rows retrieved: 1332
+[2026-07-14 12:31:03] Successfully refreshed 1332 GRPO cache rows.
+[2026-07-14 12:35:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 12:35:56] SAP rows retrieved: 1332
+[2026-07-14 12:36:00] Successfully refreshed 1332 GRPO cache rows.
+[2026-07-14 12:40:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 12:40:53] SAP rows retrieved: 1332
+[2026-07-14 12:40:58] Successfully refreshed 1332 GRPO cache rows.
+[2026-07-14 12:45:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 12:46:04] SAP rows retrieved: 1332
+[2026-07-14 12:46:07] Successfully refreshed 1332 GRPO cache rows.
+[2026-07-14 12:50:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 12:51:02] SAP rows retrieved: 1332
+[2026-07-14 12:51:05] Successfully refreshed 1332 GRPO cache rows.
+[2026-07-14 12:55:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 12:55:56] SAP rows retrieved: 1332
+[2026-07-14 12:55:59] Successfully refreshed 1332 GRPO cache rows.
+[2026-07-14 13:00:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 13:00:49] SAP rows retrieved: 1332
+[2026-07-14 13:00:52] Successfully refreshed 1332 GRPO cache rows.
+[2026-07-14 13:05:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 13:05:44] SAP rows retrieved: 1334
+[2026-07-14 13:05:46] Successfully refreshed 1334 GRPO cache rows.
+[2026-07-14 13:10:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 13:11:14] SAP rows retrieved: 1334
+[2026-07-14 13:11:17] Successfully refreshed 1334 GRPO cache rows.
+[2026-07-14 13:15:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 13:15:59] SAP rows retrieved: 1336
+[2026-07-14 13:16:02] Successfully refreshed 1336 GRPO cache rows.
+[2026-07-14 13:20:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 13:20:40] SAP rows retrieved: 1338
+[2026-07-14 13:20:42] Successfully refreshed 1338 GRPO cache rows.
+[2026-07-14 13:25:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 13:26:06] SAP rows retrieved: 1338
+[2026-07-14 13:26:08] Successfully refreshed 1338 GRPO cache rows.
+[2026-07-14 13:30:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 13:30:49] SAP rows retrieved: 1338
+[2026-07-14 13:30:52] Successfully refreshed 1338 GRPO cache rows.
+[2026-07-14 13:35:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 13:36:28] SAP rows retrieved: 1339
+[2026-07-14 13:36:31] Successfully refreshed 1339 GRPO cache rows.
+[2026-07-14 13:40:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 13:41:49] SAP rows retrieved: 1340
+[2026-07-14 13:41:51] Successfully refreshed 1340 GRPO cache rows.
+[2026-07-14 13:45:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 13:46:33] SAP rows retrieved: 1340
+[2026-07-14 13:46:36] Successfully refreshed 1340 GRPO cache rows.
+[2026-07-14 13:50:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 13:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 13:55:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 13:56:18] SAP rows retrieved: 1340
+[2026-07-14 13:56:23] Successfully refreshed 1340 GRPO cache rows.
+[2026-07-14 14:00:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 14:01:14] SAP rows retrieved: 1340
+[2026-07-14 14:01:17] Successfully refreshed 1340 GRPO cache rows.
+[2026-07-14 14:05:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 14:06:28] SAP rows retrieved: 1342
+[2026-07-14 14:06:30] Successfully refreshed 1342 GRPO cache rows.
+[2026-07-14 14:10:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 14:11:08] SAP rows retrieved: 1342
+[2026-07-14 14:11:12] Successfully refreshed 1342 GRPO cache rows.
+[2026-07-14 14:15:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 14:16:58] SAP rows retrieved: 1343
+[2026-07-14 14:17:02] Successfully refreshed 1343 GRPO cache rows.
+[2026-07-14 14:20:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 14:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 14:25:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 14:25:42] SAP rows retrieved: 1346
+[2026-07-14 14:25:44] Successfully refreshed 1346 GRPO cache rows.
+[2026-07-14 14:30:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 14:31:10] SAP rows retrieved: 1346
+[2026-07-14 14:31:13] Successfully refreshed 1346 GRPO cache rows.
+[2026-07-14 14:35:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 14:36:43] SAP rows retrieved: 1346
+[2026-07-14 14:36:46] Successfully refreshed 1346 GRPO cache rows.
+[2026-07-14 14:40:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 14:40:42] SAP rows retrieved: 1346
+[2026-07-14 14:40:46] Successfully refreshed 1346 GRPO cache rows.
+[2026-07-14 14:45:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 14:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 14:50:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 14:51:52] SAP rows retrieved: 1346
+[2026-07-14 14:51:57] Successfully refreshed 1346 GRPO cache rows.
+[2026-07-14 14:55:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 14:57:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 15:00:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 15:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 15:05:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 15:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 15:10:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 15:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 15:15:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 15:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 15:20:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 15:22:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 15:25:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 15:26:10] SAP rows retrieved: 1351
+[2026-07-14 15:26:13] Successfully refreshed 1351 GRPO cache rows.
+[2026-07-14 15:30:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 15:31:51] SAP rows retrieved: 1351
+[2026-07-14 15:31:53] Successfully refreshed 1351 GRPO cache rows.
+[2026-07-14 15:35:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 15:37:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 15:40:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 15:41:44] SAP rows retrieved: 1351
+[2026-07-14 15:41:46] Successfully refreshed 1351 GRPO cache rows.
+[2026-07-14 15:45:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 15:47:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 15:50:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 15:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 15:55:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 15:57:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 16:00:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 16:02:00] SAP rows retrieved: 1354
+[2026-07-14 16:02:04] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 16:05:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 16:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 16:10:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 16:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 16:15:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 16:16:32] SAP rows retrieved: 1354
+[2026-07-14 16:16:35] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 16:20:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 16:21:27] SAP rows retrieved: 1354
+[2026-07-14 16:21:30] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 16:25:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 16:26:28] SAP rows retrieved: 1354
+[2026-07-14 16:26:30] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 16:30:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 16:31:44] SAP rows retrieved: 1354
+[2026-07-14 16:31:47] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 16:35:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 16:36:34] SAP rows retrieved: 1354
+[2026-07-14 16:36:38] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 16:40:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 16:41:40] SAP rows retrieved: 1354
+[2026-07-14 16:41:42] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 16:45:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 16:46:29] SAP rows retrieved: 1354
+[2026-07-14 16:46:33] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 16:50:03] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 16:51:20] SAP rows retrieved: 1354
+[2026-07-14 16:51:23] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 16:55:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 16:56:17] SAP rows retrieved: 1354
+[2026-07-14 16:56:20] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 17:00:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 17:01:23] SAP rows retrieved: 1354
+[2026-07-14 17:01:25] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 17:05:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 17:06:58] SAP rows retrieved: 1354
+[2026-07-14 17:07:05] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 17:10:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 17:11:02] SAP rows retrieved: 1354
+[2026-07-14 17:11:06] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 17:15:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 17:16:18] SAP rows retrieved: 1354
+[2026-07-14 17:16:24] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 17:20:02] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 17:21:22] SAP rows retrieved: 1354
+[2026-07-14 17:21:25] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 17:25:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 17:25:56] SAP rows retrieved: 1354
+[2026-07-14 17:26:00] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 17:30:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 17:31:19] SAP rows retrieved: 1354
+[2026-07-14 17:31:26] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 17:35:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 17:36:00] SAP rows retrieved: 1354
+[2026-07-14 17:36:04] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 17:40:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 17:41:14] SAP rows retrieved: 1354
+[2026-07-14 17:41:20] Successfully refreshed 1354 GRPO cache rows.
+[2026-07-14 17:45:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 17:46:36] SAP rows retrieved: 1389
+[2026-07-14 17:46:41] Successfully refreshed 1389 GRPO cache rows.
+[2026-07-14 17:50:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 17:51:30] SAP rows retrieved: 1390
+[2026-07-14 17:51:34] Successfully refreshed 1390 GRPO cache rows.
+[2026-07-14 17:55:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 17:56:35] SAP rows retrieved: 1390
+[2026-07-14 17:56:40] Successfully refreshed 1390 GRPO cache rows.
+[2026-07-14 18:00:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 18:01:49] SAP rows retrieved: 1391
+[2026-07-14 18:01:53] Successfully refreshed 1391 GRPO cache rows.
+[2026-07-14 18:05:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 18:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 18:10:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 18:11:57] SAP rows retrieved: 1391
+[2026-07-14 18:12:03] Successfully refreshed 1391 GRPO cache rows.
+[2026-07-14 18:15:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 18:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 18:20:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 18:22:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 18:25:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 18:27:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-14 18:30:01] Refreshing 2026-06-15 through 2026-07-14 (30 days).
+[2026-07-14 18:32:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 11:45:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 11:46:12] SAP rows retrieved: 1371
+[2026-07-15 11:46:18] Successfully refreshed 1371 GRPO cache rows.
+[2026-07-15 11:50:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 11:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 11:55:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 11:57:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 12:00:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 12:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 12:05:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 12:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 12:10:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 12:12:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 12:15:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 12:17:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 12:20:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 12:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 12:25:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 12:27:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 12:30:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 12:32:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 12:35:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 12:37:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 12:40:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 12:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 12:45:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 12:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 12:50:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 12:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 12:55:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 12:57:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 13:00:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 13:02:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 13:05:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 13:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 13:10:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 13:12:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 13:15:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 13:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 13:20:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 13:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 13:25:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 13:27:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 13:30:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 13:32:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 13:35:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 13:37:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 13:40:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 13:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 13:45:03] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 13:47:04] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 13:50:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 13:52:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 13:55:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 13:57:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 14:00:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 14:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 14:05:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 14:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 14:10:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 14:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 14:15:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 14:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 14:20:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 14:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 14:25:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 14:27:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 14:30:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 14:32:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 14:35:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 14:37:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 14:40:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 14:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 14:45:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 14:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 14:50:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 14:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 14:55:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 14:57:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 15:00:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 15:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 15:05:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 15:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 15:10:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 15:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 15:15:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 15:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 15:20:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 15:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 15:25:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 15:27:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 15:30:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 15:32:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 15:35:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 15:37:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 15:40:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 15:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 15:45:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 15:47:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 15:50:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 15:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 15:55:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 15:57:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 16:00:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 16:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 16:05:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 16:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 16:10:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 16:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 16:15:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 16:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 16:20:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 16:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 16:25:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 16:27:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 16:30:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 16:32:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 16:35:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 16:37:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 16:40:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 16:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 16:45:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 16:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 16:50:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 16:52:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 16:55:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 16:57:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 17:00:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 17:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 17:05:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 17:07:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 17:10:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 17:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 17:15:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 17:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 17:20:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 17:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 17:25:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 17:27:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 17:30:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 17:32:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 17:35:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 17:37:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 17:40:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 17:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 17:45:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 17:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 17:50:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 17:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 17:55:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 17:57:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 18:00:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 18:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 18:05:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 18:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 18:10:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 18:12:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 18:15:02] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 18:17:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 18:20:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 18:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 18:25:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 18:27:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 18:30:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 18:32:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 18:35:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 18:37:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 18:40:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 18:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 18:45:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 18:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 18:50:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 18:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-15 18:55:01] Refreshing 2026-06-16 through 2026-07-15 (30 days).
+[2026-07-15 18:57:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 06:30:05] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 06:31:13] SAP rows retrieved: 1418
+[2026-07-16 06:31:16] Successfully refreshed 1418 GRPO cache rows.
+[2026-07-16 06:35:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 06:36:27] SAP rows retrieved: 1418
+[2026-07-16 06:36:30] Successfully refreshed 1418 GRPO cache rows.
+[2026-07-16 06:40:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 06:41:31] SAP rows retrieved: 1418
+[2026-07-16 06:41:36] Successfully refreshed 1418 GRPO cache rows.
+[2026-07-16 06:45:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 06:47:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 06:50:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 06:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 06:55:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 06:57:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 07:00:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 07:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 07:05:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 07:07:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 07:10:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 07:12:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 07:15:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 07:17:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 07:20:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 07:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 07:25:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 07:27:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 07:30:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 07:31:58] SAP rows retrieved: 1418
+[2026-07-16 07:32:00] Successfully refreshed 1418 GRPO cache rows.
+[2026-07-16 07:35:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 07:37:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 07:40:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 07:41:58] SAP rows retrieved: 1418
+[2026-07-16 07:42:01] Successfully refreshed 1418 GRPO cache rows.
+[2026-07-16 07:45:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 07:47:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 07:50:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 07:52:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 07:55:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 07:57:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 08:00:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 08:02:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 08:05:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 08:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 08:10:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 08:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 08:15:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 08:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 08:20:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 08:22:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 08:25:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 08:27:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 08:30:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 08:32:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 08:35:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 08:37:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 08:40:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 08:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 08:45:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 08:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 08:50:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 08:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 08:55:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 08:57:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 09:00:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 09:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 09:05:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 09:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 09:10:03] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 09:12:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 09:15:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 09:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 09:20:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 09:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 09:25:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 09:27:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 09:30:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 09:32:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 09:35:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 09:37:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 09:40:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 09:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 09:45:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 09:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 09:50:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 09:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 09:55:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 09:57:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 10:00:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 10:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 10:05:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 10:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 10:10:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 10:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 10:15:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 10:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 10:20:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 10:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 10:25:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 10:27:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 10:30:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 10:32:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 10:35:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 10:37:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 10:40:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 10:42:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 10:45:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 10:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 10:50:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 10:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 10:55:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 10:57:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 11:00:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 11:02:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 11:05:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 11:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 11:10:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 11:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 11:15:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 11:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 11:20:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 11:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 11:25:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 11:27:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 11:30:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 11:32:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 11:35:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 11:37:04] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 11:40:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 11:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 11:45:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 11:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 11:50:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 11:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 11:55:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 11:57:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 12:00:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 12:02:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 12:05:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 12:07:04] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 12:10:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 12:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 12:15:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 12:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 12:20:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 12:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 12:25:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 12:27:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 12:30:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 12:32:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 12:35:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 12:37:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 12:40:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 12:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 12:45:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 12:47:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 12:50:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 12:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 12:55:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 12:57:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 13:00:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 13:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 13:05:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 13:07:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 13:10:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 13:12:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 13:15:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 13:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 13:20:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 13:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 13:25:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 13:27:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 13:30:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 13:32:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 13:35:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 13:37:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 13:40:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 13:42:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 13:45:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 13:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 13:50:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 13:52:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 13:55:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 13:57:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 14:00:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 14:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 14:05:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 14:07:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 14:10:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 14:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 14:15:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 14:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 14:20:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 14:22:03] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 14:25:02] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 14:27:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 14:30:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 14:32:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 14:35:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 14:37:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 14:40:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 14:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 14:45:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 14:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 14:50:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 14:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 14:55:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 14:57:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 15:00:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 15:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 15:05:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 15:07:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 15:10:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 15:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 15:15:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 15:17:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 15:20:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 15:21:37] SAP rows retrieved: 1418
+[2026-07-16 15:21:41] Successfully refreshed 1418 GRPO cache rows.
+[2026-07-16 15:25:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 15:27:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 15:30:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 15:32:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 15:35:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 15:37:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 15:40:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 15:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 15:45:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 15:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 15:50:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 15:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 15:55:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 15:57:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 16:00:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 16:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 16:05:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 16:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 16:10:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 16:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 16:15:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 16:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 16:20:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 16:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 16:25:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 16:27:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 16:30:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 16:32:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 16:35:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 16:37:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 16:40:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 16:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 16:45:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 16:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 16:50:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 16:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 16:55:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 16:57:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 17:00:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 17:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 17:05:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 17:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 17:10:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 17:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 17:15:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 17:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 17:20:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 17:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 17:25:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 17:27:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 17:30:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 17:32:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 17:35:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 17:37:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 17:40:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 17:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 17:45:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 17:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 17:50:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 17:52:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 17:55:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 17:57:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 18:00:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 18:02:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 18:05:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 18:07:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 18:10:14] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 18:12:14] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 18:15:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 18:17:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 18:20:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 18:22:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 18:25:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 18:27:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 18:30:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 18:32:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 18:35:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 18:36:54] SAP rows retrieved: 1429
+[2026-07-16 18:36:56] Successfully refreshed 1429 GRPO cache rows.
+[2026-07-16 18:40:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 18:42:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 18:45:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 18:47:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-16 18:50:01] Refreshing 2026-06-17 through 2026-07-16 (30 days).
+[2026-07-16 18:52:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 06:55:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 06:57:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 07:00:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 07:01:42] SAP rows retrieved: 1417
+[2026-07-17 07:01:45] Successfully refreshed 1417 GRPO cache rows.
+[2026-07-17 07:05:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 07:06:55] SAP rows retrieved: 1417
+[2026-07-17 07:06:57] Successfully refreshed 1417 GRPO cache rows.
+[2026-07-17 07:10:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 07:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 07:15:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 07:16:57] SAP rows retrieved: 1417
+[2026-07-17 07:16:59] Successfully refreshed 1417 GRPO cache rows.
+[2026-07-17 07:20:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 07:22:00] SAP rows retrieved: 1417
+[2026-07-17 07:22:02] Successfully refreshed 1417 GRPO cache rows.
+[2026-07-17 07:25:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 07:27:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 07:30:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 07:32:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 07:35:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 07:37:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 07:40:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 07:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 07:45:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 07:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 07:50:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 07:51:26] SAP rows retrieved: 1417
+[2026-07-17 07:51:30] Successfully refreshed 1417 GRPO cache rows.
+[2026-07-17 07:55:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 07:57:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 08:00:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 08:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 08:05:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 08:07:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 08:10:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 08:12:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 08:15:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 08:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 08:20:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 08:21:52] SAP rows retrieved: 1417
+[2026-07-17 08:21:54] Successfully refreshed 1417 GRPO cache rows.
+[2026-07-17 08:25:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 08:27:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 08:30:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 08:32:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 08:35:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 08:37:01] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 08:40:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 08:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 08:45:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 08:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 08:50:05] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 08:52:06] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 08:55:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 08:57:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 09:00:01] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 09:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 09:05:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 09:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 09:10:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 09:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 09:15:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 09:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 09:20:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 09:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 09:25:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 09:27:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 09:30:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 09:32:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 09:35:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 09:37:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 09:40:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 09:42:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 09:45:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 09:47:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 09:50:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 09:52:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 09:55:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 09:57:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 10:00:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 10:02:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 10:05:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 10:07:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 10:10:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 10:12:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 10:15:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 10:17:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 10:20:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 10:22:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 10:25:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 10:27:02] FAILED: SAP GRPO query failed: Array
+(
+    [0] => Array
+        (
+            [0] => HYT00
+            [SQLSTATE] => HYT00
+            [1] => 0
+            [code] => 0
+            [2] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+            [message] => [Microsoft][ODBC Driver 17 for SQL Server]Query timeout expired
+        )
+
+)
+
+[2026-07-17 10:30:02] Refreshing 2026-06-18 through 2026-07-17 (30 days).
+[2026-07-17 10:31:49] SAP rows retrieved: 1417
+[2026-07-17 10:31:52] Successfully refreshed 1417 GRPO cache rows.

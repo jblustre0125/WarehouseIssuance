@@ -8,9 +8,50 @@ if (PHP_SAPI !== 'cli') {
 require_once __DIR__ . '/../includes/db_connect.php';
 require_once __DIR__ . '/../includes/sap_cache.php';
 
+const SAP_CACHE_FAST_REFRESH_SECONDS = 60;
+const SAP_CACHE_MEDIUM_REFRESH_SECONDS = 120;
+const SAP_CACHE_SLOW_REFRESH_SECONDS = 300;
+
 function sync_log($message)
 {
     echo '[' . date('Y-m-d H:i:s') . '] ' . $message . PHP_EOL;
+}
+
+function sync_lock_path()
+{
+    return dirname(__DIR__) . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'sap_cache_sync.lock';
+}
+
+function sync_acquire_lock()
+{
+    $lockPath = sync_lock_path();
+    $dir = dirname($lockPath);
+
+    if (!is_dir($dir)) {
+        mkdir($dir, 0775, true);
+    }
+
+    $handle = fopen($lockPath, 'c+');
+
+    if (!$handle) {
+        sync_log('Unable to create SAP cache lock file.');
+        return null;
+    }
+
+    if (!flock($handle, LOCK_EX | LOCK_NB)) {
+        $age = file_exists($lockPath) ? time() - (int)filemtime($lockPath) : 0;
+        $staleSeconds = defined('SAP_CACHE_LOCK_STALE_SECONDS') ? (int)SAP_CACHE_LOCK_STALE_SECONDS : 900;
+        $note = $age > $staleSeconds ? ' Lock file is older than expected; check for a stuck PHP process.' : '';
+        sync_log('Another SAP cache refresh is already running. Skipping this run.' . $note);
+        fclose($handle);
+        return null;
+    }
+
+    ftruncate($handle, 0);
+    fwrite($handle, getmypid() . ' ' . date('Y-m-d H:i:s'));
+    fflush($handle);
+
+    return $handle;
 }
 
 function sync_run_api($route, $role = 'admin', $username = 'cache_sync', $userId = 0)
@@ -112,6 +153,39 @@ function sync_record_finish($conn, $syncId, $status, $message, $rowCount = null)
     );
 }
 
+function sync_scope_name($route, $role, $username)
+{
+    return substr($route . ' [' . $role . ':' . $username . ']', 0, 80);
+}
+
+function sync_recent_success($conn, $scope, $withinSeconds)
+{
+    $withinSeconds = max(1, (int)$withinSeconds);
+    $row = fetch_one(
+        $conn,
+        "SELECT TOP 1
+            DATEDIFF(second, FinishedAt, GETDATE()) AS AgeSeconds
+         FROM dbo.SapCacheSyncLog
+         WHERE ScopeName = ?
+           AND Status = 'SUCCESS'
+           AND FinishedAt IS NOT NULL
+         ORDER BY FinishedAt DESC",
+        [$scope]
+    );
+
+    if (!$row) {
+        return false;
+    }
+
+    return (int)($row['AgeSeconds'] ?? PHP_INT_MAX) < $withinSeconds;
+}
+
+$lockHandle = sync_acquire_lock();
+
+if ($lockHandle === null) {
+    exit(0);
+}
+
 $whp = get_whpokayoke_connection();
 
 if (!sap_cache_table_ready($whp)) {
@@ -120,19 +194,19 @@ if (!sap_cache_table_ready($whp)) {
 }
 
 $tasks = [
-    ['route' => 'api/get_open_issue_requests.php', 'role' => 'admin', 'username' => 'cache_sync'],
-    ['route' => 'api/stocks/list.php?scope=issuer', 'role' => 'admin', 'username' => 'cache_sync'],
-    ['route' => 'api/stocks/list.php?scope=requestor', 'role' => 'admin', 'username' => 'cache_sync'],
-    ['route' => 'api/picker/open_purchase_orders.php', 'role' => 'admin', 'username' => 'cache_sync'],
+    ['route' => 'api/get_open_issue_requests.php', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_FAST_REFRESH_SECONDS],
+    ['route' => 'api/stocks/list.php?scope=issuer', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS],
+    ['route' => 'api/stocks/list.php?scope=requestor', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS],
+    ['route' => 'api/picker/open_purchase_orders.php', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS],
     // Preload the first five small page-cache payloads for the picker report.
-    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=1', 'role' => 'admin', 'username' => 'cache_sync'],
-    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=2', 'role' => 'admin', 'username' => 'cache_sync'],
-    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=3', 'role' => 'admin', 'username' => 'cache_sync'],
-    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=4', 'role' => 'admin', 'username' => 'cache_sync'],
-    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=5', 'role' => 'admin', 'username' => 'cache_sync'],
-    ['route' => 'api/get_open_itr_requests.php', 'role' => 'admin', 'username' => 'cache_sync'],
-    ['route' => 'api/requestor/list_sap_inventory_transfers.php?max=50', 'role' => 'admin', 'username' => 'cache_sync'],
-    ['route' => 'api/requestor/list_requests.php', 'role' => 'admin', 'username' => 'cache_sync'],
+    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=1', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS],
+    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=2', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS],
+    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=3', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS],
+    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=4', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS],
+    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=5', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS],
+    ['route' => 'api/get_open_itr_requests.php', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_FAST_REFRESH_SECONDS],
+    ['route' => 'api/requestor/list_sap_inventory_transfers.php?max=50', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_MEDIUM_REFRESH_SECONDS],
+    ['route' => 'api/requestor/list_requests.php', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_FAST_REFRESH_SECONDS],
 ];
 
 $requestors = fetch_all(
@@ -159,10 +233,10 @@ foreach ($requestors as $requestor) {
     $userId = (int)$requestor['UserID'];
     $username = (string)$requestor['Username'];
 
-    $tasks[] = ['route' => 'api/get_open_itr_requests.php', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId];
-    $tasks[] = ['route' => 'api/stocks/list.php?scope=requestor', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId];
-    $tasks[] = ['route' => 'api/requestor/list_sap_inventory_transfers.php?max=50', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId];
-    $tasks[] = ['route' => 'api/requestor/list_requests.php', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId];
+    $tasks[] = ['route' => 'api/get_open_itr_requests.php', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId, 'interval' => SAP_CACHE_FAST_REFRESH_SECONDS];
+    $tasks[] = ['route' => 'api/stocks/list.php?scope=requestor', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId, 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS];
+    $tasks[] = ['route' => 'api/requestor/list_sap_inventory_transfers.php?max=50', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId, 'interval' => SAP_CACHE_MEDIUM_REFRESH_SECONDS];
+    $tasks[] = ['route' => 'api/requestor/list_requests.php', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId, 'interval' => SAP_CACHE_FAST_REFRESH_SECONDS];
 }
 
 sap_cache_purge_expired($whp);
@@ -175,7 +249,14 @@ foreach ($tasks as $task) {
     $role = $task['role'] ?? 'admin';
     $username = $task['username'] ?? 'cache_sync';
     $userId = (int)($task['user_id'] ?? 0);
-    $scope = $route . ' [' . $role . ':' . $username . ']';
+    $interval = (int)($task['interval'] ?? SAP_CACHE_FAST_REFRESH_SECONDS);
+    $scope = sync_scope_name($route, $role, $username);
+
+    if (sync_recent_success($whp, $scope, $interval)) {
+        sync_log('Skipping recent cache ' . $scope . " (interval {$interval}s)");
+        continue;
+    }
+
     $syncId = sync_record_start($whp, $scope);
 
     sync_log('Refreshing ' . $scope);

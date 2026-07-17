@@ -121,13 +121,25 @@ $cacheKey = sap_cache_make_key('sap.item_lookup', [
     'location_lookup' => 'v1'
 ]);
 
-if (!sap_cache_should_refresh()) {
-    $cached = sap_cache_get($whp, $cacheKey);
+$cached = sap_cache_get_preferred($whp, $cacheKey);
 
-    if ($cached !== null) {
-        echo json_encode($cached);
-        exit;
-    }
+if ($cached !== null) {
+    echo json_encode($cached);
+    exit;
+}
+
+if (!sap_cache_live_queries_enabled()) {
+    echo json_encode([
+        'found' => false,
+        'part_name' => '',
+        'item_code' => $item_code,
+        'message' => 'Item lookup is cache-only right now. Please wait for the scheduled SAP cache refresh or scan a previously cached item.',
+        '_cache' => [
+            'hit' => false,
+            'live_queries_enabled' => false
+        ]
+    ]);
+    exit;
 }
 
 $conn = get_erp_connection();

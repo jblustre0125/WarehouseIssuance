@@ -5,6 +5,7 @@ error_reporting(E_ALL);
 set_time_limit(300);
 
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/sap_cache.php';
 require_once __DIR__ . '/../../includes/scanplus_lookup.php';
 
 require_login();
@@ -95,6 +96,10 @@ if (empty($scanRefs)) {
 }
 
 try {
+    if (!sap_cache_live_queries_enabled()) {
+        exit("Live SAP queries are disabled for browser requests. Run tools/sync_sap_cache.php or a scheduled CLI cache job instead.\n");
+    }
+
     $erpConn = get_erp_connection();
     if (!$erpConn) {
         exit("Failed to connect to ERP database.\n");

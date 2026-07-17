@@ -162,12 +162,17 @@ $cacheKey = sap_cache_make_key('sap.open_issue_requests', [
     'lot_query_version' => 'fifo_initial_available_lots_requestor_section_location_v5_latest_first'
 ]);
 
-if (!sap_cache_should_refresh()) {
-    $cached = sap_cache_get($conn, $cacheKey);
+$cached = sap_cache_get_preferred($conn, $cacheKey);
 
-    if ($cached !== null) {
-        json_out($cached);
-    }
+if ($cached !== null) {
+    json_out($cached);
+}
+
+if (!sap_cache_live_queries_enabled()) {
+    $payload = sap_cache_live_disabled_payload('Open issue requests are served from cache only. Please wait for the scheduled SAP cache refresh.');
+    $payload['requests'] = [];
+    $payload['documents'] = [];
+    json_out($payload);
 }
 
 $erp = get_erp_connection();

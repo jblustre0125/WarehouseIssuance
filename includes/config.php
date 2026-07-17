@@ -20,6 +20,21 @@ define('DB_NAME_ERP', 'NBCP_Final_Live');
 
 /*
 |--------------------------------------------------------------------------
+| SAP Query Load Control
+|--------------------------------------------------------------------------
+| Browser pages should read from WHPOKAYOKE cache first so normal users do not
+| repeatedly run live SELECT queries on the SAP SQL Server. Scheduled CLI cache
+| jobs are still allowed to refresh SAP data.
+*/
+
+define('SAP_BROWSER_LIVE_QUERIES_ENABLED', false);
+define('SAP_BROWSER_MANUAL_REFRESH_ENABLED', false);
+define('SAP_CACHE_ALLOW_STALE_READS', true);
+define('SAP_CACHE_MAX_STALE_SECONDS', 600);
+define('SAP_CACHE_LOCK_STALE_SECONDS', 900);
+
+/*
+|--------------------------------------------------------------------------
 | Application URL
 |--------------------------------------------------------------------------
 */

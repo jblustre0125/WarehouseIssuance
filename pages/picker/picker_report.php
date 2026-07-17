@@ -130,8 +130,8 @@ try {
         $allRows      = null;
         $useFullFetch = !$export && $grpoCacheKey !== null; // set early so cache-hit path can use it
 
-        if (!$export && $grpoCacheKey !== null && $whp !== null && !sap_cache_should_refresh()) {
-            $cached = sap_cache_get($whp, $grpoCacheKey);
+        if (!$export && $grpoCacheKey !== null && $whp !== null) {
+            $cached = sap_cache_get_preferred($whp, $grpoCacheKey);
 
             if ($cached !== null && isset($cached['rows'])) {
                 $allRows = $cached['rows'];
@@ -139,6 +139,10 @@ try {
         }
 
         if ($allRows === null) {
+            if (!sap_cache_live_queries_enabled()) {
+                throw new RuntimeException('Live SAP GRPO report queries are disabled for browser requests. Please use the cached GRPO report or wait for the scheduled SAP cache refresh.');
+            }
+
             $erp = get_erp_connection();
             // Cacheable (small) range: fetch all rows at once for PHP pagination + caching.
             // Large range or export: use original SQL-level pagination to avoid timeouts.

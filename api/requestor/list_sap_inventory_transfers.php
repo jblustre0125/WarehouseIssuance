@@ -74,51 +74,6 @@ $currentUser = current_user();
 $currentRole = strtolower($currentUser['role'] ?? $currentUser['RoleName'] ?? '');
 $maxDocuments = sap_it_int_param('max', 20, 10, 50);
 $searchText = trim((string)($_GET['q'] ?? ''));
-$erp = get_erp_connection();
-
-if (!sap_it_has_table($erp, 'OWTR') || !sap_it_has_table($erp, 'WTR1')) {
-    sap_it_json_out([
-        'ok' => false,
-        'message' => 'SAP Inventory Transfer tables OWTR/WTR1 were not found.',
-        'documents' => []
-    ]);
-}
-
-if (!sap_it_has_table($erp, 'OWTQ') || !sap_it_has_table($erp, 'WTQ1')) {
-    sap_it_json_out([
-        'ok' => false,
-        'message' => 'SAP Inventory Transfer Request tables OWTQ/WTQ1 were not found.',
-        'documents' => []
-    ]);
-}
-
-$hasCanceled = sap_it_has_column($erp, 'OWTR', 'CANCELED');
-$hasDscription = sap_it_has_column($erp, 'WTR1', 'Dscription');
-$hasFromWhs = sap_it_has_column($erp, 'WTR1', 'FromWhsCod');
-$hasToWhs = sap_it_has_column($erp, 'WTR1', 'WhsCode');
-$hasBaseType = sap_it_has_column($erp, 'WTR1', 'BaseType');
-$hasBaseEntry = sap_it_has_column($erp, 'WTR1', 'BaseEntry');
-$hasBaseLine = sap_it_has_column($erp, 'WTR1', 'BaseLine');
-$hasUnitMsr = sap_it_has_column($erp, 'WTR1', 'unitMsr');
-$hasUomCode = sap_it_has_column($erp, 'WTR1', 'UomCode');
-$hasInvntryUom = sap_it_has_column($erp, 'OITM', 'InvntryUom');
-$hasOitw = sap_it_has_table($erp, 'OITW');
-
-if (!$hasBaseType || !$hasBaseEntry || !$hasBaseLine) {
-    sap_it_json_out([
-        'ok' => false,
-        'message' => 'SAP WTR1 base document fields BaseType/BaseEntry/BaseLine were not found.',
-        'documents' => []
-    ]);
-}
-
-if (!$hasFromWhs || !$hasToWhs) {
-    sap_it_json_out([
-        'ok' => false,
-        'message' => 'SAP WTR1 warehouse fields FromWhsCod/WhsCode were not found.',
-        'documents' => []
-    ]);
-}
 
 $currentSection = '';
 $allowedWarehouses = [];
@@ -167,12 +122,62 @@ $cacheKey = sap_cache_make_key('sap.requestor.inventory_transfers', [
     'version' => 'stock-per-line-v1'
 ]);
 
-if (!sap_cache_should_refresh()) {
-    $cached = sap_cache_get($whp, $cacheKey);
+$cached = sap_cache_get_preferred($whp, $cacheKey);
 
-    if ($cached !== null) {
-        sap_it_json_out($cached);
-    }
+if ($cached !== null) {
+    sap_it_json_out($cached);
+}
+
+if (!sap_cache_live_queries_enabled()) {
+    $payload = sap_cache_live_disabled_payload('SAP Inventory Transfers are served from cache only. Please wait for the scheduled SAP cache refresh.');
+    $payload['documents'] = [];
+    sap_it_json_out($payload);
+}
+
+$erp = get_erp_connection();
+
+if (!sap_it_has_table($erp, 'OWTR') || !sap_it_has_table($erp, 'WTR1')) {
+    sap_it_json_out([
+        'ok' => false,
+        'message' => 'SAP Inventory Transfer tables OWTR/WTR1 were not found.',
+        'documents' => []
+    ]);
+}
+
+if (!sap_it_has_table($erp, 'OWTQ') || !sap_it_has_table($erp, 'WTQ1')) {
+    sap_it_json_out([
+        'ok' => false,
+        'message' => 'SAP Inventory Transfer Request tables OWTQ/WTQ1 were not found.',
+        'documents' => []
+    ]);
+}
+
+$hasCanceled = sap_it_has_column($erp, 'OWTR', 'CANCELED');
+$hasDscription = sap_it_has_column($erp, 'WTR1', 'Dscription');
+$hasFromWhs = sap_it_has_column($erp, 'WTR1', 'FromWhsCod');
+$hasToWhs = sap_it_has_column($erp, 'WTR1', 'WhsCode');
+$hasBaseType = sap_it_has_column($erp, 'WTR1', 'BaseType');
+$hasBaseEntry = sap_it_has_column($erp, 'WTR1', 'BaseEntry');
+$hasBaseLine = sap_it_has_column($erp, 'WTR1', 'BaseLine');
+$hasUnitMsr = sap_it_has_column($erp, 'WTR1', 'unitMsr');
+$hasUomCode = sap_it_has_column($erp, 'WTR1', 'UomCode');
+$hasInvntryUom = sap_it_has_column($erp, 'OITM', 'InvntryUom');
+$hasOitw = sap_it_has_table($erp, 'OITW');
+
+if (!$hasBaseType || !$hasBaseEntry || !$hasBaseLine) {
+    sap_it_json_out([
+        'ok' => false,
+        'message' => 'SAP WTR1 base document fields BaseType/BaseEntry/BaseLine were not found.',
+        'documents' => []
+    ]);
+}
+
+if (!$hasFromWhs || !$hasToWhs) {
+    sap_it_json_out([
+        'ok' => false,
+        'message' => 'SAP WTR1 warehouse fields FromWhsCod/WhsCode were not found.',
+        'documents' => []
+    ]);
 }
 
 $itemUomExpr = $hasInvntryUom ? 'I.InvntryUom' : "CAST('' AS NVARCHAR(50))";

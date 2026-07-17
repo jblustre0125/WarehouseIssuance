@@ -79,7 +79,6 @@ $displayMonthEnd = date('Y-m-d', strtotime($currentMonthEnd . ' -1 day'));
 $lastMonthCutoffDate = date('Y-m-d', strtotime($currentMonthStart . ' +' . $graceDays . ' days'));
 
 $whp = get_whpokayoke_connection();
-$erp = get_erp_connection();
 
 /*
     Read current logged-in user.
@@ -114,6 +113,90 @@ if ($currentRole === ROLE_REQUESTOR) {
 
     $currentSection = trim($sectionRow['RequestorSection'] ?? '');
 }
+
+/*
+    Requestor section filtering.
+
+    Admin and Issuer:
+    - See all open ITRs from warehouse 01.
+
+    Requestor:
+    - See only open ITRs for their assigned section warehouse.
+*/
+$sectionFilterText = 'All sections';
+$allowedWarehouses = [];
+$currentSectionKey = '';
+
+if ($currentRole === ROLE_REQUESTOR) {
+    if ($currentSection === '') {
+        json_out([
+            'ok' => false,
+            'message' => 'Your account has no Requestor Section assigned. Please ask admin to update your user account.',
+            'debug_user' => $currentUser,
+            'requests' => [],
+            'documents' => []
+        ]);
+    }
+
+    $currentSectionKey = strtolower(trim($currentSection));
+    $currentSectionKey = preg_replace('/\s+/', ' ', $currentSectionKey);
+
+    if (!isset($sectionWarehouseMap[$currentSectionKey])) {
+        json_out([
+            'ok' => false,
+            'message' => 'No warehouse mapping found for your section: ' . $currentSection,
+            'debug_section_saved' => $currentSection,
+            'debug_section_key' => $currentSectionKey,
+            'debug_available_keys' => array_keys($sectionWarehouseMap),
+            'requests' => [],
+            'documents' => []
+        ]);
+    }
+
+    $allowedWarehouses = $sectionWarehouseMap[$currentSectionKey];
+
+    if (empty($allowedWarehouses)) {
+        json_out([
+            'ok' => false,
+            'message' => 'No warehouse code assigned for your section: ' . $currentSection,
+            'debug_section_saved' => $currentSection,
+            'requests' => [],
+            'documents' => []
+        ]);
+    }
+
+    $sectionFilterText = $currentSection . ' / To Warehouse: ' . implode(', ', $allowedWarehouses);
+}
+
+/*
+    Cache key version changed so old cached OpenQty results do not continue showing.
+*/
+$cacheKey = sap_cache_make_key('sap.open_itr_requests', [
+    'role' => $currentRole,
+    'section' => $currentSection,
+    'warehouses' => implode(',', $allowedWarehouses),
+    'period_start' => $monthStart,
+    'period_end' => $monthEnd,
+    'include_last_month' => $includeLastMonth ? 'yes' : 'no',
+    'last_month_grace_days' => $graceDays,
+    'version' => 'quantity-as-open-v5-returned-no-stock-pack-size',
+    'pack_sizes' => itr_pack_sizes_cache_token()
+]);
+
+$cached = sap_cache_get_preferred($whp, $cacheKey);
+
+if ($cached !== null) {
+    json_out($cached);
+}
+
+if (!sap_cache_live_queries_enabled()) {
+    $payload = sap_cache_live_disabled_payload('Open SAP ITRs are served from cache only. Please wait for the scheduled SAP cache refresh.');
+    $payload['requests'] = [];
+    $payload['documents'] = [];
+    json_out($payload);
+}
+
+$erp = get_erp_connection();
 
 $hasOwtq = fetch_one(
     $erp,
@@ -237,87 +320,12 @@ if ($hasLineStatus) {
     $where[] = "L.LineStatus = 'O'";
 }
 
-/*
-    Requestor section filtering.
-
-    Admin and Issuer:
-    - See all open ITRs from warehouse 01.
-
-    Requestor:
-    - See only open ITRs for their assigned section warehouse.
-*/
-$sectionFilterText = 'All sections';
-$allowedWarehouses = [];
-$currentSectionKey = '';
-
 if ($currentRole === ROLE_REQUESTOR) {
-    if ($currentSection === '') {
-        json_out([
-            'ok' => false,
-            'message' => 'Your account has no Requestor Section assigned. Please ask admin to update your user account.',
-            'debug_user' => $currentUser,
-            'requests' => [],
-            'documents' => []
-        ]);
-    }
-
-    $currentSectionKey = strtolower(trim($currentSection));
-    $currentSectionKey = preg_replace('/\s+/', ' ', $currentSectionKey);
-
-    if (!isset($sectionWarehouseMap[$currentSectionKey])) {
-        json_out([
-            'ok' => false,
-            'message' => 'No warehouse mapping found for your section: ' . $currentSection,
-            'debug_section_saved' => $currentSection,
-            'debug_section_key' => $currentSectionKey,
-            'debug_available_keys' => array_keys($sectionWarehouseMap),
-            'requests' => [],
-            'documents' => []
-        ]);
-    }
-
-    $allowedWarehouses = $sectionWarehouseMap[$currentSectionKey];
-
-    if (empty($allowedWarehouses)) {
-        json_out([
-            'ok' => false,
-            'message' => 'No warehouse code assigned for your section: ' . $currentSection,
-            'debug_section_saved' => $currentSection,
-            'requests' => [],
-            'documents' => []
-        ]);
-    }
-
     $placeholders = implode(',', array_fill(0, count($allowedWarehouses), '?'));
     $where[] = "L.WhsCode IN ($placeholders)";
 
     foreach ($allowedWarehouses as $warehouseCode) {
         $params[] = $warehouseCode;
-    }
-
-    $sectionFilterText = $currentSection . ' / To Warehouse: ' . implode(', ', $allowedWarehouses);
-}
-
-/*
-    Cache key version changed so old cached OpenQty results do not continue showing.
-*/
-$cacheKey = sap_cache_make_key('sap.open_itr_requests', [
-    'role' => $currentRole,
-    'section' => $currentSection,
-    'warehouses' => implode(',', $allowedWarehouses),
-    'period_start' => $monthStart,
-    'period_end' => $monthEnd,
-    'include_last_month' => $includeLastMonth ? 'yes' : 'no',
-    'last_month_grace_days' => $graceDays,
-    'version' => 'quantity-as-open-v5-returned-no-stock-pack-size',
-    'pack_sizes' => itr_pack_sizes_cache_token()
-]);
-
-if (!sap_cache_should_refresh()) {
-    $cached = sap_cache_get($whp, $cacheKey);
-
-    if ($cached !== null) {
-        json_out($cached);
     }
 }
 
