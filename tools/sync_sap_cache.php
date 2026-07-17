@@ -11,6 +11,10 @@ require_once __DIR__ . '/../includes/sap_cache.php';
 const SAP_CACHE_FAST_REFRESH_SECONDS = 60;
 const SAP_CACHE_MEDIUM_REFRESH_SECONDS = 120;
 const SAP_CACHE_SLOW_REFRESH_SECONDS = 300;
+const SAP_CACHE_HEAVY_REFRESH_SECONDS = 1800;
+
+$syncMode = strtolower(trim((string)($argv[1] ?? 'light')));
+$includeHeavyTasks = in_array($syncMode, ['heavy', 'all'], true);
 
 function sync_log($message)
 {
@@ -195,17 +199,17 @@ if (!sap_cache_table_ready($whp)) {
 
 $tasks = [
     ['route' => 'api/get_open_issue_requests.php', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_FAST_REFRESH_SECONDS],
-    ['route' => 'api/stocks/list.php?scope=issuer', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS],
-    ['route' => 'api/stocks/list.php?scope=requestor', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS],
-    ['route' => 'api/picker/open_purchase_orders.php', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS],
+    ['route' => 'api/stocks/list.php?scope=issuer', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
+    ['route' => 'api/stocks/list.php?scope=requestor', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
+    ['route' => 'api/picker/open_purchase_orders.php', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
     // Preload the first five small page-cache payloads for the picker report.
-    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=1', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS],
-    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=2', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS],
-    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=3', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS],
-    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=4', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS],
-    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=5', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS],
+    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=1', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
+    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=2', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
+    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=3', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
+    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=4', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
+    ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=5', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
     ['route' => 'api/get_open_itr_requests.php', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_FAST_REFRESH_SECONDS],
-    ['route' => 'api/requestor/list_sap_inventory_transfers.php?max=50', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_MEDIUM_REFRESH_SECONDS],
+    ['route' => 'api/requestor/list_sap_inventory_transfers.php?max=50', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
     ['route' => 'api/requestor/list_requests.php', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_FAST_REFRESH_SECONDS],
 ];
 
@@ -234,8 +238,8 @@ foreach ($requestors as $requestor) {
     $username = (string)$requestor['Username'];
 
     $tasks[] = ['route' => 'api/get_open_itr_requests.php', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId, 'interval' => SAP_CACHE_FAST_REFRESH_SECONDS];
-    $tasks[] = ['route' => 'api/stocks/list.php?scope=requestor', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId, 'interval' => SAP_CACHE_SLOW_REFRESH_SECONDS];
-    $tasks[] = ['route' => 'api/requestor/list_sap_inventory_transfers.php?max=50', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId, 'interval' => SAP_CACHE_MEDIUM_REFRESH_SECONDS];
+    $tasks[] = ['route' => 'api/stocks/list.php?scope=requestor', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId, 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS];
+    $tasks[] = ['route' => 'api/requestor/list_sap_inventory_transfers.php?max=50', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId, 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS];
     $tasks[] = ['route' => 'api/requestor/list_requests.php', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId, 'interval' => SAP_CACHE_FAST_REFRESH_SECONDS];
 }
 
@@ -251,6 +255,11 @@ foreach ($tasks as $task) {
     $userId = (int)($task['user_id'] ?? 0);
     $interval = (int)($task['interval'] ?? SAP_CACHE_FAST_REFRESH_SECONDS);
     $scope = sync_scope_name($route, $role, $username);
+
+    if (!$includeHeavyTasks && $interval >= SAP_CACHE_HEAVY_REFRESH_SECONDS) {
+        sync_log('Skipping heavy cache in light mode ' . $scope);
+        continue;
+    }
 
     if (sync_recent_success($whp, $scope, $interval)) {
         sync_log('Skipping recent cache ' . $scope . " (interval {$interval}s)");

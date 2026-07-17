@@ -29,10 +29,69 @@ function picker_po_dt($value)
     return $value instanceof DateTimeInterface ? $value->format('Y-m-d') : (string)$value;
 }
 
+function picker_po_text_matches($value, $search)
+{
+    return stripos((string)$value, (string)$search) !== false;
+}
+
+function picker_po_filter_cached_payload(array $payload, $search)
+{
+    $search = trim((string)$search);
+
+    if ($search === '') {
+        return $payload;
+    }
+
+    $documents = [];
+    $lines = [];
+
+    foreach (($payload['documents'] ?? []) as $document) {
+        $matchedLines = [];
+        $documentMatches =
+            picker_po_text_matches($document['doc_num'] ?? '', $search) ||
+            picker_po_text_matches($document['vendor_code'] ?? '', $search) ||
+            picker_po_text_matches($document['vendor_name'] ?? '', $search);
+
+        foreach (($document['lines'] ?? []) as $line) {
+            if (
+                $documentMatches ||
+                picker_po_text_matches($line['item_code'] ?? '', $search) ||
+                picker_po_text_matches($line['part_name'] ?? '', $search) ||
+                picker_po_text_matches($line['warehouse_code'] ?? '', $search)
+            ) {
+                $matchedLines[] = $line;
+                $lines[] = $line;
+            }
+        }
+
+        if (!empty($matchedLines)) {
+            $filteredDocument = $document;
+            $filteredDocument['lines'] = $matchedLines;
+            $filteredDocument['line_count'] = count($matchedLines);
+            $filteredDocument['open_qty'] = array_reduce($matchedLines, static function ($sum, $line) {
+                return $sum + (float)($line['open_qty'] ?? 0);
+            }, 0.0);
+            $documents[] = $filteredDocument;
+        }
+    }
+
+    $payload['search'] = $search;
+    $payload['documents'] = $documents;
+    $payload['lines'] = $lines;
+    $payload['count'] = count($documents);
+    $payload['_cache']['filtered_from_base'] = true;
+
+    return $payload;
+}
+
 $search = trim((string)($_GET['q'] ?? ''));
 $whp = get_whpokayoke_connection();
 $cacheKey = sap_cache_make_key('sap.picker.open_purchase_orders', [
     'search' => $search,
+    'sort' => 'recent_docdate_docnum_desc'
+]);
+$baseCacheKey = sap_cache_make_key('sap.picker.open_purchase_orders', [
+    'search' => '',
     'sort' => 'recent_docdate_docnum_desc'
 ]);
 
@@ -40,6 +99,14 @@ $cached = sap_cache_get_preferred($whp, $cacheKey);
 
 if ($cached !== null) {
     picker_po_json_out($cached);
+}
+
+if ($search !== '') {
+    $baseCached = sap_cache_get_preferred($whp, $baseCacheKey);
+
+    if ($baseCached !== null) {
+        picker_po_json_out(picker_po_filter_cached_payload($baseCached, $search));
+    }
 }
 
 if (!sap_cache_live_queries_enabled()) {
