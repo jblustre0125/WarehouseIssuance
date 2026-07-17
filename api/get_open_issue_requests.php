@@ -168,14 +168,7 @@ if ($cached !== null) {
     json_out($cached);
 }
 
-if (!sap_cache_live_queries_enabled()) {
-    $payload = sap_cache_live_disabled_payload('Open issue requests are served from cache only. Please wait for the scheduled SAP cache refresh.');
-    $payload['requests'] = [];
-    $payload['documents'] = [];
-    json_out($payload);
-}
-
-$erp = get_erp_connection();
+$sapLiveQueriesEnabled = sap_cache_live_queries_enabled();
 $stockByItem = [];
 $uomByItem = [];
 $lotsByItem = [];
@@ -189,68 +182,71 @@ foreach ($rows as $r) {
     }
 }
 
-$hasOitw = fetch_one(
-    $erp,
-    "SELECT 1 AS HasTable
-     FROM INFORMATION_SCHEMA.TABLES
-     WHERE TABLE_NAME = 'OITW'"
-);
+if ($sapLiveQueriesEnabled) {
+    $erp = get_erp_connection();
 
-if ($hasOitw && count($itemCodes) > 0) {
-    $codes = array_keys($itemCodes);
-    $placeholders = implode(',', array_fill(0, count($codes), '?'));
-    $stockRows = fetch_all(
+    $hasOitw = fetch_one(
         $erp,
-        "SELECT ItemCode, WhsCode, OnHand
-         FROM OITW
-         WHERE WhsCode = ?
-           AND ItemCode IN ({$placeholders})",
-        array_merge(['01'], $codes)
+        "SELECT 1 AS HasTable
+         FROM INFORMATION_SCHEMA.TABLES
+         WHERE TABLE_NAME = 'OITW'"
     );
 
-    foreach ($stockRows as $stockRow) {
-        $stockByItem[(string)$stockRow['ItemCode']] = (float)$stockRow['OnHand'];
+    if ($hasOitw && count($itemCodes) > 0) {
+        $codes = array_keys($itemCodes);
+        $placeholders = implode(',', array_fill(0, count($codes), '?'));
+        $stockRows = fetch_all(
+            $erp,
+            "SELECT ItemCode, WhsCode, OnHand
+             FROM OITW
+             WHERE WhsCode = ?
+               AND ItemCode IN ({$placeholders})",
+            array_merge(['01'], $codes)
+        );
+
+        foreach ($stockRows as $stockRow) {
+            $stockByItem[(string)$stockRow['ItemCode']] = (float)$stockRow['OnHand'];
+        }
     }
-}
 
-if (count($itemCodes) > 0 && fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OITM' AND COLUMN_NAME = 'InvntryUom'")) {
-    $codes = array_keys($itemCodes);
-    $placeholders = implode(',', array_fill(0, count($codes), '?'));
-    $uomRows = fetch_all(
-        $erp,
-        "SELECT ItemCode, COALESCE(InvntryUom, '') AS UomName
-         FROM OITM
-         WHERE ItemCode IN ({$placeholders})",
-        $codes
-    );
+    if (count($itemCodes) > 0 && fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OITM' AND COLUMN_NAME = 'InvntryUom'")) {
+        $codes = array_keys($itemCodes);
+        $placeholders = implode(',', array_fill(0, count($codes), '?'));
+        $uomRows = fetch_all(
+            $erp,
+            "SELECT ItemCode, COALESCE(InvntryUom, '') AS UomName
+             FROM OITM
+             WHERE ItemCode IN ({$placeholders})",
+            $codes
+        );
 
-    foreach ($uomRows as $uomRow) {
-        $uomByItem[(string)$uomRow['ItemCode']] = (string)$uomRow['UomName'];
+        foreach ($uomRows as $uomRow) {
+            $uomByItem[(string)$uomRow['ItemCode']] = (string)$uomRow['UomName'];
+        }
     }
-}
 
 
-/*
-    FAST FIFO MODE:
-    Do not load every SAP lot during initial request loading. Load a small FIFO
-    window per ItemCode, then subtract Warehouse Issuance issued qty so a fully
-    consumed first lot does not hide the next available lot.
+    /*
+        FAST FIFO MODE:
+        Do not load every SAP lot during initial request loading. Load a small FIFO
+        window per ItemCode, then subtract Warehouse Issuance issued qty so a fully
+        consumed first lot does not hide the next available lot.
 
-    Final validation still uses api/issuer/check_lot_balance.php before printing/saving.
-*/
-$lotsByItem = [];
+        Final validation still uses api/issuer/check_lot_balance.php before printing/saving.
+    */
+    $lotsByItem = [];
 
-$hasBatchBalance =
-    count($itemCodes) > 0 &&
-    fetch_one($erp, "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'OBTQ'") &&
-    fetch_one($erp, "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'OBTN'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'ItemCode'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'SysNumber'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'WhsCode'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'Quantity'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = 'ItemCode'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = 'SysNumber'") &&
-    fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = 'DistNumber'");
+    $hasBatchBalance =
+        count($itemCodes) > 0 &&
+        fetch_one($erp, "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'OBTQ'") &&
+        fetch_one($erp, "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'OBTN'") &&
+        fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'ItemCode'") &&
+        fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'SysNumber'") &&
+        fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'WhsCode'") &&
+        fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'Quantity'") &&
+        fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = 'ItemCode'") &&
+        fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = 'SysNumber'") &&
+        fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = 'DistNumber'");
 
 if ($hasBatchBalance) {
     $codes = array_keys($itemCodes);
@@ -402,6 +398,7 @@ if ($hasBatchBalance) {
             'fifo_rank' => (int)($lotRow['Rn'] ?? 0)
         ];
     }
+}
 }
 
 $documents = [];

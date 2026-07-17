@@ -95,13 +95,7 @@ if ($cached !== null) {
     requestor_json_out($cached);
 }
 
-if (!sap_cache_live_queries_enabled()) {
-    $payload = sap_cache_live_disabled_payload('Requestor pending requests are served from cache only. Please wait for the scheduled SAP cache refresh.');
-    $payload['requests'] = [];
-    requestor_json_out($payload);
-}
-
-$erp = get_erp_connection();
+$sapLiveQueriesEnabled = sap_cache_live_queries_enabled();
 $stockByLine = [];
 $itemCodes = [];
 $docEntries = [];
@@ -119,52 +113,56 @@ foreach ($rows as $r) {
     }
 }
 
-$hasOitw = fetch_one(
-    $erp,
-    "SELECT 1 AS HasTable
-     FROM INFORMATION_SCHEMA.TABLES
-     WHERE TABLE_NAME = 'OITW'"
-);
+if ($sapLiveQueriesEnabled) {
+    $erp = get_erp_connection();
 
-$hasWtq1 = fetch_one(
-    $erp,
-    "SELECT 1 AS HasTable
-     FROM INFORMATION_SCHEMA.TABLES
-     WHERE TABLE_NAME = 'WTQ1'"
-);
-
-if ($hasOitw && $hasWtq1 && count($itemCodes) > 0 && count($docEntries) > 0) {
-    $codes = array_keys($itemCodes);
-    $entries = array_keys($docEntries);
-    $entryPlaceholders = implode(',', array_fill(0, count($entries), '?'));
-    $codePlaceholders = implode(',', array_fill(0, count($codes), '?'));
-
-    $stockRows = fetch_all(
+    $hasOitw = fetch_one(
         $erp,
-        "SELECT
-            L.DocEntry,
-            L.LineNum,
-            L.ItemCode,
-            L.FromWhsCod,
-            L.WhsCode,
-            ISNULL(FW.OnHand, 0) AS SourceStockQty,
-            ISNULL(TW.OnHand, 0) AS DestinationStockQty
-         FROM WTQ1 L
-         LEFT JOIN OITW FW ON FW.ItemCode = L.ItemCode AND FW.WhsCode = L.FromWhsCod
-         LEFT JOIN OITW TW ON TW.ItemCode = L.ItemCode AND TW.WhsCode = L.WhsCode
-         WHERE L.DocEntry IN ({$entryPlaceholders})
-           AND L.ItemCode IN ({$codePlaceholders})",
-        array_merge($entries, $codes)
+        "SELECT 1 AS HasTable
+         FROM INFORMATION_SCHEMA.TABLES
+         WHERE TABLE_NAME = 'OITW'"
     );
 
-    foreach ($stockRows as $stockRow) {
-        $key = (string)$stockRow['DocEntry'] . '|' . (string)$stockRow['LineNum'] . '|' . (string)$stockRow['ItemCode'];
-        $stockByLine[$key] = [
-            'from_whs_code' => (string)$stockRow['FromWhsCod'],
-            'to_whs_code' => (string)$stockRow['WhsCode'],
-            'source_stock_qty' => (float)$stockRow['SourceStockQty'],
-            'destination_stock_qty' => (float)$stockRow['DestinationStockQty']
-        ];
+    $hasWtq1 = fetch_one(
+        $erp,
+        "SELECT 1 AS HasTable
+         FROM INFORMATION_SCHEMA.TABLES
+         WHERE TABLE_NAME = 'WTQ1'"
+    );
+
+    if ($hasOitw && $hasWtq1 && count($itemCodes) > 0 && count($docEntries) > 0) {
+        $codes = array_keys($itemCodes);
+        $entries = array_keys($docEntries);
+        $entryPlaceholders = implode(',', array_fill(0, count($entries), '?'));
+        $codePlaceholders = implode(',', array_fill(0, count($codes), '?'));
+
+        $stockRows = fetch_all(
+            $erp,
+            "SELECT
+                L.DocEntry,
+                L.LineNum,
+                L.ItemCode,
+                L.FromWhsCod,
+                L.WhsCode,
+                ISNULL(FW.OnHand, 0) AS SourceStockQty,
+                ISNULL(TW.OnHand, 0) AS DestinationStockQty
+             FROM WTQ1 L
+             LEFT JOIN OITW FW ON FW.ItemCode = L.ItemCode AND FW.WhsCode = L.FromWhsCod
+             LEFT JOIN OITW TW ON TW.ItemCode = L.ItemCode AND TW.WhsCode = L.WhsCode
+             WHERE L.DocEntry IN ({$entryPlaceholders})
+               AND L.ItemCode IN ({$codePlaceholders})",
+            array_merge($entries, $codes)
+        );
+
+        foreach ($stockRows as $stockRow) {
+            $key = (string)$stockRow['DocEntry'] . '|' . (string)$stockRow['LineNum'] . '|' . (string)$stockRow['ItemCode'];
+            $stockByLine[$key] = [
+                'from_whs_code' => (string)$stockRow['FromWhsCod'],
+                'to_whs_code' => (string)$stockRow['WhsCode'],
+                'source_stock_qty' => (float)$stockRow['SourceStockQty'],
+                'destination_stock_qty' => (float)$stockRow['DestinationStockQty']
+            ];
+        }
     }
 }
 
