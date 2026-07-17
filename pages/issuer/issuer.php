@@ -1211,6 +1211,7 @@ let pendingSaveAfterOverQty = false;
 let pendingRemoveItemIdx = null;
 let stockRows = [];
 let lotsByItemCode = {};
+let liveLotsByItemCode = {};
 let lotSuggestionRequests = {};
 let messageModalTimer = null;
 const currentUserWarehouse = <?= json_encode($currentUserWarehouse, JSON_UNESCAPED_SLASHES) ?>;
@@ -1875,6 +1876,7 @@ function normalizeLotRow(lot) {
 
 function rebuildLotsByItemCode(doc) {
     lotsByItemCode = {};
+    liveLotsByItemCode = {};
 
     function addLot(itemCode, lot) {
         const itemKey = itemCodeKey(itemCode);
@@ -1987,7 +1989,7 @@ function refreshLoadedItemsFromDocument(doc) {
     return changed;
 }
 
-function setLotsForItemCode(itemCode, lots) {
+function setLotsForItemCode(itemCode, lots, authoritative = false) {
     const key = itemCodeKey(itemCode);
 
     if (!key) {
@@ -1999,6 +2001,10 @@ function setLotsForItemCode(itemCode, lots) {
         : [];
 
     lotsByItemCode[key].sort((a, b) => String(a.lot_no).localeCompare(String(b.lot_no)));
+
+    if (authoritative) {
+        liveLotsByItemCode[key] = true;
+    }
 }
 
 function grpoLotSuggestionContentHtml(it, idx) {
@@ -2154,7 +2160,7 @@ async function fetchLotSuggestionsForRow(idx, force = false) {
                 throw new Error(data.message || 'Unable to fetch lot suggestions.');
             }
 
-            setLotsForItemCode(itemCode, data.lots || []);
+            setLotsForItemCode(itemCode, data.lots || [], true);
 
             items.forEach(row => {
                 if (itemCodeKey(row.item_code) === itemKey) {
@@ -2286,6 +2292,7 @@ function clearSelectedRequest() {
     selectedDocument = null;
     items = [];
     lotsByItemCode = {};
+    liveLotsByItemCode = {};
 
     document.getElementById('selectedRequestBox').classList.add('d-none');
 
@@ -2384,6 +2391,10 @@ function allAvailableLotsForItem(it) {
     const itemCode = itemCodeKey(it?.item_code);
     const merged = [];
     const seen = new Set();
+
+    if (liveLotsByItemCode[itemCode]) {
+        return lotsForItemCode(itemCode);
+    }
 
     function addLots(lots) {
         if (!Array.isArray(lots)) {
