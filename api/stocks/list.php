@@ -118,7 +118,7 @@ $cacheKey = sap_cache_make_key('sap.stock.list', [
     'warehouses' => implode(',', $warehouses)
 ]);
 
-$cached = sap_cache_get_preferred($whp, $cacheKey);
+$cached = sap_cache_get_preferred($whp, $cacheKey, 86400);
 
 if ($cached !== null) {
     stock_json_out($cached);

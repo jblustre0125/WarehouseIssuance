@@ -17,6 +17,7 @@ $warehouseCode = trim((string)($_GET['warehouse_code'] ?? $_POST['warehouse_code
 $warehouseCode = $warehouseCode !== '' ? $warehouseCode : '01';
 $qtyNeeded = (float)str_replace(',', '', (string)($_GET['qty_needed'] ?? $_POST['qty_needed'] ?? 0));
 $qtyNeeded = $qtyNeeded > 0 ? $qtyNeeded : 0.0;
+$forceLive = in_array(strtolower(trim((string)($_GET['force_live'] ?? $_POST['force_live'] ?? ''))), ['1', 'true', 'yes'], true);
 
 if ($itemCode === '') {
     json_out([
@@ -34,7 +35,7 @@ $cacheKey = sap_cache_make_key('sap.issuer.lot_suggestions', [
     'version' => 'fifo_sequence_v1'
 ]);
 
-$cached = sap_cache_get_preferred($whp, $cacheKey, 3600);
+$cached = $forceLive ? null : sap_cache_get_preferred($whp, $cacheKey, 3600);
 
 if ($cached !== null) {
     json_out($cached);

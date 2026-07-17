@@ -713,6 +713,8 @@ foreach ([
             max-height: 340px;
             overflow-y: auto;
             overflow-x: hidden;
+            overscroll-behavior: contain;
+            -webkit-overflow-scrolling: touch;
             padding: 7px;
             min-width: 260px;
             max-width: calc(100vw - 24px);
@@ -2128,7 +2130,8 @@ async function fetchLotSuggestionsForRow(idx, force = false) {
     lotSuggestionRequests[itemKey] = fetch(
         'api/issuer/get_lot_suggestions.php?item_code=' + encodeURIComponent(itemCode) +
         '&warehouse_code=' + encodeURIComponent(whsCode) +
-        '&qty_needed=' + encodeURIComponent(String(items[idx].quantity || '0')),
+        '&qty_needed=' + encodeURIComponent(String(items[idx].quantity || '0')) +
+        (force ? '&force_live=1' : ''),
         {
             cache: 'no-store',
             headers: {
@@ -3790,7 +3793,11 @@ if (sidebarBackdrop) {
 }
 
 
-document.addEventListener('scroll', function () {
+document.addEventListener('scroll', function (event) {
+    if (event.target && event.target.closest && event.target.closest('.lot-suggestion-popup')) {
+        return;
+    }
+
     document.querySelectorAll('.lot-suggestion-popup').forEach(el => {
         el.classList.remove('show');
     });
