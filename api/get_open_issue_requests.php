@@ -162,7 +162,7 @@ $cacheKey = sap_cache_make_key('sap.open_issue_requests', [
     'lot_query_version' => 'fifo_initial_available_lots_requestor_section_location_v5_latest_first'
 ]);
 
-$cached = sap_cache_get_preferred($conn, $cacheKey);
+$cached = sap_cache_get_preferred($conn, $cacheKey, 86400);
 
 if ($cached !== null) {
     json_out($cached);
@@ -492,6 +492,8 @@ $payload = [
     'documents' => array_values($documents)
 ];
 
-sap_cache_put($conn, 'sap.open_issue_requests', $cacheKey, $payload, 60);
+if ($sapLiveQueriesEnabled) {
+    sap_cache_put($conn, 'sap.open_issue_requests', $cacheKey, $payload, 60);
+}
 json_out($payload);
 ?>

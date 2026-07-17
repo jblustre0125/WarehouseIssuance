@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../includes/auth.php';
 require_role([ROLE_ISSUER, ROLE_ADMIN]);
 header('Content-Type: application/json; charset=utf-8');
 
+require_once __DIR__ . '/../../includes/sap_cache.php';
 require_once __DIR__ . '/lot_balance_lib.php';
 
 function json_out($payload)
@@ -25,8 +26,21 @@ if ($itemCode === '') {
     ]);
 }
 
-$erp = get_erp_connection();
 $whp = get_whpokayoke_connection();
+$cacheKey = sap_cache_make_key('sap.issuer.lot_suggestions', [
+    'item_code' => strtoupper($itemCode),
+    'warehouse_code' => strtoupper($warehouseCode),
+    'qty_needed' => number_format($qtyNeeded, 3, '.', ''),
+    'version' => 'fifo_sequence_v1'
+]);
+
+$cached = sap_cache_get_preferred($whp, $cacheKey, 3600);
+
+if ($cached !== null) {
+    json_out($cached);
+}
+
+$erp = get_erp_connection();
 
 if (
     !issuer_lot_has_table($erp, 'OBTQ') ||
@@ -144,7 +158,7 @@ foreach ($candidates as $candidate) {
     }
 }
 
-json_out([
+$payload = [
     'ok' => true,
     'message' => count($lots) > 0 ? 'FIFO lot sequence found.' : 'No FIFO lot with remaining available balance was found.',
     'mode' => 'fifo_sequence',
@@ -152,5 +166,8 @@ json_out([
     'covered_qty' => $coveredQty,
     'remaining_qty' => $qtyNeeded > 0 ? max(0, $qtyNeeded - $coveredQty) : 0,
     'lots' => $lots
-]);
+];
+
+sap_cache_put($whp, 'sap.issuer.lot_suggestions', $cacheKey, $payload, 300);
+json_out($payload);
 ?>
