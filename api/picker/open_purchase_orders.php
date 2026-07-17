@@ -95,14 +95,14 @@ $baseCacheKey = sap_cache_make_key('sap.picker.open_purchase_orders', [
     'sort' => 'recent_docdate_docnum_desc'
 ]);
 
-$cached = sap_cache_get_preferred($whp, $cacheKey);
+$cached = sap_cache_get_preferred($whp, $cacheKey, 86400);
 
 if ($cached !== null) {
     picker_po_json_out($cached);
 }
 
 if ($search !== '') {
-    $baseCached = sap_cache_get_preferred($whp, $baseCacheKey);
+    $baseCached = sap_cache_get_preferred($whp, $baseCacheKey, 86400);
 
     if ($baseCached !== null) {
         picker_po_json_out(picker_po_filter_cached_payload($baseCached, $search));

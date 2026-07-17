@@ -183,7 +183,7 @@ $cacheKey = sap_cache_make_key('sap.open_itr_requests', [
     'pack_sizes' => itr_pack_sizes_cache_token()
 ]);
 
-$cached = sap_cache_get_preferred($whp, $cacheKey);
+$cached = sap_cache_get_preferred($whp, $cacheKey, 86400);
 
 if ($cached !== null) {
     json_out($cached);

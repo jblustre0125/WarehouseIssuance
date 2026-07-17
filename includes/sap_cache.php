@@ -120,7 +120,7 @@ function sap_cache_max_stale_seconds()
     return max(60, (int)constant('SAP_CACHE_MAX_STALE_SECONDS'));
 }
 
-function sap_cache_get_preferred($conn, $cacheKey)
+function sap_cache_get_preferred($conn, $cacheKey, $maxStaleSeconds = null)
 {
     if (sap_cache_should_refresh()) {
         return null;
@@ -136,7 +136,11 @@ function sap_cache_get_preferred($conn, $cacheKey)
         return null;
     }
 
-    return sap_cache_get($conn, $cacheKey, true, sap_cache_max_stale_seconds());
+    $maxStaleSeconds = $maxStaleSeconds === null
+        ? sap_cache_max_stale_seconds()
+        : max(60, (int)$maxStaleSeconds);
+
+    return sap_cache_get($conn, $cacheKey, true, $maxStaleSeconds);
 }
 
 function sap_cache_put($conn, $scope, $cacheKey, array $payload, $ttlSeconds = SAP_CACHE_DEFAULT_TTL_SECONDS)
