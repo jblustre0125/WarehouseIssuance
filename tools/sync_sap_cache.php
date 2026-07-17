@@ -203,6 +203,10 @@ function sync_task_selected($route, $interval, $syncMode, $includeHeavyTasks)
             strpos($route, 'api/requestor/list_requests.php') === 0;
     }
 
+    if (strpos($route, 'api/stocks/list.php') === 0) {
+        return true;
+    }
+
     if (!$includeHeavyTasks && $interval >= SAP_CACHE_HEAVY_REFRESH_SECONDS) {
         return false;
     }
