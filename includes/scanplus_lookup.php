@@ -2,37 +2,11 @@
 
 const SCANPLUS_CACHE_TTL_SECONDS = 300;
 
-/*
-|--------------------------------------------------------------------------
-| Database schema helpers
-|--------------------------------------------------------------------------
-*/
-
 function scanplus_has_table($conn, $table)
 {
     return (bool)fetch_one(
         $conn,
-        "
-        SELECT TOP 1
-            1 AS HasTable
-        FROM INFORMATION_SCHEMA.TABLES
-        WHERE TABLE_NAME = ?
-        ",
-        [$table]
-    );
-}
-
-function scanplus_is_base_table($conn, $table)
-{
-    return (bool)fetch_one(
-        $conn,
-        "
-        SELECT TOP 1
-            1 AS IsBaseTable
-        FROM INFORMATION_SCHEMA.TABLES
-        WHERE TABLE_NAME = ?
-          AND TABLE_TYPE = 'BASE TABLE'
-        ",
+        "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = ?",
         [$table]
     );
 }
@@ -41,29 +15,17 @@ function scanplus_has_column($conn, $table, $column)
 {
     return (bool)fetch_one(
         $conn,
-        "
-        SELECT TOP 1
-            1 AS HasColumn
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_NAME = ?
-          AND COLUMN_NAME = ?
-        ",
+        "SELECT 1 AS HasColumn
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_NAME = ?
+           AND COLUMN_NAME = ?",
         [$table, $column]
     );
 }
 
-/*
-|--------------------------------------------------------------------------
-| ScanPlus keys
-|--------------------------------------------------------------------------
-*/
-
 function scanplus_key($docEntry, $lineNum, $itemCode)
 {
-    if (
-        $lineNum === null ||
-        trim((string)$lineNum) === ''
-    ) {
+    if ($lineNum === null || trim((string)$lineNum) === '') {
         return '';
     }
 
@@ -71,55 +33,17 @@ function scanplus_key($docEntry, $lineNum, $itemCode)
     $lineNum = (int)$lineNum;
     $itemCode = strtoupper(trim((string)$itemCode));
 
-    if (
-        $docEntry <= 0 ||
-        $lineNum < 0 ||
-        $itemCode === ''
-    ) {
+    if ($docEntry <= 0 || $lineNum < 0 || $itemCode === '') {
         return '';
     }
 
     return $docEntry . '|' . $lineNum . '|' . $itemCode;
 }
 
-function scanplus_normalize_lot($lotNo)
+function scanplus_lot_key($docEntry, $lineNum, $itemCode, $lotNo)
 {
+    $key = scanplus_key($docEntry, $lineNum, $itemCode);
     $lotNo = strtoupper(trim((string)$lotNo));
-
-    $lotNo = preg_replace(
-        '/[^A-Z0-9]+/',
-        '',
-        $lotNo
-    );
-
-    if ($lotNo === null) {
-        return '';
-    }
-
-    if ($lotNo !== '' && ctype_digit($lotNo)) {
-        $lotNo = ltrim($lotNo, '0');
-
-        return $lotNo === ''
-            ? '0'
-            : $lotNo;
-    }
-
-    return $lotNo;
-}
-
-function scanplus_lot_key(
-    $docEntry,
-    $lineNum,
-    $itemCode,
-    $lotNo
-) {
-    $key = scanplus_key(
-        $docEntry,
-        $lineNum,
-        $itemCode
-    );
-
-    $lotNo = scanplus_normalize_lot($lotNo);
 
     if ($key === '' || $lotNo === '') {
         return '';
@@ -128,89 +52,37 @@ function scanplus_lot_key(
     return $key . '|' . $lotNo;
 }
 
-/*
-|--------------------------------------------------------------------------
-| Date conversion
-|--------------------------------------------------------------------------
-*/
-
 function scanplus_datetime_text($dateValue, $timeValue = null)
 {
     if ($dateValue instanceof DateTimeInterface) {
         $dateText = $dateValue->format('Y-m-d');
-
-        if (
-            $timeValue === null ||
-            trim((string)$timeValue) === ''
-        ) {
-            $timeText = $dateValue->format('H:i:s');
-
-            return $timeText === '00:00:00'
-                ? $dateText
-                : $dateText . ' ' . $timeText;
-        }
     } else {
         $dateText = trim((string)$dateValue);
-
-        if (
-            $dateText === '' ||
-            strpos($dateText, '1900-01-01') === 0
-        ) {
-            return '';
-        }
-
-        $timestamp = strtotime($dateText);
-
-        if ($timestamp === false) {
-            return '';
-        }
-
-        if (
-            $timeValue === null ||
-            trim((string)$timeValue) === ''
-        ) {
-            $containsTime = preg_match(
-                '/\d{1,2}:\d{2}/',
-                $dateText
-            );
-
-            return $containsTime
-                ? date('Y-m-d H:i:s', $timestamp)
-                : date('Y-m-d', $timestamp);
-        }
-
-        $dateText = date('Y-m-d', $timestamp);
     }
 
-    $timeText = preg_replace(
-        '/\D+/',
-        '',
-        (string)$timeValue
-    );
+    if ($dateText === '') {
+        return '';
+    }
 
-    if ($timeText === null || $timeText === '') {
+    if ($timeValue === null || $timeValue === '') {
+        return $dateText;
+    }
+
+    $timeText = preg_replace('/\D+/', '', (string)$timeValue);
+
+    if ($timeText === '') {
         return $dateText;
     }
 
     if (strlen($timeText) <= 4) {
-        $timeText = str_pad(
-            substr($timeText, -4),
-            4,
-            '0',
-            STR_PAD_LEFT
-        );
+        $timeText = str_pad(substr($timeText, -4), 4, '0', STR_PAD_LEFT);
 
         return $dateText . ' ' .
             substr($timeText, 0, 2) . ':' .
             substr($timeText, 2, 2) . ':00';
     }
 
-    $timeText = str_pad(
-        substr($timeText, -6),
-        6,
-        '0',
-        STR_PAD_LEFT
-    );
+    $timeText = str_pad(substr($timeText, -6), 6, '0', STR_PAD_LEFT);
 
     return $dateText . ' ' .
         substr($timeText, 0, 2) . ':' .
@@ -218,776 +90,231 @@ function scanplus_datetime_text($dateValue, $timeValue = null)
         substr($timeText, 4, 2);
 }
 
-/*
-|--------------------------------------------------------------------------
-| Cache table and index
-|--------------------------------------------------------------------------
-|
-| OPTIMIZATION: this used to run 3 sqlsrv_query() calls (CREATE TABLE IF
-| NOT EXISTS / ALTER TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS)
-| on *every* call from scanplus_cache_read() and independently again from
-| scanplus_cache_write(). SQL Server has to parse and evaluate each
-| IF OBJECT_ID(...) / IF COL_LENGTH(...) / IF NOT EXISTS(...) branch on
-| every call even though the schema never changes after the very first
-| run. That's wasted PHP-to-SQL round trips and wasted SQL Server CPU on
-| every cache read/write in a request.
-|
-| Fix: memoize the verified state once per PHP request (per connection)
-| so the DDL-existence checks run at most once, and have both the reader
-| and writer share that same memoized result instead of tracking it
-| separately.
-|
-*/
-
 function scanplus_cache_ensure($conn)
 {
-    // Memoize per-connection so a second connection (rare, but possible)
-    // still gets its own verification instead of a stale "true".
-    static $verifiedConnections = [];
-
-    $connKey = is_object($conn)
-        ? spl_object_id($conn)
-        : (is_resource($conn)
-            ? (int)$conn
-            : md5(serialize($conn)));
-
-    if (!empty($verifiedConnections[$connKey])) {
-        return true;
-    }
-
-    $statement = sqlsrv_query(
+    $create = sqlsrv_query(
         $conn,
-        "
-        IF OBJECT_ID(
-            'dbo.RawmatTraceScanPlusCache',
-            'U'
-        ) IS NULL
-        BEGIN
-            CREATE TABLE dbo.RawmatTraceScanPlusCache
-            (
-                CacheID INT IDENTITY(1,1)
-                    NOT NULL
-                    PRIMARY KEY,
-
+        "IF OBJECT_ID('dbo.RawmatTraceScanPlusCache', 'U') IS NULL
+         BEGIN
+            CREATE TABLE dbo.RawmatTraceScanPlusCache (
+                CacheID INT IDENTITY(1,1) PRIMARY KEY,
                 SAP_IT_DocEntry INT NOT NULL,
                 SAP_IT_LineNum INT NULL,
-
                 ItemCode NVARCHAR(50) NOT NULL,
                 LotNo NVARCHAR(80) NULL,
                 ReceivedLotNo NVARCHAR(80) NULL,
-
                 ScanStatus NVARCHAR(50) NULL,
                 ReceivedQty DECIMAL(18,3) NULL,
-
                 BarcodeUser NVARCHAR(120) NULL,
                 ReceivedAt DATETIME NULL,
-
-                LastSyncedAt DATETIME
-                    NOT NULL
-                    DEFAULT GETDATE()
+                LastSyncedAt DATETIME NOT NULL DEFAULT GETDATE()
             );
-        END
-        "
+         END"
     );
 
-    if ($statement === false) {
+    if ($create === false) {
         return false;
     }
 
-    sqlsrv_free_stmt($statement);
-
-    $statement = sqlsrv_query(
+    sqlsrv_query(
         $conn,
-        "
-        IF COL_LENGTH(
-            'dbo.RawmatTraceScanPlusCache',
-            'ReceivedLotNo'
-        ) IS NULL
-        BEGIN
-            ALTER TABLE dbo.RawmatTraceScanPlusCache
-            ADD ReceivedLotNo NVARCHAR(80) NULL;
-        END
-        "
+        "IF COL_LENGTH('dbo.RawmatTraceScanPlusCache', 'ReceivedLotNo') IS NULL
+         BEGIN
+            ALTER TABLE dbo.RawmatTraceScanPlusCache ADD ReceivedLotNo NVARCHAR(80) NULL;
+         END"
     );
 
-    if ($statement !== false) {
-        sqlsrv_free_stmt($statement);
-    }
-
-    $statement = sqlsrv_query(
+    sqlsrv_query(
         $conn,
-        "
-        IF NOT EXISTS
-        (
+        "IF NOT EXISTS (
             SELECT 1
             FROM sys.indexes
-            WHERE name =
-                'IX_RawmatTraceScanPlusCache_Lookup'
-              AND object_id =
-                OBJECT_ID(
-                    'dbo.RawmatTraceScanPlusCache'
-                )
-        )
-        BEGIN
-            CREATE INDEX
-                IX_RawmatTraceScanPlusCache_Lookup
-
-            ON dbo.RawmatTraceScanPlusCache
-            (
-                SAP_IT_DocEntry,
-                SAP_IT_LineNum,
-                ItemCode,
-                LotNo,
-                LastSyncedAt
-            )
-
-            INCLUDE
-            (
-                ReceivedLotNo,
-                ScanStatus,
-                ReceivedQty,
-                BarcodeUser,
-                ReceivedAt
-            );
-        END
-        "
+            WHERE name = 'IX_RawmatTraceScanPlusCache_Lookup'
+              AND object_id = OBJECT_ID('dbo.RawmatTraceScanPlusCache')
+         )
+         BEGIN
+            CREATE INDEX IX_RawmatTraceScanPlusCache_Lookup
+            ON dbo.RawmatTraceScanPlusCache(SAP_IT_DocEntry, SAP_IT_LineNum, ItemCode, LotNo, LastSyncedAt);
+         END"
     );
 
-    if ($statement !== false) {
-        sqlsrv_free_stmt($statement);
-    }
-
-    $ready = scanplus_has_table(
-        $conn,
-        'RawmatTraceScanPlusCache'
-    );
-
-    $verifiedConnections[$connKey] = $ready;
-
-    return $ready;
+    return scanplus_has_table($conn, 'RawmatTraceScanPlusCache');
 }
 
-/*
-|--------------------------------------------------------------------------
-| Cache reader
-|--------------------------------------------------------------------------
-*/
-
-function scanplus_cache_read(
-    $conn,
-    array $refs,
-    $ttlSeconds = SCANPLUS_CACHE_TTL_SECONDS
-) {
-    if (
-        empty($refs) ||
-        !scanplus_cache_ensure($conn)
-    ) {
-        return [
-            'rows' => [],
-            'fresh_keys' => []
-        ];
+function scanplus_cache_read($conn, array $refs, $ttlSeconds = SCANPLUS_CACHE_TTL_SECONDS)
+{
+    if (empty($refs) || !scanplus_cache_ensure($conn)) {
+        return ['rows' => [], 'fresh_keys' => []];
     }
 
-    $freshCutoff = date(
-        'Y-m-d H:i:s',
-        time() - max(1, (int)$ttlSeconds)
-    );
-
+    $freshCutoff = date('Y-m-d H:i:s', time() - max(1, (int)$ttlSeconds));
     $result = [];
     $freshKeys = [];
     $normalizedRefs = [];
 
-    // OPTIMIZATION: avoid array_values() copying the whole $refs array
-    // just to get sequential keys; foreach + manual counter does the
-    // same job without duplicating the array in memory.
-    $idx = 0;
-
-    foreach ($refs as $ref) {
-        if (!is_array($ref)) {
-            $idx++;
-            continue;
-        }
-
-        $docEntry = (int)($ref['doc_entry'] ?? 0);
-
-        $lineNum =
-            !array_key_exists('line_num', $ref) ||
-            $ref['line_num'] === null ||
-            trim((string)$ref['line_num']) === ''
-                ? null
-                : (int)$ref['line_num'];
-
-        $itemCode = trim(
-            (string)($ref['item_code'] ?? '')
-        );
-
-        $lotNo = trim(
-            (string)($ref['lot_no'] ?? '')
-        );
-
-        $scanKey = scanplus_key(
-            $docEntry,
-            $lineNum,
-            $itemCode
-        );
+    foreach (array_values($refs) as $idx => $ref) {
+        $scanKey = scanplus_key($ref['doc_entry'] ?? 0, $ref['line_num'] ?? null, $ref['item_code'] ?? '');
 
         if ($scanKey === '') {
-            $idx++;
             continue;
         }
 
         $normalizedRefs[$idx] = [
-            'doc_entry' => $docEntry,
-            'line_num' => $lineNum,
-            'item_code' => $itemCode,
-            'lot_no' => $lotNo,
+            'doc_entry' => (int)($ref['doc_entry'] ?? 0),
+            'line_num' => $ref['line_num'] === null || trim((string)$ref['line_num']) === '' ? null : (int)$ref['line_num'],
+            'item_code' => trim((string)($ref['item_code'] ?? '')),
+            'lot_no' => trim((string)($ref['lot_no'] ?? '')),
             'scan_key' => $scanKey
         ];
-
-        $idx++;
     }
 
     if (empty($normalizedRefs)) {
-        return [
-            'rows' => [],
-            'fresh_keys' => []
-        ];
+        return ['rows' => [], 'fresh_keys' => []];
     }
 
-    foreach (
-        array_chunk(
-            array_keys($normalizedRefs),
-            300
-        ) as $chunkIndexes
-    ) {
-        $referenceQueries = [];
-        $params = [];
+    $cacheRows = [];
+
+    foreach (array_chunk(array_keys($normalizedRefs), 350) as $chunkIndexes) {
+        $chunkRows = [];
+        $chunkParams = [];
 
         foreach ($chunkIndexes as $idx) {
             $ref = $normalizedRefs[$idx];
-
-            $referenceQueries[] = "
-                SELECT
-                    ? AS RefIdx,
-                    ? AS SAP_IT_DocEntry,
-                    ? AS SAP_IT_LineNum,
-                    ? AS ItemCode,
-                    ? AS LotNo
-            ";
-
-            array_push(
-                $params,
-                $idx,
-                $ref['doc_entry'],
-                $ref['line_num'],
-                $ref['item_code'],
-                $ref['lot_no']
-            );
+            $chunkRows[] = 'SELECT ? AS RefIdx, ? AS SAP_IT_DocEntry, ? AS SAP_IT_LineNum, ? AS ItemCode, ? AS LotNo';
+            array_push($chunkParams, $idx, $ref['doc_entry'], $ref['line_num'], $ref['item_code'], $ref['lot_no']);
         }
 
-        $referenceSql = implode(
-            "\nUNION ALL\n",
-            $referenceQueries
-        );
-
-        $cacheRows = fetch_all(
+        $chunkCacheRows = fetch_all(
             $conn,
-            "
-            WITH Ref AS
-            (
-                {$referenceSql}
-            ),
-            RankedCache AS
-            (
+            "WITH Ref AS (
+                " . implode("\nUNION ALL\n", $chunkRows) . "
+             ),
+             RankedCache AS (
                 SELECT
                     Ref.RefIdx,
-
-                    C.LotNo,
-                    C.ReceivedLotNo,
                     C.ScanStatus,
+                    C.ReceivedLotNo,
                     C.ReceivedQty,
                     C.BarcodeUser,
-
-                    CONVERT(
-                        VARCHAR(19),
-                        C.ReceivedAt,
-                        120
-                    ) AS ReceivedAt,
-
-                    CONVERT(
-                        VARCHAR(19),
-                        C.LastSyncedAt,
-                        120
-                    ) AS LastSyncedAt,
-
-                    ROW_NUMBER() OVER
-                    (
+                    CONVERT(varchar(19), C.ReceivedAt, 120) AS ReceivedAt,
+                    CONVERT(varchar(19), C.LastSyncedAt, 120) AS LastSyncedAt,
+                    ROW_NUMBER() OVER (
                         PARTITION BY Ref.RefIdx
-
                         ORDER BY
                             CASE
-                                WHEN
-                                    UPPER(
-                                        LTRIM(
-                                            RTRIM(
-                                                ISNULL(
-                                                    C.LotNo,
-                                                    ''
-                                                )
-                                            )
-                                        )
-                                    ) =
-                                    UPPER(
-                                        LTRIM(
-                                            RTRIM(
-                                                ISNULL(
-                                                    Ref.LotNo,
-                                                    ''
-                                                )
-                                            )
-                                        )
-                                    )
-                                    THEN 0
-
-                                WHEN
-                                    UPPER(
-                                        LTRIM(
-                                            RTRIM(
-                                                ISNULL(
-                                                    C.ReceivedLotNo,
-                                                    ''
-                                                )
-                                            )
-                                        )
-                                    ) =
-                                    UPPER(
-                                        LTRIM(
-                                            RTRIM(
-                                                ISNULL(
-                                                    Ref.LotNo,
-                                                    ''
-                                                )
-                                            )
-                                        )
-                                    )
-                                    THEN 1
-
-                                WHEN
-                                    NULLIF(
-                                        LTRIM(
-                                            RTRIM(
-                                                C.LotNo
-                                            )
-                                        ),
-                                        ''
-                                    ) IS NULL
-                                    THEN 2
-
+                                WHEN ISNULL(C.LotNo, '') = ISNULL(Ref.LotNo, '') THEN 0
+                                WHEN ISNULL(C.ReceivedLotNo, '') = ISNULL(Ref.LotNo, '') THEN 1
+                                WHEN ISNULL(C.LotNo, '') = '' THEN 2
                                 ELSE 3
                             END,
-
-                            C.LastSyncedAt DESC,
-                            C.CacheID DESC
+                            C.LastSyncedAt DESC
                     ) AS RowNum
-
                 FROM Ref
-
                 INNER JOIN dbo.RawmatTraceScanPlusCache C
-                    ON C.SAP_IT_DocEntry =
-                        Ref.SAP_IT_DocEntry
-
-                   AND ISNULL(
-                        C.SAP_IT_LineNum,
-                        -1
-                   ) = ISNULL(
-                        Ref.SAP_IT_LineNum,
-                        -1
+                    ON C.SAP_IT_DocEntry = Ref.SAP_IT_DocEntry
+                   AND ISNULL(C.SAP_IT_LineNum, -1) = ISNULL(Ref.SAP_IT_LineNum, -1)
+                   AND C.ItemCode = Ref.ItemCode
+                   AND (
+                        ISNULL(Ref.LotNo, '') = ''
+                        OR ISNULL(C.LotNo, '') = ISNULL(Ref.LotNo, '')
+                        OR ISNULL(C.ReceivedLotNo, '') = ISNULL(Ref.LotNo, '')
                    )
-
-                   AND C.ItemCode =
-                        Ref.ItemCode
-
-                   AND
-                   (
-                        NULLIF(
-                            LTRIM(
-                                RTRIM(
-                                    Ref.LotNo
-                                )
-                            ),
-                            ''
-                        ) IS NULL
-
-                        OR UPPER(
-                            LTRIM(
-                                RTRIM(
-                                    ISNULL(
-                                        C.LotNo,
-                                        ''
-                                    )
-                                )
-                            )
-                        ) = UPPER(
-                            LTRIM(
-                                RTRIM(
-                                    ISNULL(
-                                        Ref.LotNo,
-                                        ''
-                                    )
-                                )
-                            )
-                        )
-
-                        OR UPPER(
-                            LTRIM(
-                                RTRIM(
-                                    ISNULL(
-                                        C.ReceivedLotNo,
-                                        ''
-                                    )
-                                )
-                            )
-                        ) = UPPER(
-                            LTRIM(
-                                RTRIM(
-                                    ISNULL(
-                                        Ref.LotNo,
-                                        ''
-                                    )
-                                )
-                            )
-                        )
-
-                        OR NULLIF(
-                            LTRIM(
-                                RTRIM(
-                                    C.LotNo
-                                )
-                            ),
-                            ''
-                        ) IS NULL
-                   )
-            )
-            SELECT
+             )
+             SELECT
                 RefIdx,
-                LotNo,
-                ReceivedLotNo,
                 ScanStatus,
+                ReceivedLotNo,
                 ReceivedQty,
                 BarcodeUser,
                 ReceivedAt,
                 LastSyncedAt
-
-            FROM RankedCache
-
-            WHERE RowNum = 1
-            ",
-            $params
+             FROM RankedCache
+             WHERE RowNum = 1",
+            $chunkParams
         );
 
-        if (!is_array($cacheRows)) {
+        foreach ($chunkCacheRows as $chunkCacheRow) {
+            $cacheRows[] = $chunkCacheRow;
+        }
+    }
+
+    foreach ($cacheRows as $cacheRow) {
+        $idx = (int)($cacheRow['RefIdx'] ?? -1);
+
+        if (!isset($normalizedRefs[$idx])) {
             continue;
         }
 
-        foreach ($cacheRows as $cacheRow) {
-            $rowIdx = (int)($cacheRow['RefIdx'] ?? -1);
+        $ref = $normalizedRefs[$idx];
+        $scan = [
+            'scan_status' => trim((string)($cacheRow['ScanStatus'] ?? '')),
+            'received_lot_no' => trim((string)($cacheRow['ReceivedLotNo'] ?? '')),
+            'received_qty' => $cacheRow['ReceivedQty'] ?? '',
+            'barcode_user' => trim((string)($cacheRow['BarcodeUser'] ?? '')),
+            'received_at' => trim((string)($cacheRow['ReceivedAt'] ?? ''))
+        ];
 
-            if (!isset($normalizedRefs[$rowIdx])) {
-                continue;
-            }
+        $scanKey = $ref['scan_key'];
+        $scanLotKey = scanplus_lot_key($ref['doc_entry'], $ref['line_num'], $ref['item_code'], $ref['lot_no']);
+        $targetKey = $scanLotKey !== '' ? $scanLotKey : $scanKey;
+        $result[$targetKey] = $scan;
 
-            $ref = $normalizedRefs[$rowIdx];
+        if ($scanLotKey !== '') {
+            $result[$scanKey] = $scan;
+        }
 
-            $scan = [
-                'scan_status' => trim(
-                    (string)($cacheRow['ScanStatus'] ?? '')
-                ),
-
-                'received_lot_no' => trim(
-                    (string)(
-                        $cacheRow['ReceivedLotNo'] ??
-                        ''
-                    )
-                ),
-
-                'lot_no' => trim(
-                    (string)($cacheRow['LotNo'] ?? '')
-                ),
-
-                'received_qty' =>
-                    $cacheRow['ReceivedQty'] ?? '',
-
-                'barcode_user' => trim(
-                    (string)(
-                        $cacheRow['BarcodeUser'] ??
-                        ''
-                    )
-                ),
-
-                'received_at' => trim(
-                    (string)(
-                        $cacheRow['ReceivedAt'] ??
-                        ''
-                    )
-                )
-            ];
-
-            $scanKey = $ref['scan_key'];
-
-            $scanLotKey = scanplus_lot_key(
-                $ref['doc_entry'],
-                $ref['line_num'],
-                $ref['item_code'],
-                $ref['lot_no']
-            );
-
-            $targetKey =
-                $scanLotKey !== ''
-                    ? $scanLotKey
-                    : $scanKey;
-
-            $result[$targetKey] = $scan;
-
-            if ($scanLotKey !== '') {
-                $result[$scanKey] = $scan;
-            }
-
-            /*
-             * Web pages always use the scheduled local cache.
-             * They must not perform live SAP refreshes.
-             */
-            $isFresh =
-                PHP_SAPI !== 'cli' ||
-                trim(
-                    (string)(
-                        $cacheRow['LastSyncedAt'] ??
-                        ''
-                    )
-                ) >= $freshCutoff;
-
-            if ($isFresh) {
-                $freshKeys[$targetKey] = true;
-                $freshKeys[$scanKey] = true;
-            }
+        if (trim((string)($cacheRow['LastSyncedAt'] ?? '')) >= $freshCutoff) {
+            $freshKeys[$targetKey] = true;
+            $freshKeys[$scanKey] = true;
         }
     }
 
-    return [
-        'rows' => $result,
-        'fresh_keys' => $freshKeys
-    ];
+    return ['rows' => $result, 'fresh_keys' => $freshKeys];
 }
 
-/*
-|--------------------------------------------------------------------------
-| Cache writer
-|--------------------------------------------------------------------------
-*/
+function scanplus_cache_write($conn, array $ref, ?array $scan)
+{
+    static $cacheReady = false;
 
-function scanplus_cache_write(
-    $conn,
-    array $ref,
-    ?array $scan
-) {
-    /*
-     * Only the scheduled CLI task should normally write the cache.
-     */
-    $allowWebWrite =
-        defined('SCANPLUS_ALLOW_WEB_CACHE_WRITE') &&
-        SCANPLUS_ALLOW_WEB_CACHE_WRITE === true;
-
-    if (
-        PHP_SAPI !== 'cli' &&
-        !$allowWebWrite
-    ) {
-        return false;
+    if (!$cacheReady) {
+        $cacheReady = scanplus_cache_ensure($conn);
     }
 
-    // scanplus_cache_ensure() is now memoized internally (per connection),
-    // so this no longer needs its own separate static flag — that used to
-    // mean the same DDL-existence checks could run twice in one request
-    // (once via the reader's call, once via the writer's).
-    if (!scanplus_cache_ensure($conn)) {
+    if (!$cacheReady) {
         return false;
     }
 
     $docEntry = (int)($ref['doc_entry'] ?? 0);
+    $lineNum = $ref['line_num'] === null || trim((string)$ref['line_num']) === '' ? null : (int)$ref['line_num'];
+    $itemCode = trim((string)($ref['item_code'] ?? ''));
+    $lotNo = trim((string)($ref['lot_no'] ?? ''));
 
-    $lineNum =
-        !array_key_exists('line_num', $ref) ||
-        $ref['line_num'] === null ||
-        trim((string)$ref['line_num']) === ''
-            ? null
-            : (int)$ref['line_num'];
-
-    $itemCode = trim(
-        (string)($ref['item_code'] ?? '')
-    );
-
-    $lotNo = trim(
-        (string)($ref['lot_no'] ?? '')
-    );
-
-    if (
-        scanplus_key(
-            $docEntry,
-            $lineNum,
-            $itemCode
-        ) === ''
-    ) {
+    if (scanplus_key($docEntry, $lineNum, $itemCode) === '') {
         return false;
     }
 
-    /*
-     * A missing lookup result is not proof that SAP did not receive the
-     * material. It can also mean that SAP was unavailable, the query failed,
-     * or the scheduled task could not validate the reference. Never convert a
-     * null lookup into a destructive NOT RECEIVED cache update.
-     */
-    if ($scan === null) {
-        return false;
-    }
+    $scanStatus = $scan['scan_status'] ?? null;
+    $receivedLotNo = $scan['received_lot_no'] ?? null;
+    $receivedQty = $scan['received_qty'] ?? null;
+    $barcodeUser = $scan['barcode_user'] ?? null;
+    $receivedAt = $scan['received_at'] ?? null;
 
-    $scanStatus = strtoupper(
-        trim(
-            (string)($scan['scan_status'] ?? '')
-        )
-    );
-
-    if ($scanStatus === '') {
-        return false;
-    }
-
-    $isNotReceived = in_array(
-        $scanStatus,
-        [
-            'NOT RECEIVED IN SAP',
-            'NOT RECEIVED'
-        ],
-        true
-    );
-
-    /*
-     * Negative statuses may only be written after a successful SAP query.
-     * scanplus_lookup_by_itr_lines() adds validation_complete=true only for
-     * references whose query chunk completed successfully.
-     */
-    if (
-        $isNotReceived &&
-        empty($scan['validation_complete'])
-    ) {
-        return false;
-    }
-
-    $receivedLotNo =
-        $scan['received_lot_no'] ??
-        $scan['lot_no'] ??
-        null;
-
-    /*
-     * Do not allow a line-level/base-key SAP result to mark a different lot as
-     * received. This prevents cases such as requested lot FEB29 being stored as
-     * SAP_RECEIVED when SAP actually returned lot 0531.
-     */
-    $isReceived = in_array(
-        $scanStatus,
-        [
-            'SAP_RECEIVED',
-            'CLOSED'
-        ],
-        true
-    );
-
-    if ($isReceived && $lotNo !== '') {
-        $requestedLotKey = scanplus_normalize_lot($lotNo);
-        $receivedLotMatched = false;
-
-        foreach (
-            preg_split(
-                '/\s*,\s*/',
-                trim((string)$receivedLotNo),
-                -1,
-                PREG_SPLIT_NO_EMPTY
-            ) ?: []
-            as $candidateLot
-        ) {
-            if (
-                scanplus_normalize_lot($candidateLot) ===
-                $requestedLotKey
-            ) {
-                $receivedLotMatched = true;
-                break;
-            }
-        }
-
-        if (!$receivedLotMatched) {
-            return false;
-        }
-    }
-
-    $receivedQty =
-        $scan['received_qty'] ??
-        null;
-
-    $barcodeUser =
-        $scan['barcode_user'] ??
-        null;
-
-    $receivedAt =
-        $scan['received_at'] ??
-        null;
-
-    $statement = sqlsrv_query(
+    return sqlsrv_query(
         $conn,
-        "
-        MERGE dbo.RawmatTraceScanPlusCache
-            WITH (HOLDLOCK) AS T
-
-        USING
-        (
+        "MERGE dbo.RawmatTraceScanPlusCache AS T
+         USING (
             SELECT
                 ? AS SAP_IT_DocEntry,
                 ? AS SAP_IT_LineNum,
                 ? AS ItemCode,
                 ? AS LotNo
-        ) AS S
-
-        ON
-            T.SAP_IT_DocEntry =
-                S.SAP_IT_DocEntry
-
-            AND ISNULL(
-                T.SAP_IT_LineNum,
-                -1
-            ) = ISNULL(
-                S.SAP_IT_LineNum,
-                -1
-            )
-
-            AND T.ItemCode =
-                S.ItemCode
-
-            AND UPPER(
-                LTRIM(
-                    RTRIM(
-                        ISNULL(
-                            T.LotNo,
-                            ''
-                        )
-                    )
-                )
-            ) = UPPER(
-                LTRIM(
-                    RTRIM(
-                        ISNULL(
-                            S.LotNo,
-                            ''
-                        )
-                    )
-                )
-            )
-
-        WHEN MATCHED THEN
+         ) AS S
+         ON
+            T.SAP_IT_DocEntry = S.SAP_IT_DocEntry
+            AND ISNULL(T.SAP_IT_LineNum, -1) = ISNULL(S.SAP_IT_LineNum, -1)
+            AND T.ItemCode = S.ItemCode
+            AND ISNULL(T.LotNo, '') = ISNULL(S.LotNo, '')
+         WHEN MATCHED THEN
             UPDATE SET
                 ScanStatus = ?,
                 ReceivedLotNo = ?,
@@ -995,10 +322,8 @@ function scanplus_cache_write(
                 BarcodeUser = ?,
                 ReceivedAt = ?,
                 LastSyncedAt = GETDATE()
-
-        WHEN NOT MATCHED THEN
-            INSERT
-            (
+         WHEN NOT MATCHED THEN
+            INSERT (
                 SAP_IT_DocEntry,
                 SAP_IT_LineNum,
                 ItemCode,
@@ -1010,20 +335,7 @@ function scanplus_cache_write(
                 ReceivedAt,
                 LastSyncedAt
             )
-            VALUES
-            (
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                ?,
-                GETDATE()
-            );
-        ",
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE());",
         [
             $docEntry,
             $lineNum,
@@ -1040,1173 +352,290 @@ function scanplus_cache_write(
             $lineNum,
             $itemCode,
             $lotNo,
-
             $scanStatus,
             $receivedLotNo,
             $receivedQty,
             $barcodeUser,
             $receivedAt
         ]
-    );
-
-    if ($statement === false) {
-        return false;
-    }
-
-    sqlsrv_free_stmt($statement);
-
-    return true;
+    ) !== false;
 }
-
-/*
-|--------------------------------------------------------------------------
-| Optimized SAP lookup
-|--------------------------------------------------------------------------
-|
-| Controls:
-|
-| - Normal browser pages cannot call SAP directly.
-| - Exact DocEntry + LineNum + ItemCode matching.
-| - Five references per SAP query.
-| - Destination-side batch rows only.
-| - No large ORDER BY.
-| - MAXDOP 1 removes CXPACKET parallelism.
-| - RECOMPILE avoids a bad cached execution plan.
-| - Lets SQL Server choose the join strategy.
-| - IBT1 views are skipped in favor of OITL/ITL1/OBTN.
-|
-*/
 
 function scanplus_lookup_by_itr_lines($erp, array $refs)
 {
-    $allowWebLookup =
-        defined('SCANPLUS_ALLOW_WEB_LIVE_LOOKUP') &&
-        SCANPLUS_ALLOW_WEB_LIVE_LOOKUP === true;
-
-    if (
-        PHP_SAPI !== 'cli' &&
-        !$allowWebLookup
-    ) {
-        return [];
-    }
-
-    if (!$erp || empty($refs)) {
-        return [];
-    }
-
-    $requestedRefs = [];
-    $queryRefs = [];
-
-    $seenRequested = [];
-    $seenQuery = [];
+    $docEntries = [];
 
     foreach ($refs as $ref) {
-        if (!is_array($ref)) {
-            continue;
-        }
-
-        $docEntry = (int)(
-            $ref['doc_entry'] ??
-            $ref['SAP_IT_DocEntry'] ??
-            $ref['ITRDocEntry'] ??
-            0
+        $key = scanplus_key(
+            $ref['doc_entry'] ?? 0,
+            $ref['line_num'] ?? null,
+            $ref['item_code'] ?? ''
         );
 
-        $lineRaw =
-            $ref['line_num'] ??
-            $ref['SAP_IT_LineNum'] ??
-            $ref['ITRLineNum'] ??
-            null;
-
-        $lineNum =
-            $lineRaw === null ||
-            trim((string)$lineRaw) === ''
-                ? null
-                : (int)$lineRaw;
-
-        $itemCode = trim(
-            (string)(
-                $ref['item_code'] ??
-                $ref['ItemCode'] ??
-                ''
-            )
-        );
-
-        $lotNo = trim(
-            (string)(
-                $ref['lot_no'] ??
-                $ref['LotNo'] ??
-                ''
-            )
-        );
-
-        $baseKey = scanplus_key(
-            $docEntry,
-            $lineNum,
-            $itemCode
-        );
-
-        if ($baseKey === '') {
-            continue;
-        }
-
-        $requestedKey =
-            $baseKey .
-            '|' .
-            scanplus_normalize_lot($lotNo);
-
-        if (!isset($seenRequested[$requestedKey])) {
-            $seenRequested[$requestedKey] = true;
-
-            $requestedRefs[] = [
-                'doc_entry' => $docEntry,
-                'line_num' => $lineNum,
-                'item_code' => $itemCode,
-                'lot_no' => $lotNo
-            ];
-        }
-
-        if (!isset($seenQuery[$baseKey])) {
-            $seenQuery[$baseKey] = true;
-
-            $queryRefs[] = [
-                'doc_entry' => $docEntry,
-                'line_num' => $lineNum,
-                'item_code' => $itemCode
-            ];
+        if ($key !== '') {
+            $docEntries[(int)$ref['doc_entry']] = true;
         }
     }
 
-    if (empty($queryRefs)) {
+    if (empty($docEntries)) {
         return [];
     }
 
-    /*
-     * Load SAP schema information only once for the current PHP run.
-     */
-    static $schema = null;
-
-    if ($schema === null) {
-        $hasRequiredTables =
-            scanplus_has_table($erp, 'OWTR') &&
-            scanplus_has_table($erp, 'WTR1') &&
-            scanplus_has_table($erp, 'WTQ1');
-
-        $hasRequiredColumns =
-            scanplus_has_column(
-                $erp,
-                'WTR1',
-                'BaseType'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'WTR1',
-                'BaseEntry'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'WTR1',
-                'BaseLine'
-            );
-
-        $hasDestinationWarehouse =
-            scanplus_has_column(
-                $erp,
-                'WTR1',
-                'WhsCode'
-            );
-
-        $hasBatchJoin =
-            $hasDestinationWarehouse &&
-            scanplus_is_base_table($erp, 'IBT1') &&
-            scanplus_has_column(
-                $erp,
-                'IBT1',
-                'BaseType'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'IBT1',
-                'BaseEntry'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'IBT1',
-                'BaseLinNum'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'IBT1',
-                'ItemCode'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'IBT1',
-                'BatchNum'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'IBT1',
-                'Quantity'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'IBT1',
-                'WhsCode'
-            );
-
-        $hasInventoryLogBatchJoin =
-            !$hasBatchJoin &&
-            $hasDestinationWarehouse &&
-            scanplus_has_table($erp, 'OITL') &&
-            scanplus_has_table($erp, 'ITL1') &&
-            scanplus_has_table($erp, 'OBTN') &&
-            scanplus_has_column(
-                $erp,
-                'OITL',
-                'LogEntry'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'OITL',
-                'DocType'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'OITL',
-                'DocEntry'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'OITL',
-                'DocLine'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'OITL',
-                'LocCode'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'ITL1',
-                'LogEntry'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'ITL1',
-                'ItemCode'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'ITL1',
-                'SysNumber'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'ITL1',
-                'Quantity'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'OBTN',
-                'ItemCode'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'OBTN',
-                'SysNumber'
-            ) &&
-            scanplus_has_column(
-                $erp,
-                'OBTN',
-                'DistNumber'
-            );
-
-        $hasOusr =
-            scanplus_has_table($erp, 'OUSR') &&
-            scanplus_has_column(
-                $erp,
-                'OUSR',
-                'USERID'
-            );
-
-        $schema = [
-            'required_ok' =>
-                $hasRequiredTables &&
-                $hasRequiredColumns,
-
-            'has_canceled' =>
-                scanplus_has_column(
-                    $erp,
-                    'OWTR',
-                    'CANCELED'
-                ),
-
-            'has_user_sign' =>
-                scanplus_has_column(
-                    $erp,
-                    'OWTR',
-                    'UserSign'
-                ),
-
-            'has_barcode_user' =>
-                scanplus_has_column(
-                    $erp,
-                    'OWTR',
-                    'U_BarcodeUser'
-                ),
-
-            'has_scan_date' =>
-                scanplus_has_column(
-                    $erp,
-                    'OWTR',
-                    'U_ScanDateTime'
-                ),
-
-            'has_scan_time' =>
-                scanplus_has_column(
-                    $erp,
-                    'OWTR',
-                    'U_ScanTime'
-                ),
-
-            'has_create_date' =>
-                scanplus_has_column(
-                    $erp,
-                    'OWTR',
-                    'CreateDate'
-                ),
-
-            'has_create_time' =>
-                scanplus_has_column(
-                    $erp,
-                    'OWTR',
-                    'CreateTS'
-                ),
-
-            'has_doc_date' =>
-                scanplus_has_column(
-                    $erp,
-                    'OWTR',
-                    'DocDate'
-                ),
-
-            'has_line_status' =>
-                scanplus_has_column(
-                    $erp,
-                    'WTQ1',
-                    'LineStatus'
-                ),
-
-            'has_open_qty' =>
-                scanplus_has_column(
-                    $erp,
-                    'WTQ1',
-                    'OpenQty'
-                ),
-
-            'has_destination_warehouse' =>
-                $hasDestinationWarehouse,
-
-            'has_batch_join' =>
-                $hasBatchJoin,
-
-            'has_inventory_log_batch_join' =>
-                $hasInventoryLogBatchJoin,
-
-            'has_ousr' =>
-                $hasOusr,
-
-            'has_user_code' =>
-                $hasOusr &&
-                scanplus_has_column(
-                    $erp,
-                    'OUSR',
-                    'USER_CODE'
-                ),
-
-            'has_user_name' =>
-                $hasOusr &&
-                scanplus_has_column(
-                    $erp,
-                    'OUSR',
-                    'U_NAME'
-                )
-        ];
-    }
-
-    if (empty($schema['required_ok'])) {
+    if (
+        !scanplus_has_table($erp, 'OWTR') ||
+        !scanplus_has_table($erp, 'WTR1') ||
+        !scanplus_has_table($erp, 'WTQ1') ||
+        !scanplus_has_column($erp, 'WTR1', 'BaseType') ||
+        !scanplus_has_column($erp, 'WTR1', 'BaseEntry') ||
+        !scanplus_has_column($erp, 'WTR1', 'BaseLine')
+    ) {
         return [];
     }
 
-    $scanDateExpression =
-        $schema['has_scan_date']
-            ? 'T.U_ScanDateTime'
-            : (
-                $schema['has_create_date']
-                    ? 'T.CreateDate'
-                    : (
-                        $schema['has_doc_date']
-                            ? 'T.DocDate'
-                            : 'CAST(NULL AS DATETIME)'
-                    )
-            );
+    $hasCanceled = scanplus_has_column($erp, 'OWTR', 'CANCELED');
+    $hasUserSign = scanplus_has_column($erp, 'OWTR', 'UserSign');
+    $hasBarcodeUser = scanplus_has_column($erp, 'OWTR', 'U_BarcodeUser');
+    $hasScanDateTime = scanplus_has_column($erp, 'OWTR', 'U_ScanDateTime');
+    $hasScanTime = scanplus_has_column($erp, 'OWTR', 'U_ScanTime');
+    $hasCreateDate = scanplus_has_column($erp, 'OWTR', 'CreateDate');
+    $hasCreateTS = scanplus_has_column($erp, 'OWTR', 'CreateTS');
+    $hasDocDate = scanplus_has_column($erp, 'OWTR', 'DocDate');
+    $hasLineStatus = scanplus_has_column($erp, 'WTQ1', 'LineStatus');
+    $hasOpenQty = scanplus_has_column($erp, 'WTQ1', 'OpenQty');
+    $hasBatchJoin =
+        scanplus_has_table($erp, 'IBT1') &&
+        scanplus_has_column($erp, 'IBT1', 'BaseType') &&
+        scanplus_has_column($erp, 'IBT1', 'BaseEntry') &&
+        scanplus_has_column($erp, 'IBT1', 'BaseLinNum') &&
+        scanplus_has_column($erp, 'IBT1', 'ItemCode') &&
+        scanplus_has_column($erp, 'IBT1', 'BatchNum') &&
+        scanplus_has_column($erp, 'IBT1', 'Quantity');
+    $hasInventoryLogBatchJoin =
+        !$hasBatchJoin &&
+        scanplus_has_table($erp, 'OITL') &&
+        scanplus_has_table($erp, 'ITL1') &&
+        scanplus_has_table($erp, 'OBTN') &&
+        scanplus_has_column($erp, 'OITL', 'LogEntry') &&
+        scanplus_has_column($erp, 'OITL', 'DocType') &&
+        scanplus_has_column($erp, 'OITL', 'DocEntry') &&
+        scanplus_has_column($erp, 'OITL', 'DocLine') &&
+        scanplus_has_column($erp, 'ITL1', 'LogEntry') &&
+        scanplus_has_column($erp, 'ITL1', 'ItemCode') &&
+        scanplus_has_column($erp, 'ITL1', 'SysNumber') &&
+        scanplus_has_column($erp, 'ITL1', 'Quantity') &&
+        scanplus_has_column($erp, 'OBTN', 'ItemCode') &&
+        scanplus_has_column($erp, 'OBTN', 'SysNumber') &&
+        scanplus_has_column($erp, 'OBTN', 'DistNumber');
 
-    $scanTimeExpression =
-        $schema['has_scan_time']
-            ? 'T.U_ScanTime'
-            : (
-                $schema['has_create_time']
-                    ? 'T.CreateTS'
-                    : 'CAST(NULL AS INT)'
-            );
-
-    $lineStatusExpression =
-        $schema['has_line_status']
-            ? 'R.LineStatus'
-            : "CAST('' AS NVARCHAR(10))";
-
-    $openQtyExpression =
-        $schema['has_open_qty']
-            ? 'R.OpenQty'
-            : 'CAST(NULL AS DECIMAL(18,3))';
-
-    $destinationWarehouseExpression =
-        $schema['has_destination_warehouse']
-            ? 'L.WhsCode'
-            : "CAST('' AS NVARCHAR(50))";
-
-    /*
-     * SAP user name expression.
-     */
+    $scanDateExpr = $hasScanDateTime
+        ? 'T.U_ScanDateTime'
+        : ($hasCreateDate ? 'T.CreateDate' : ($hasDocDate ? 'T.DocDate' : 'CAST(NULL AS DATETIME)'));
+    $scanTimeExpr = $hasScanTime
+        ? 'T.U_ScanTime'
+        : ($hasCreateTS ? 'T.CreateTS' : 'CAST(NULL AS INT)');
+    $lineStatusExpr = $hasLineStatus ? 'R.LineStatus' : "CAST('' AS NVARCHAR(10))";
+    $openQtyExpr = $hasOpenQty ? 'R.OpenQty' : 'CAST(NULL AS DECIMAL(18,3))';
     $userJoin = '';
-    $barcodeUserParts = [];
+    $scannedByParts = [];
 
-    if ($schema['has_barcode_user']) {
-        $barcodeUserParts[] = "
-            NULLIF(
-                CAST(
-                    T.U_BarcodeUser
-                    AS NVARCHAR(120)
-                ),
-                ''
-            )
-        ";
+    if ($hasBarcodeUser) {
+        $scannedByParts[] = "NULLIF(CAST(T.U_BarcodeUser AS NVARCHAR(120)), '')";
     }
 
-    if ($schema['has_user_sign']) {
-        if ($schema['has_ousr']) {
-            $userNameParts = [];
+    if ($hasUserSign) {
+        $hasOusr = scanplus_has_table($erp, 'OUSR') &&
+            scanplus_has_column($erp, 'OUSR', 'USERID');
 
-            if ($schema['has_user_code']) {
-                $userNameParts[] = "
-                    NULLIF(
-                        CAST(
-                            U1.USER_CODE
-                            AS NVARCHAR(120)
-                        ),
-                        ''
-                    )
-                ";
+        if ($hasOusr) {
+            $nameParts = [];
+
+            if (scanplus_has_column($erp, 'OUSR', 'USER_CODE')) {
+                $nameParts[] = "NULLIF(CAST(U1.USER_CODE AS NVARCHAR(120)), '')";
             }
 
-            if ($schema['has_user_name']) {
-                $userNameParts[] = "
-                    NULLIF(
-                        CAST(
-                            U1.U_NAME
-                            AS NVARCHAR(120)
-                        ),
-                        ''
-                    )
-                ";
+            if (scanplus_has_column($erp, 'OUSR', 'U_NAME')) {
+                $nameParts[] = "NULLIF(CAST(U1.U_NAME AS NVARCHAR(120)), '')";
             }
 
-            $userNameParts[] = "
-                CAST(
-                    T.UserSign
-                    AS NVARCHAR(120)
-                )
-            ";
-
-            $userJoin = "
-                LEFT JOIN OUSR U1
-                    ON U1.USERID = T.UserSign
-            ";
-
-            $barcodeUserParts[] =
-                'COALESCE(' .
-                implode(', ', $userNameParts) .
-                ')';
+            $nameParts[] = 'CAST(T.UserSign AS NVARCHAR(120))';
+            $userJoin = 'LEFT JOIN OUSR U1 ON U1.USERID = T.UserSign';
+            $scannedByParts[] = 'COALESCE(' . implode(', ', $nameParts) . ')';
         } else {
-            $barcodeUserParts[] = "
-                CAST(
-                    T.UserSign
-                    AS NVARCHAR(120)
-                )
-            ";
+            $scannedByParts[] = 'CAST(T.UserSign AS NVARCHAR(120))';
         }
     }
 
-    $barcodeUserExpression =
-        !empty($barcodeUserParts)
-            ? 'COALESCE(' .
-                implode(', ', $barcodeUserParts) .
-                ')'
-            : "CAST('' AS NVARCHAR(120))";
+    $scannedByExpr = !empty($scannedByParts)
+        ? 'COALESCE(' . implode(', ', $scannedByParts) . ')'
+        : "CAST('' AS NVARCHAR(120))";
 
-    /*
-     * Batch source.
-     */
-    if ($schema['has_batch_join']) {
-        $batchSelect = "
-            COALESCE(
-                B.BatchNum,
-                ''
-            ) AS ReceivedLotNo,
-
-            CASE
-                WHEN B.BatchNum IS NULL
-                    THEN ABS(
-                        ISNULL(
-                            L.Quantity,
-                            0
-                        )
-                    )
-
-                ELSE ABS(
-                    ISNULL(
-                        B.Quantity,
-                        0
-                    )
-                )
-            END AS ReceivedQty
-        ";
-
-        $batchJoin = "
-            LEFT JOIN IBT1 B
-                ON B.BaseType = 67
-               AND B.BaseEntry = T.DocEntry
-               AND B.BaseLinNum = L.LineNum
-               AND B.ItemCode = L.ItemCode
-               AND B.WhsCode = L.WhsCode
-        ";
-    } elseif ($schema['has_inventory_log_batch_join']) {
-        $batchSelect = "
-            COALESCE(
-                BT.DistNumber,
-                ''
-            ) AS ReceivedLotNo,
-
-            CASE
-                WHEN BT.DistNumber IS NULL
-                    THEN ABS(
-                        ISNULL(
-                            L.Quantity,
-                            0
-                        )
-                    )
-
-                ELSE ABS(
-                    ISNULL(
-                        BL.Quantity,
-                        0
-                    )
-                )
-            END AS ReceivedQty
-        ";
-
-        $batchJoin = "
-            LEFT JOIN OITL IL
-                ON IL.DocType = 67
-               AND IL.DocEntry = T.DocEntry
-               AND IL.DocLine = L.LineNum
-               AND IL.LocCode = L.WhsCode
-
-            LEFT JOIN ITL1 BL
-                ON BL.LogEntry = IL.LogEntry
-               AND BL.ItemCode = L.ItemCode
-
-            LEFT JOIN OBTN BT
-                ON BT.ItemCode = BL.ItemCode
-               AND BT.SysNumber = BL.SysNumber
-        ";
+    if ($hasBatchJoin) {
+        $lotSelect = "COALESCE(B.BatchNum, '') AS ReceivedLotNo,
+            CASE WHEN T.DocEntry IS NULL THEN 0
+                 WHEN B.BatchNum IS NULL THEN ABS(ISNULL(L.Quantity, 0))
+                 ELSE ABS(ISNULL(B.Quantity, 0))
+            END AS ReceivedQty";
+        $lotJoin = "LEFT JOIN IBT1 B
+           ON B.BaseType = 67
+          AND B.BaseEntry = T.DocEntry
+          AND B.BaseLinNum = L.LineNum
+          AND B.ItemCode = L.ItemCode";
+    } elseif ($hasInventoryLogBatchJoin) {
+        $lotSelect = "COALESCE(BT.DistNumber, '') AS ReceivedLotNo,
+            CASE WHEN T.DocEntry IS NULL THEN 0
+                 WHEN BT.DistNumber IS NULL THEN ABS(ISNULL(L.Quantity, 0))
+                 ELSE ABS(ISNULL(BL.Quantity, 0))
+            END AS ReceivedQty";
+        $lotJoin = "LEFT JOIN OITL IL
+           ON IL.DocType = 67
+          AND IL.DocEntry = T.DocEntry
+          AND IL.DocLine = L.LineNum
+        LEFT JOIN ITL1 BL ON BL.LogEntry = IL.LogEntry AND BL.ItemCode = L.ItemCode
+        LEFT JOIN OBTN BT ON BT.ItemCode = BL.ItemCode AND BT.SysNumber = BL.SysNumber";
     } else {
-        $batchSelect = "
-            CAST(
-                ''
-                AS NVARCHAR(80)
-            ) AS ReceivedLotNo,
-
-            ABS(
-                ISNULL(
-                    L.Quantity,
-                    0
-                )
-            ) AS ReceivedQty
-        ";
-
-        $batchJoin = '';
+        $lotSelect = "CAST('' AS NVARCHAR(80)) AS ReceivedLotNo, L.Quantity AS ReceivedQty";
+        $lotJoin = '';
     }
 
-    $canceledCondition =
-        $schema['has_canceled']
-            ? "
-                AND ISNULL(
-                    T.CANCELED,
-                    'N'
-                ) = 'N'
-            "
-            : '';
+    $entryValues = array_keys($docEntries);
+    $placeholders = implode(',', array_fill(0, count($entryValues), '?'));
+    $where = [
+        "R.DocEntry IN ({$placeholders})"
+    ];
+    $params = $entryValues;
+    $transferJoinCanceledSql = $hasCanceled ? " AND ISNULL(T.CANCELED, 'N') = 'N'" : '';
 
-    $sapRows = [];
+    $rows = fetch_all(
+        $erp,
+        "SELECT
+            R.DocEntry AS ITRDocEntry,
+            R.LineNum AS ITRLineNum,
+            R.ItemCode,
+            T.DocNum AS ITNumber,
+            {$scanDateExpr} AS ScanDate,
+            {$scanTimeExpr} AS ScanTime,
+            {$scannedByExpr} AS BarcodeUser,
+            {$lineStatusExpr} AS ITRLineStatus,
+            {$openQtyExpr} AS ITROpenQty,
+            {$lotSelect}
+         FROM WTQ1 R
+         LEFT JOIN WTR1 L
+            ON L.BaseType = 1250000001
+           AND L.BaseEntry = R.DocEntry
+           AND L.BaseLine = R.LineNum
+           AND L.ItemCode = R.ItemCode
+         LEFT JOIN OWTR T
+            ON T.DocEntry = L.DocEntry
+           {$transferJoinCanceledSql}
+         {$lotJoin}
+         {$userJoin}
+         WHERE " . implode(' AND ', $where) . "
+         ORDER BY R.LineNum ASC, T.DocEntry DESC, L.LineNum DESC",
+        $params
+    );
 
-    /*
-     * Track only references whose SAP query actually completed. A query error
-     * must never be interpreted as a confirmed NOT RECEIVED result.
-     */
-    $checkedBaseKeys = [];
+    $result = [];
 
-    /*
-     * Only five exact references per SAP query.
-     */
-    foreach (
-        array_chunk(
-            $queryRefs,
-            5
-        ) as $queryChunk
-    ) {
-        $valueRows = [];
-        $params = [];
+    foreach ($rows as $row) {
+        $key = scanplus_key($row['ITRDocEntry'] ?? 0, $row['ITRLineNum'] ?? null, $row['ItemCode'] ?? '');
 
-        foreach ($queryChunk as $queryRef) {
-            $valueRows[] = '(?, ?, ?)';
-
-            $params[] = $queryRef['doc_entry'];
-            $params[] = $queryRef['line_num'];
-            $params[] = $queryRef['item_code'];
-        }
-
-        $valuesSql = implode(', ', $valueRows);
-
-        $chunkRows = fetch_all(
-            $erp,
-            "
-            WITH RequestedReferences AS
-            (
-                SELECT
-                    CAST(
-                        V.DocEntry
-                        AS INT
-                    ) AS DocEntry,
-
-                    CAST(
-                        V.LineNum
-                        AS INT
-                    ) AS LineNum,
-
-                    CAST(
-                        V.ItemCode
-                        AS NVARCHAR(50)
-                    ) AS ItemCode
-
-                FROM
-                (
-                    VALUES {$valuesSql}
-                ) V
-                (
-                    DocEntry,
-                    LineNum,
-                    ItemCode
-                )
-            )
-            SELECT
-                X.DocEntry AS ITRDocEntry,
-                X.LineNum AS ITRLineNum,
-                X.ItemCode,
-
-                T.DocEntry AS ITDocEntry,
-                T.DocNum AS ITNumber,
-                L.LineNum AS ITLineNum,
-
-                {$scanDateExpression}
-                    AS ScanDate,
-
-                {$scanTimeExpression}
-                    AS ScanTime,
-
-                {$barcodeUserExpression}
-                    AS BarcodeUser,
-
-                {$destinationWarehouseExpression}
-                    AS DestinationWarehouse,
-
-                {$lineStatusExpression}
-                    AS ITRLineStatus,
-
-                {$openQtyExpression}
-                    AS ITROpenQty,
-
-                {$batchSelect}
-
-            FROM RequestedReferences X
-
-            INNER JOIN WTR1 L
-                ON L.BaseType = 1250000001
-               AND L.BaseEntry = X.DocEntry
-               AND L.BaseLine = X.LineNum
-               AND L.ItemCode = X.ItemCode
-
-            INNER JOIN OWTR T
-                ON T.DocEntry = L.DocEntry
-
-                {$canceledCondition}
-
-            INNER JOIN WTQ1 R
-                ON R.DocEntry = X.DocEntry
-               AND R.LineNum = X.LineNum
-               AND R.ItemCode = X.ItemCode
-
-            {$batchJoin}
-
-            {$userJoin}
-
-            OPTION
-            (
-                MAXDOP 1,
-                RECOMPILE
-            );
-            ",
-            $params
-        );
-
-        if (!is_array($chunkRows)) {
-            error_log(
-                'ScanPlus SAP validation query failed; ' .
-                'cache status was left unchanged for this chunk.'
-            );
-
+        if ($key === '') {
             continue;
         }
-
-        /*
-         * An empty array is still a successful validation: SAP returned no
-         * matching transfer. Only now is it safe to generate NOT RECEIVED.
-         */
-        foreach ($queryChunk as $checkedRef) {
-            $checkedKey = scanplus_key(
-                $checkedRef['doc_entry'] ?? 0,
-                $checkedRef['line_num'] ?? null,
-                $checkedRef['item_code'] ?? ''
-            );
-
-            if ($checkedKey !== '') {
-                $checkedBaseKeys[$checkedKey] = true;
-            }
-        }
-
-        foreach ($chunkRows as $chunkRow) {
-            $sapRows[] = $chunkRow;
-        }
-    }
-
-    /*
-     * Deduplicate SAP result rows by:
-     *
-     * ITR line + IT document + IT line + lot.
-     */
-    $buckets = [];
-
-    foreach ($sapRows as $sapRow) {
-        $baseKey = scanplus_key(
-            $sapRow['ITRDocEntry'] ?? 0,
-            $sapRow['ITRLineNum'] ?? null,
-            $sapRow['ItemCode'] ?? ''
-        );
-
-        if ($baseKey === '') {
-            continue;
-        }
-
-        $itDocEntry = (int)(
-            $sapRow['ITDocEntry'] ?? 0
-        );
-
-        if ($itDocEntry <= 0) {
-            continue;
-        }
-
-        $itLineNum = (int)(
-            $sapRow['ITLineNum'] ?? 0
-        );
-
-        $receivedQty = abs(
-            (float)($sapRow['ReceivedQty'] ?? 0)
-        );
-
-        if ($receivedQty <= 0) {
-            continue;
-        }
-
-        $receivedLotNo = trim(
-            (string)(
-                $sapRow['ReceivedLotNo'] ?? ''
-            )
-        );
-
-        $normalizedLot = scanplus_normalize_lot(
-            $receivedLotNo
-        );
-
-        $bucketKey =
-            $baseKey .
-            '|' .
-            $itDocEntry .
-            '|' .
-            $itLineNum .
-            '|' .
-            $normalizedLot;
-
-        $scanAt = scanplus_datetime_text(
-            $sapRow['ScanDate'] ?? '',
-            $sapRow['ScanTime'] ?? null
-        );
-
-        $lineStatus = strtoupper(
-            trim(
-                (string)(
-                    $sapRow['ITRLineStatus'] ?? ''
-                )
-            )
-        );
-
-        $openQty =
-            $sapRow['ITROpenQty'] ?? null;
-
-        $isClosed =
-            $lineStatus === 'C' ||
-            (
-                $openQty !== null &&
-                is_numeric($openQty) &&
-                (float)$openQty <= 0
-            );
-
-        if (!isset($buckets[$bucketKey])) {
-            $buckets[$bucketKey] = [
-                'base_key' => $baseKey,
-                'received_lot_no' => $receivedLotNo,
-                'received_qty' => $receivedQty,
-                'barcode_user' => trim(
-                    (string)(
-                        $sapRow['BarcodeUser'] ?? ''
-                    )
-                ),
-                'scan_area' => trim(
-                    (string)(
-                        $sapRow['DestinationWarehouse'] ??
-                        ''
-                    )
-                ),
-                'received_at' => $scanAt,
-                'is_closed' => $isClosed,
-                'it_number' => trim(
-                    (string)(
-                        $sapRow['ITNumber'] ?? ''
-                    )
-                )
-            ];
-
-            continue;
-        }
-
-        /*
-         * Use the largest value for duplicate physical rows.
-         * Do not repeatedly add the same IBT1 quantity.
-         */
-        $buckets[$bucketKey]['received_qty'] = max(
-            (float)$buckets[$bucketKey]['received_qty'],
-            $receivedQty
-        );
-
-        $buckets[$bucketKey]['is_closed'] =
-            !empty($buckets[$bucketKey]['is_closed']) ||
-            $isClosed;
-
-        $existingScanAt = trim(
-            (string)(
-                $buckets[$bucketKey]['received_at'] ??
-                ''
-            )
-        );
-
-        if (
-            $scanAt !== '' &&
-            (
-                $existingScanAt === '' ||
-                strcmp($scanAt, $existingScanAt) > 0
-            )
-        ) {
-            $buckets[$bucketKey]['received_at'] =
-                $scanAt;
-
-            $buckets[$bucketKey]['barcode_user'] =
-                trim(
-                    (string)(
-                        $sapRow['BarcodeUser'] ?? ''
-                    )
-                );
-
-            $buckets[$bucketKey]['scan_area'] =
-                trim(
-                    (string)(
-                        $sapRow['DestinationWarehouse'] ??
-                        ''
-                    )
-                );
-        }
-    }
-
-    /*
-     * Build base-key and lot-key results.
-     */
-    $results = [];
-
-    $newResult = static function () {
-        return [
-            'barcode_user' => '',
-            'scan_area' => '',
-            'received_at' => '',
-            'received_lot_no' => '',
-            'received_qty' => 0.0,
-            'scan_status' => 'SAP_RECEIVED',
-            'validation_complete' => true,
-            'received_lots' => [],
-            'it_numbers' => [],
-            '_closed' => false
-        ];
-    };
-
-    $addBucket = static function (
-        array &$result,
-        array $bucket
-    ) {
-        $result['received_qty'] +=
-            (float)($bucket['received_qty'] ?? 0);
-
-        $lotNo = trim(
-            (string)(
-                $bucket['received_lot_no'] ?? ''
-            )
-        );
-
-        if ($lotNo !== '') {
-            $result['received_lots'][$lotNo] = true;
-        }
-
-        $itNumber = trim(
-            (string)(
-                $bucket['it_number'] ?? ''
-            )
-        );
-
-        if ($itNumber !== '') {
-            $result['it_numbers'][$itNumber] = true;
-        }
-
-        $result['_closed'] =
-            !empty($result['_closed']) ||
-            !empty($bucket['is_closed']);
-
-        $bucketScanAt = trim(
-            (string)(
-                $bucket['received_at'] ?? ''
-            )
-        );
-
-        $resultScanAt = trim(
-            (string)(
-                $result['received_at'] ?? ''
-            )
-        );
-
-        if (
-            $bucketScanAt !== '' &&
-            (
-                $resultScanAt === '' ||
-                strcmp(
-                    $bucketScanAt,
-                    $resultScanAt
-                ) > 0
-            )
-        ) {
-            $result['received_at'] =
-                $bucketScanAt;
-
-            $result['barcode_user'] =
-                trim(
-                    (string)(
-                        $bucket['barcode_user'] ?? ''
-                    )
-                );
-
-            $result['scan_area'] =
-                trim(
-                    (string)(
-                        $bucket['scan_area'] ?? ''
-                    )
-                );
-        }
-    };
-
-    foreach ($buckets as $bucket) {
-        $baseKey = trim(
-            (string)($bucket['base_key'] ?? '')
-        );
-
-        if ($baseKey === '') {
-            continue;
-        }
-
-        if (!isset($results[$baseKey])) {
-            $results[$baseKey] = $newResult();
-        }
-
-        $addBucket(
-            $results[$baseKey],
-            $bucket
-        );
-
-        $lotNo = trim(
-            (string)(
-                $bucket['received_lot_no'] ?? ''
-            )
-        );
-
-        if ($lotNo === '') {
-            continue;
-        }
-
-        $lotKey =
-            $baseKey .
-            '|' .
-            scanplus_normalize_lot($lotNo);
-
-        if (!isset($results[$lotKey])) {
-            $results[$lotKey] = $newResult();
-        }
-
-        $addBucket(
-            $results[$lotKey],
-            $bucket
-        );
-    }
-
-    foreach ($results as &$result) {
-        $result['received_lot_no'] =
-            implode(
-                ', ',
-                array_keys(
-                    $result['received_lots']
-                )
-            );
-
-        $result['it_numbers'] =
-            implode(
-                ', ',
-                array_keys(
-                    $result['it_numbers']
-                )
-            );
-
-        $result['scan_status'] =
-            !empty($result['_closed'])
-                ? 'CLOSED'
-                : 'SAP_RECEIVED';
-
-        unset(
-            $result['received_lots'],
-            $result['_closed']
-        );
-    }
-
-    unset($result);
-
-    /*
-     * Add explicit NOT RECEIVED results.
-     */
-    foreach ($requestedRefs as $requestedRef) {
-        $baseKey = scanplus_key(
-            $requestedRef['doc_entry'],
-            $requestedRef['line_num'],
-            $requestedRef['item_code']
-        );
 
         $lotKey = scanplus_lot_key(
-            $requestedRef['doc_entry'],
-            $requestedRef['line_num'],
-            $requestedRef['item_code'],
-            $requestedRef['lot_no']
+            $row['ITRDocEntry'] ?? 0,
+            $row['ITRLineNum'] ?? null,
+            $row['ItemCode'] ?? '',
+            $row['ReceivedLotNo'] ?? ''
         );
 
-        /*
-         * If this base key belonged to a failed query chunk, leave the existing
-         * cache value untouched. Absence of data is not a negative validation.
-         */
-        if (
-            $baseKey === '' ||
-            !isset($checkedBaseKeys[$baseKey])
-        ) {
-            continue;
+        $scanAt = scanplus_datetime_text($row['ScanDate'] ?? '', $row['ScanTime'] ?? null);
+        $lineStatus = strtoupper(trim((string)($row['ITRLineStatus'] ?? '')));
+        $openQty = $row['ITROpenQty'];
+        $receivedLotNo = trim((string)($row['ReceivedLotNo'] ?? ''));
+        $receivedQty = (float)($row['ReceivedQty'] ?? 0);
+        $isClosed = $lineStatus === 'C' || ($openQty !== null && (float)$openQty <= 0);
+        $status = $receivedQty <= 0
+            ? 'NOT RECEIVED IN SAP'
+            : ($isClosed ? 'CLOSED' : 'SAP_RECEIVED');
+
+        if (!isset($result[$key])) {
+            $result[$key] = [
+                'barcode_user' => trim((string)($row['BarcodeUser'] ?? '')),
+                'received_at' => $scanAt,
+                'received_lot_no' => '',
+                'received_qty' => 0.0,
+                'scan_status' => $status,
+                'received_lots' => [],
+                'it_numbers' => []
+            ];
         }
 
-        $targetKey =
-            $lotKey !== ''
-                ? $lotKey
-                : $baseKey;
-
-        /*
-         * SAP found the transfer line but returned no batch/lot details. In
-         * that case the line is received, but the requested lot cannot be
-         * validated safely. Do not create a false lot-level NOT RECEIVED row.
-         */
-        if (
-            $lotKey !== '' &&
-            isset($results[$baseKey]) &&
-            trim(
-                (string)(
-                    $results[$baseKey]['received_lot_no'] ??
-                    ''
-                )
-            ) === ''
-        ) {
-            continue;
+        $result[$key]['received_qty'] += $receivedQty;
+        if ($receivedLotNo !== '') {
+            $result[$key]['received_lots'][$receivedLotNo] = true;
         }
 
-        $notReceived = [
-            'barcode_user' => '',
-            'scan_area' => '',
-            'received_at' => '',
-            'received_lot_no' => '',
-            'received_qty' => 0,
-            'scan_status' => 'NOT RECEIVED IN SAP',
-            'it_numbers' => '',
-            'validation_complete' => true
-        ];
+        if ($lotKey !== '') {
+            if (!isset($result[$lotKey])) {
+                $result[$lotKey] = [
+                    'barcode_user' => trim((string)($row['BarcodeUser'] ?? '')),
+                    'received_at' => $scanAt,
+                    'received_lot_no' => $receivedLotNo,
+                    'received_qty' => 0.0,
+                    'scan_status' => $status,
+                    'received_lots' => [],
+                    'it_numbers' => []
+                ];
+            }
 
-        if (
-            $targetKey !== '' &&
-            !isset($results[$targetKey])
-        ) {
-            $results[$targetKey] = $notReceived;
+            $result[$lotKey]['received_qty'] += $receivedQty;
+            if ($receivedLotNo !== '') {
+                $result[$lotKey]['received_lots'][$receivedLotNo] = true;
+            }
+
+            if ($scanAt !== '' && strcmp($scanAt, (string)$result[$lotKey]['received_at']) > 0) {
+                $result[$lotKey]['barcode_user'] = trim((string)($row['BarcodeUser'] ?? ''));
+                $result[$lotKey]['received_at'] = $scanAt;
+            }
+
+            if ($status === 'CLOSED') {
+                $result[$lotKey]['scan_status'] = 'CLOSED';
+            }
+
+            $itNumber = trim((string)($row['ITNumber'] ?? ''));
+
+            if ($itNumber !== '') {
+                $result[$lotKey]['it_numbers'][$itNumber] = true;
+            }
         }
 
-        if (
-            $baseKey !== '' &&
-            !isset($results[$baseKey])
-        ) {
-            $results[$baseKey] = $notReceived;
+        if ($scanAt !== '' && strcmp($scanAt, (string)$result[$key]['received_at']) > 0) {
+            $result[$key]['barcode_user'] = trim((string)($row['BarcodeUser'] ?? ''));
+            $result[$key]['received_at'] = $scanAt;
+        }
+
+        if ($status === 'CLOSED') {
+            $result[$key]['scan_status'] = 'CLOSED';
+        }
+
+        $itNumber = trim((string)($row['ITNumber'] ?? ''));
+
+        if ($itNumber !== '') {
+            $result[$key]['it_numbers'][$itNumber] = true;
         }
     }
 
-    return $results;
+    foreach ($result as &$row) {
+        if (!empty($row['received_lots'])) {
+            $row['received_lot_no'] = implode(', ', array_keys($row['received_lots']));
+        }
+
+        $row['it_numbers'] = implode(', ', array_keys($row['it_numbers']));
+        unset($row['received_lots']);
+    }
+    unset($row);
+
+    return $result;
 }
