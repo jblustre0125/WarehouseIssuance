@@ -403,6 +403,7 @@ $traceApply = "
         SELECT
             CAST(NULL AS INT) AS TraceLineID,
             CAST(NULL AS DECIMAL(18, 3)) AS TraceIssuedQty,
+            CAST(NULL AS DECIMAL(18, 3)) AS LocalReceivedQty,
             CAST(NULL AS NVARCHAR(100)) AS LotNo,
             CAST(NULL AS NVARCHAR(100)) AS WarehouseLotNo,
             CAST(NULL AS NVARCHAR(120)) AS ReceivedByUsername,
@@ -455,6 +456,18 @@ if ($hasTraceTables) {
                     ''
                )"
             : "CAST(NULL AS NVARCHAR(100))";
+
+    $traceReceivedQtyExpression =
+        request_report_has_column(
+            $schema,
+            'RawmatTraceLines',
+            'ReceivedQty'
+        )
+            ? "TRY_CONVERT(
+                    DECIMAL(18, 3),
+                    TL0.ReceivedQty
+               )"
+            : "CAST(NULL AS DECIMAL(18, 3))";
 
     $traceReceivedByExpression =
         request_report_has_column(
@@ -520,6 +533,9 @@ if ($hasTraceTables) {
 
                 {$traceQuantityExpression}
                     AS TraceIssuedQty,
+
+                {$traceReceivedQtyExpression}
+                    AS LocalReceivedQty,
 
                 NULLIF(
                     LTRIM(RTRIM(TL0.LotNo)),
@@ -785,6 +801,15 @@ if ($hasIssuanceTransactions) {
                 ? 'IT0.IssuedAt'
                 : 'CAST(NULL AS DATETIME)';
 
+        /*
+         * Never attach an issuance transaction that happened before the
+         * current request was created. The same SAP ITR line can appear in
+         * older local transactions, so DocEntry/LineNum alone is not enough.
+         */
+        $transactionDateCondition = $txHasIssuedAt
+            ? 'AND IT0.IssuedAt >= B.RequestedAt'
+            : '';
+
         if ($txHasIssuedAt) {
             $transactionOrder[] = 'IT0.IssuedAt DESC';
         }
@@ -832,6 +857,8 @@ if ($hasIssuanceTransactions) {
                     (
                         {$transactionMatchSql}
                     )
+
+                    {$transactionDateCondition}
 
                 ORDER BY
                     {$transactionOrderSql}
@@ -962,26 +989,46 @@ if ($hasCache) {
         $cacheDateCondition = "
             AND
             (
-                C0.ReceivedAt >= R.RequestEventAt
+                (
+                    C0.ReceivedAt IS NOT NULL
+                    AND C0.ReceivedAt >= B.RequestedAt
+                    AND
+                    (
+                        ITX.IssuedAt IS NULL
+                        OR C0.ReceivedAt >= ITX.IssuedAt
+                    )
+                )
 
                 OR
                 (
                     C0.ReceivedAt IS NULL
-                    AND C0.LastSyncedAt >= R.RequestEventAt
+                    AND C0.LastSyncedAt >= B.RequestedAt
+                    AND
+                    (
+                        ITX.IssuedAt IS NULL
+                        OR C0.LastSyncedAt >= ITX.IssuedAt
+                    )
                 )
             )
         ";
     } elseif ($cacheHasReceivedAt) {
         $cacheDateCondition = "
+            AND C0.ReceivedAt IS NOT NULL
+            AND C0.ReceivedAt >= B.RequestedAt
             AND
             (
-                C0.ReceivedAt IS NULL
-                OR C0.ReceivedAt >= R.RequestEventAt
+                ITX.IssuedAt IS NULL
+                OR C0.ReceivedAt >= ITX.IssuedAt
             )
         ";
     } elseif ($cacheHasLastSyncedAt) {
         $cacheDateCondition = "
-            AND C0.LastSyncedAt >= R.RequestEventAt
+            AND C0.LastSyncedAt >= B.RequestedAt
+            AND
+            (
+                ITX.IssuedAt IS NULL
+                OR C0.LastSyncedAt >= ITX.IssuedAt
+            )
         ";
     }
 
@@ -1046,43 +1093,15 @@ if ($hasCache) {
 
                 AND
                 (
+                    /* No issued lot: allow the base ITR-line cache row. */
                     NULLIF(
                         LTRIM(RTRIM(R.LocalLotNo)),
                         ''
                     ) IS NULL
 
-                    OR
-                    NULLIF(
-                        LTRIM(RTRIM(C0.LotNo)),
-                        ''
-                    ) IS NULL
-
-                    OR
-                    LTRIM(RTRIM(C0.LotNo))
-                        = LTRIM(RTRIM(R.LocalLotNo))
-
+                    /* Exact/normalized requested-lot match. */
                     OR
                     (
-                        TRY_CONVERT(
-                            BIGINT,
-                            C0.LotNo
-                        ) IS NOT NULL
-
-                        AND TRY_CONVERT(
-                            BIGINT,
-                            C0.LotNo
-                        ) = TRY_CONVERT(
-                            BIGINT,
-                            R.LocalLotNo
-                        )
-                    )
-                )
-
-                {$cacheDateCondition}
-
-            ORDER BY
-                CASE
-                    WHEN
                         NULLIF(
                             LTRIM(RTRIM(C0.LotNo)),
                             ''
@@ -1095,29 +1114,89 @@ if ($hasCache) {
 
                             OR
                             (
-                                TRY_CONVERT(
-                                    BIGINT,
-                                    C0.LotNo
-                                ) IS NOT NULL
+                                TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
+                                AND TRY_CONVERT(BIGINT, R.LocalLotNo) IS NOT NULL
+                                AND TRY_CONVERT(BIGINT, C0.LotNo)
+                                    = TRY_CONVERT(BIGINT, R.LocalLotNo)
+                            )
+                        )
+                    )
 
-                                AND TRY_CONVERT(
-                                    BIGINT,
-                                    C0.LotNo
-                                ) = TRY_CONVERT(
-                                    BIGINT,
-                                    R.LocalLotNo
-                                )
+                    /* Some historical cache rows store the actual SAP lot
+                       in ReceivedLotNo instead of LotNo. */
+                    OR
+                    (
+                        NULLIF(
+                            LTRIM(RTRIM(C0.ReceivedLotNo)),
+                            ''
+                        ) IS NOT NULL
+
+                        AND
+                        (
+                            LTRIM(RTRIM(C0.ReceivedLotNo))
+                                = LTRIM(RTRIM(R.LocalLotNo))
+
+                            OR
+                            (
+                                TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
+                                AND TRY_CONVERT(BIGINT, R.LocalLotNo) IS NOT NULL
+                                AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo)
+                                    = TRY_CONVERT(BIGINT, R.LocalLotNo)
+                            )
+                        )
+                    )
+
+                    /* Keep the blank-lot aggregate only as the last fallback. */
+                    OR
+                    NULLIF(
+                        LTRIM(RTRIM(C0.LotNo)),
+                        ''
+                    ) IS NULL
+                )
+
+                {$cacheDateCondition}
+
+            ORDER BY
+                CASE
+                    /* First choice: the cache request lot itself matches. */
+                    WHEN
+                        NULLIF(LTRIM(RTRIM(C0.LotNo)), '') IS NOT NULL
+                        AND
+                        (
+                            LTRIM(RTRIM(C0.LotNo))
+                                = LTRIM(RTRIM(R.LocalLotNo))
+                            OR
+                            (
+                                TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
+                                AND TRY_CONVERT(BIGINT, R.LocalLotNo) IS NOT NULL
+                                AND TRY_CONVERT(BIGINT, C0.LotNo)
+                                    = TRY_CONVERT(BIGINT, R.LocalLotNo)
                             )
                         )
                         THEN 0
 
-                    WHEN NULLIF(
-                        LTRIM(RTRIM(C0.LotNo)),
-                        ''
-                    ) IS NULL
+                    /* Second choice: SAP's returned lot matches. */
+                    WHEN
+                        NULLIF(LTRIM(RTRIM(C0.ReceivedLotNo)), '') IS NOT NULL
+                        AND
+                        (
+                            LTRIM(RTRIM(C0.ReceivedLotNo))
+                                = LTRIM(RTRIM(R.LocalLotNo))
+                            OR
+                            (
+                                TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
+                                AND TRY_CONVERT(BIGINT, R.LocalLotNo) IS NOT NULL
+                                AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo)
+                                    = TRY_CONVERT(BIGINT, R.LocalLotNo)
+                            )
+                        )
                         THEN 1
 
-                    ELSE 2
+                    /* Last safe fallback: a base-key/blank-lot cache row. */
+                    WHEN NULLIF(LTRIM(RTRIM(C0.LotNo)), '') IS NULL
+                        THEN 2
+
+                    ELSE 3
                 END,
 
                 CASE
@@ -1244,23 +1323,23 @@ SELECT
         Q.CacheReceivedQty
     ) AS IssuedQty,
 
-    Q.CacheReceivedQty AS SAPReceivedQty,
+    E.EffectiveReceivedQty AS SAPReceivedQty,
 
     CASE
         WHEN
             COALESCE(
                 R.BaseIssuedQty,
-                Q.CacheReceivedQty
+                E.EffectiveReceivedQty
             ) IS NULL
 
-            OR Q.CacheReceivedQty IS NULL
+            OR E.EffectiveReceivedQty IS NULL
             THEN NULL
 
         ELSE
             COALESCE(
                 R.BaseIssuedQty,
-                Q.CacheReceivedQty
-            ) - Q.CacheReceivedQty
+                E.EffectiveReceivedQty
+            ) - E.EffectiveReceivedQty
     END AS QtyVariance,
 
     COALESCE(
@@ -1282,10 +1361,22 @@ SELECT
 
     B.RequestedByUsername,
     B.RequestedAt,
+    ITX.IssuedAt AS IssuedAt,
 
     CASE
         WHEN V.LocalReceiveValid = 1
-            THEN TL.ReceivedByUsername
+            THEN COALESCE(
+                NULLIF(
+                    LTRIM(RTRIM(TL.ReceivedByUsername)),
+                    ''
+                ),
+                CASE
+                    WHEN Q.CacheReceivedQty > 0
+                        THEN C.BarcodeUser
+                    ELSE NULL
+                END,
+                ''
+            )
 
         WHEN Q.CacheReceivedQty > 0
             THEN C.BarcodeUser
@@ -1300,70 +1391,64 @@ SELECT
     END AS ScannedArea,
 
     CASE
-        WHEN V.LocalReceiveValid = 1
+        WHEN
+            V.LocalReceiveValid = 1
+            AND TL.LocalReceivedAt IS NOT NULL
             THEN TL.LocalReceivedAt
 
-        WHEN Q.CacheReceivedQty > 0
+        WHEN
+            Q.CacheReceivedQty > 0
+            AND C.ReceivedAt IS NOT NULL
+            AND C.ReceivedAt >= B.RequestedAt
+            AND
+            (
+                ITX.IssuedAt IS NULL
+                OR C.ReceivedAt >= ITX.IssuedAt
+            )
             THEN C.ReceivedAt
 
         ELSE NULL
     END AS ScannedAt,
 
     CASE
-        WHEN
-            V.LocalReceiveValid = 1
-
-            AND NULLIF(
-                LTRIM(RTRIM(TL.VerificationStatus)),
-                ''
-            ) IS NOT NULL
-            THEN TL.VerificationStatus
+        /* Same priority used by the issuer report: local receiver first. */
+        WHEN V.LocalReceiveValid = 1
+            THEN COALESCE(
+                NULLIF(
+                    LTRIM(RTRIM(TL.VerificationStatus)),
+                    ''
+                ),
+                'RECEIVED'
+            )
 
         WHEN Q.CacheReceivedQty > 0
             THEN
                 CASE
-                    WHEN UPPER(
-                        LTRIM(
-                            RTRIM(
-                                ISNULL(C.ScanStatus, '')
-                            )
-                        )
-                    ) IN
+                    WHEN UPPER(LTRIM(RTRIM(ISNULL(C.ScanStatus, '')))) IN
                     (
-                        'RECEIVED',
                         'CLOSED',
                         'COMPLETED',
-                        'MATCHED',
-                        'SAP PARTIAL',
-                        'SAP_RECEIVED'
+                        'MATCHED'
                     )
-                    THEN
-                        CASE
-                            WHEN UPPER(
-                                LTRIM(
-                                    RTRIM(
-                                        ISNULL(
-                                            C.ScanStatus,
-                                            ''
-                                        )
-                                    )
-                                )
-                            ) = 'SAP_RECEIVED'
-                                THEN 'SAP PARTIAL'
+                        THEN C.ScanStatus
 
-                            ELSE C.ScanStatus
-                        END
+                    WHEN
+                        COALESCE(
+                            R.BaseIssuedQty,
+                            TRY_CONVERT(DECIMAL(18, 3), B.RequestedQty)
+                        ) > 0
 
-                    ELSE 'SAP PARTIAL'
+                        AND Q.CacheReceivedQty < COALESCE(
+                            R.BaseIssuedQty,
+                            TRY_CONVERT(DECIMAL(18, 3), B.RequestedQty)
+                        )
+                        THEN 'SAP PARTIAL'
+
+                    ELSE 'SAP_RECEIVED'
                 END
 
-        WHEN UPPER(
-            LTRIM(
-                RTRIM(
-                    ISNULL(C.ScanStatus, '')
-                )
-            )
-        ) = 'NOT RECEIVED IN SAP'
+        WHEN UPPER(LTRIM(RTRIM(ISNULL(C.ScanStatus, ''))))
+                = 'NOT RECEIVED IN SAP'
             THEN 'NOT RECEIVED IN SAP'
 
         ELSE 'NOT CONFIRMED'
@@ -1480,9 +1565,43 @@ CROSS APPLY
     SELECT
         CASE
             WHEN
-                TL.LocalReceivedAt IS NOT NULL
+                /* Reject an old receiver timestamp from a previous issue. */
+                (
+                    TL.LocalReceivedAt IS NULL
+                    OR TL.LocalReceivedAt >= R.RequestEventAt
+                )
 
-                AND TL.LocalReceivedAt >= R.RequestEventAt
+                AND
+                (
+                    UPPER(
+                        LTRIM(
+                            RTRIM(
+                                ISNULL(TL.VerificationStatus, '')
+                            )
+                        )
+                    ) IN
+                    (
+                        'RECEIVED',
+                        'CLOSED',
+                        'COMPLETED',
+                        'MATCHED'
+                    )
+
+                    OR ISNULL(
+                        TRY_CONVERT(
+                            DECIMAL(18, 3),
+                            TL.LocalReceivedQty
+                        ),
+                        0
+                    ) > 0
+
+                    OR NULLIF(
+                        LTRIM(RTRIM(TL.ReceivedByUsername)),
+                        ''
+                    ) IS NOT NULL
+
+                    OR TL.LocalReceivedAt IS NOT NULL
+                )
                 THEN 1
             ELSE 0
         END AS LocalReceiveValid
@@ -1536,6 +1655,59 @@ CROSS APPLY
             )
         END AS CacheReceivedQty
 ) Q
+
+/* Match issuer report behavior: local receiver quantity wins; SAP cache is fallback. */
+CROSS APPLY
+(
+    SELECT
+        CASE
+            WHEN
+                V.LocalReceiveValid = 1
+                AND ISNULL(
+                    TRY_CONVERT(
+                        DECIMAL(18, 3),
+                        TL.LocalReceivedQty
+                    ),
+                    0
+                ) > 0
+                THEN
+                    CASE
+                        WHEN
+                            COALESCE(
+                                R.BaseIssuedQty,
+                                TRY_CONVERT(
+                                    DECIMAL(18, 3),
+                                    B.RequestedQty
+                                )
+                            ) > 0
+
+                            AND TRY_CONVERT(
+                                DECIMAL(18, 3),
+                                TL.LocalReceivedQty
+                            ) > COALESCE(
+                                R.BaseIssuedQty,
+                                TRY_CONVERT(
+                                    DECIMAL(18, 3),
+                                    B.RequestedQty
+                                )
+                            )
+                            THEN COALESCE(
+                                R.BaseIssuedQty,
+                                TRY_CONVERT(
+                                    DECIMAL(18, 3),
+                                    B.RequestedQty
+                                )
+                            )
+
+                        ELSE TRY_CONVERT(
+                            DECIMAL(18, 3),
+                            TL.LocalReceivedQty
+                        )
+                    END
+
+            ELSE Q.CacheReceivedQty
+        END AS EffectiveReceivedQty
+) E
 
 ORDER BY B.RowNo
 ";
@@ -1591,15 +1763,16 @@ $columns = [
     'Part Name',
     'Requested Qty',
     'Issued Qty',
-    'Received Qty (SAP)',
+    'Received Qty',
     'Variance',
     'GRPO Lot No',
     'WH Lot No',
     'Requested By',
-    'Requested At',
-    'Scanned By',
-    'Scan Area',
-    'Scanned At',
+    'Request Created At',
+    'Issued At',
+    'Received By',
+    'Receive Area',
+    'Received At',
     'Receive Status',
     'Closed At',
     'Remarks'
@@ -1757,6 +1930,12 @@ if ($export) {
                     <td>
                         <?= request_report_excel_cell(
                             $row['RequestedAt'] ?? ''
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            $row['IssuedAt'] ?? ''
                         ) ?>
                     </td>
 
@@ -2196,8 +2375,8 @@ $showingTo = min(
                 </h4>
 
                 <div class="page-subtitle">
-                    Issue requests, local receiving records and
-                    scheduled SAP-cache information.
+                    Request timeline: created, issued and received.
+                    SAP receipts older than the current request are ignored.
                 </div>
 
             </div>
@@ -2340,6 +2519,12 @@ $showingTo = min(
 
                     </div>
                 </form>
+
+                <div class="small text-muted mb-2">
+                    <strong>Timeline:</strong> Request Created At &rarr; Issued At &rarr; Received At.
+                    <strong>PARTIAL</strong> under Issue Status means only part of the requested quantity was issued;
+                    it does not mean the issued quantity was only partially received.
+                </div>
 
                 <div class="report-table-wrap">
 
@@ -2500,6 +2685,14 @@ $showingTo = min(
                                         <?= h(
                                             request_report_cell(
                                                 $row['RequestedAt'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        <?= h(
+                                            request_report_cell(
+                                                $row['IssuedAt'] ?? ''
                                             )
                                         ) ?>
                                     </td>
