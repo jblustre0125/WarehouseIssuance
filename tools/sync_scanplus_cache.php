@@ -126,11 +126,36 @@ function sync_add_refs(array &$refs, array &$seen, array $rows): void
             'item_code' => $itemCode,
             'lot_no' => $lotNo,
         ];
+
+        /*
+         * Carry the local "ground truth" issuance fields when the source query
+         * provided them (WarehouseIssueRequestLines), so the sync can verify
+         * the SAP-derived cache data against what was actually issued locally
+         * instead of trusting the ERP query result blindly.
+         */
+        if (array_key_exists('IssuedQty', $row)) {
+            $ref['local_issued_qty'] = is_numeric($row['IssuedQty']) ? (float)$row['IssuedQty'] : null;
+        }
+        if (array_key_exists('WarehouseLotNo', $row)) {
+            $ref['local_warehouse_lot_no'] = trim((string)($row['WarehouseLotNo'] ?? ''));
+        }
+        if (array_key_exists('Status', $row)) {
+            $ref['local_status'] = trim((string)($row['Status'] ?? ''));
+        }
+
         $key = sync_ref_key($ref);
+
         if (isset($seen[$key])) {
+            $existingIndex = $seen[$key];
+            foreach (['local_issued_qty', 'local_warehouse_lot_no', 'local_status'] as $field) {
+                if (!array_key_exists($field, $refs[$existingIndex]) && array_key_exists($field, $ref)) {
+                    $refs[$existingIndex][$field] = $ref[$field];
+                }
+            }
             continue;
         }
-        $seen[$key] = true;
+
+        $seen[$key] = count($refs);
         $refs[] = $ref;
     }
 }
@@ -224,11 +249,31 @@ function sync_upsert_cache($conn, array $ref, ?array $scan): void
     );
 }
 
+function sync_scan_is_received(?array $scan): bool
+{
+    if (!is_array($scan)) {
+        return false;
+    }
+
+    if ((float)($scan['received_qty'] ?? 0) > 0) {
+        return true;
+    }
+
+    $status = strtoupper(trim((string)($scan['scan_status'] ?? '')));
+
+    return in_array($status, ['SAP_RECEIVED', 'SAP PARTIAL', 'RECEIVED', 'CLOSED', 'COMPLETED', 'MATCHED'], true);
+}
+
 $whp = null;
 $syncId = null;
 $updated = 0;
 $matched = 0;
 $missing = 0;
+$verifyChecked = 0;
+$verifyMissingInSap = 0;
+$verifyQtyMismatch = 0;
+$verifyLotMismatch = 0;
+$verifyIssues = [];
 
 try {
     if (!function_exists('scanplus_lookup_by_itr_lines')) {
@@ -273,20 +318,41 @@ try {
         && sync_has_table($whp, 'WarehouseIssueRequestHeader')
         && sync_has_table($whp, 'WarehouseIssueRequestLines')) {
         $remaining = $maxRefs - count($refs);
+
+        /*
+         * This is the local "ground truth" table for verification, so it is
+         * intentionally NOT restricted to the recent lookback window and NOT
+         * filtered by Status — every line (issued or still open) is eligible,
+         * capped only by $maxRefs for volume control. IssuedQty/WarehouseLotNo/
+         * Status are pulled along so the sync can cross-check the SAP cache
+         * result against what was actually issued locally.
+         */
+        $reqLineIssuedQtyExpr = sync_has_column($whp, 'WarehouseIssueRequestLines', 'IssuedQty')
+            ? 'L.IssuedQty'
+            : 'CAST(NULL AS DECIMAL(18,3))';
+        $reqLineWarehouseLotExpr = sync_has_column($whp, 'WarehouseIssueRequestLines', 'WarehouseLotNo')
+            ? 'L.WarehouseLotNo'
+            : 'CAST(NULL AS NVARCHAR(100))';
+        $reqLineStatusExpr = sync_has_column($whp, 'WarehouseIssueRequestLines', 'Status')
+            ? 'L.Status'
+            : 'CAST(NULL AS NVARCHAR(50))';
+
         sync_add_refs($refs, $seen, sync_fetch_all(
             $whp,
             "SELECT TOP {$remaining}
                 COALESCE(NULLIF(L.SAP_IT_DocEntry, 0), H.SAP_IT_DocEntry) AS SAP_IT_DocEntry,
                 L.SAP_IT_LineNum,
                 L.ItemCode,
-                L.LotNo
+                L.LotNo,
+                {$reqLineIssuedQtyExpr} AS IssuedQty,
+                {$reqLineWarehouseLotExpr} AS WarehouseLotNo,
+                {$reqLineStatusExpr} AS Status
              FROM dbo.WarehouseIssueRequestHeader H
              INNER JOIN dbo.WarehouseIssueRequestLines L ON L.RequestID = H.RequestID
-             WHERE H.RequestedAt >= DATEADD(DAY, -?, GETDATE())
-               AND ISNULL(COALESCE(NULLIF(L.SAP_IT_DocEntry, 0), H.SAP_IT_DocEntry), 0) > 0
+             WHERE ISNULL(COALESCE(NULLIF(L.SAP_IT_DocEntry, 0), H.SAP_IT_DocEntry), 0) > 0
                AND NULLIF(LTRIM(RTRIM(L.ItemCode)), '') IS NOT NULL
              ORDER BY H.RequestedAt DESC, L.RequestLineID DESC",
-            [$lookbackDays]
+            []
         ));
     }
 
@@ -346,13 +412,83 @@ try {
             } else {
                 $missing++;
             }
+
+            /*
+             * Verify against the local "ground truth": if this ref actually has
+             * an IssuedQty from WarehouseIssueRequestLines, cross-check the SAP
+             * cache result instead of trusting it blindly.
+             */
+            $localIssuedQty = $ref['local_issued_qty'] ?? null;
+
+            if ($localIssuedQty !== null && $localIssuedQty > 0) {
+                $verifyChecked++;
+
+                if (!sync_scan_is_received($scan)) {
+                    $verifyMissingInSap++;
+                    if (count($verifyIssues) < 200) {
+                        $verifyIssues[] = sprintf(
+                            'MISSING_IN_SAP doc=%d line=%s item=%s localIssuedQty=%.3f',
+                            $ref['doc_entry'],
+                            $ref['line_num'] ?? '-',
+                            $ref['item_code'],
+                            $localIssuedQty
+                        );
+                    }
+                } else {
+                    $scanQty = (float)($scan['received_qty'] ?? 0);
+                    if (abs($scanQty - $localIssuedQty) > 0.001) {
+                        $verifyQtyMismatch++;
+                        if (count($verifyIssues) < 200) {
+                            $verifyIssues[] = sprintf(
+                                'QTY_MISMATCH doc=%d line=%s item=%s localIssuedQty=%.3f sapReceivedQty=%.3f',
+                                $ref['doc_entry'],
+                                $ref['line_num'] ?? '-',
+                                $ref['item_code'],
+                                $localIssuedQty,
+                                $scanQty
+                            );
+                        }
+                    }
+
+                    $localLot = trim((string)($ref['local_warehouse_lot_no'] ?? '')) !== ''
+                        ? $ref['local_warehouse_lot_no']
+                        : ($ref['lot_no'] ?? '');
+                    $sapLot = (string)($scan['received_lot_no'] ?? '');
+
+                    if (trim((string)$localLot) !== ''
+                        && trim($sapLot) !== ''
+                        && sync_normalize_lot($localLot) !== sync_normalize_lot($sapLot)
+                    ) {
+                        $verifyLotMismatch++;
+                        if (count($verifyIssues) < 200) {
+                            $verifyIssues[] = sprintf(
+                                'LOT_MISMATCH doc=%d line=%s item=%s localLot=%s sapLot=%s',
+                                $ref['doc_entry'],
+                                $ref['line_num'] ?? '-',
+                                $ref['item_code'],
+                                $localLot,
+                                $sapLot
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         sync_log('Chunk ' . ($chunkIndex + 1) . ': rows=' . count($chunk)
             . ', lookup=' . round(microtime(true) - $started, 3) . ' sec');
     }
 
-    $message = "Completed. Updated={$updated}, matched={$matched}, not_received_or_unmatched={$missing}.";
+    sync_log("Verification against issued lines: checked={$verifyChecked}, missing_in_sap={$verifyMissingInSap}, "
+        . "qty_mismatch={$verifyQtyMismatch}, lot_mismatch={$verifyLotMismatch}.");
+
+    foreach ($verifyIssues as $verifyIssueLine) {
+        sync_log('  ' . $verifyIssueLine);
+    }
+
+    $message = "Completed. Updated={$updated}, matched={$matched}, not_received_or_unmatched={$missing}. "
+        . "Verified={$verifyChecked}, missing_in_sap={$verifyMissingInSap}, qty_mismatch={$verifyQtyMismatch}, "
+        . "lot_mismatch={$verifyLotMismatch}.";
     sync_finish_log($whp, $syncId, 'SUCCESS', $message, $updated);
     sync_log($message);
     exit(0);

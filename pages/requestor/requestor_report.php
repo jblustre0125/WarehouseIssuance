@@ -1215,13 +1215,25 @@ SELECT
     B.ITRNumber,
     B.NeededDate,
 
-    COALESCE(
-        NULLIF(
-            LTRIM(RTRIM(B.RequestLineStatus)),
-            ''
-        ),
-        B.HeaderStatus
-    ) AS IssueStatus,
+    CASE
+        WHEN
+            COALESCE(R.BaseIssuedQty, Q.CacheReceivedQty) IS NULL
+            OR COALESCE(R.BaseIssuedQty, Q.CacheReceivedQty) <= 0
+            THEN COALESCE(
+                NULLIF(
+                    LTRIM(RTRIM(B.RequestLineStatus)),
+                    ''
+                ),
+                B.HeaderStatus
+            )
+
+        WHEN
+            B.RequestedQty > 0
+            AND COALESCE(R.BaseIssuedQty, Q.CacheReceivedQty) >= B.RequestedQty
+            THEN 'ISSUED'
+
+        ELSE 'PARTIAL'
+    END AS IssueStatus,
 
     B.ItemCode,
     B.PartName,
