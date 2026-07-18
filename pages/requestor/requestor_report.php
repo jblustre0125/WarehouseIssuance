@@ -615,6 +615,21 @@ $traceWarehouseLotExpr = $traceHasWarehouseLot
 $requestWarehouseLotExpr = $requestLineHasWarehouseLot
     ? "NULLIF(LTRIM(RTRIM(L.WarehouseLotNo)), '')"
     : "CAST(NULL AS NVARCHAR(80))";
+$traceLineWarehouseLotMatchSql = ($traceHasWarehouseLot && $requestLineHasWarehouseLot)
+    ? "
+                OR (
+                    LEN(LTRIM(RTRIM(ISNULL(TL0.WarehouseLotNo, N'')))) > 0
+                    AND LEN(LTRIM(RTRIM(ISNULL(L.WarehouseLotNo, N'')))) > 0
+                    AND LTRIM(RTRIM(TL0.WarehouseLotNo)) = LTRIM(RTRIM(L.WarehouseLotNo))
+                )"
+    : '';
+$traceLineLotMatchSql = "
+            AND (
+                LEN(LTRIM(RTRIM(ISNULL(L.LotNo, N'')))) = 0
+                OR LEN(LTRIM(RTRIM(ISNULL(TL0.LotNo, N'')))) = 0
+                OR LTRIM(RTRIM(TL0.LotNo)) = LTRIM(RTRIM(L.LotNo))
+                {$traceLineWarehouseLotMatchSql}
+            )";
 
 $hasIssuanceTransactions = request_report_has_table($conn, 'IssuanceTransactions');
 $txHasTraceNo = $hasIssuanceTransactions && request_report_has_column($conn, 'IssuanceTransactions', 'TraceNo');
@@ -714,6 +729,7 @@ $sql = "
            OR (
                 TH0.TraceNo = H.IssuedTraceNo
             AND TL0.ItemCode = L.ItemCode
+            {$traceLineLotMatchSql}
            )
     ) TL
 
@@ -735,7 +751,7 @@ foreach ($rows as &$requestReportRow) {
         $requestReportRow['ScannedAt'] = '';
         $requestReportRow['ClosedAt'] = '';
 
-        if (strtoupper(trim((string)($requestReportRow['ReceiveStatus'] ?? ''))) === 'SAP_RECEIVED') {
+        if (in_array(strtoupper(trim((string)($requestReportRow['ReceiveStatus'] ?? ''))), ['SAP_RECEIVED', 'ISSUED', 'PENDING_RECEIVE'], true)) {
             $requestReportRow['ReceiveStatus'] = '';
         }
     } elseif (!isset($requestReportRow['SAPReceivedQty'])) {
