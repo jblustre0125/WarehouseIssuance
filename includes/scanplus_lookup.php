@@ -823,14 +823,92 @@ function scanplus_cache_write(
         return false;
     }
 
-    $scanStatus =
-        $scan['scan_status'] ??
-        'NOT RECEIVED IN SAP';
+    /*
+     * A missing lookup result is not proof that SAP did not receive the
+     * material. It can also mean that SAP was unavailable, the query failed,
+     * or the scheduled task could not validate the reference. Never convert a
+     * null lookup into a destructive NOT RECEIVED cache update.
+     */
+    if ($scan === null) {
+        return false;
+    }
+
+    $scanStatus = strtoupper(
+        trim(
+            (string)($scan['scan_status'] ?? '')
+        )
+    );
+
+    if ($scanStatus === '') {
+        return false;
+    }
+
+    $isNotReceived = in_array(
+        $scanStatus,
+        [
+            'NOT RECEIVED IN SAP',
+            'NOT RECEIVED'
+        ],
+        true
+    );
+
+    /*
+     * Negative statuses may only be written after a successful SAP query.
+     * scanplus_lookup_by_itr_lines() adds validation_complete=true only for
+     * references whose query chunk completed successfully.
+     */
+    if (
+        $isNotReceived &&
+        empty($scan['validation_complete'])
+    ) {
+        return false;
+    }
 
     $receivedLotNo =
         $scan['received_lot_no'] ??
         $scan['lot_no'] ??
         null;
+
+    /*
+     * Do not allow a line-level/base-key SAP result to mark a different lot as
+     * received. This prevents cases such as requested lot FEB29 being stored as
+     * SAP_RECEIVED when SAP actually returned lot 0531.
+     */
+    $isReceived = in_array(
+        $scanStatus,
+        [
+            'SAP_RECEIVED',
+            'CLOSED'
+        ],
+        true
+    );
+
+    if ($isReceived && $lotNo !== '') {
+        $requestedLotKey = scanplus_normalize_lot($lotNo);
+        $receivedLotMatched = false;
+
+        foreach (
+            preg_split(
+                '/\s*,\s*/',
+                trim((string)$receivedLotNo),
+                -1,
+                PREG_SPLIT_NO_EMPTY
+            ) ?: []
+            as $candidateLot
+        ) {
+            if (
+                scanplus_normalize_lot($candidateLot) ===
+                $requestedLotKey
+            ) {
+                $receivedLotMatched = true;
+                break;
+            }
+        }
+
+        if (!$receivedLotMatched) {
+            return false;
+        }
+    }
 
     $receivedQty =
         $scan['received_qty'] ??
@@ -1569,6 +1647,12 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
     $sapRows = [];
 
     /*
+     * Track only references whose SAP query actually completed. A query error
+     * must never be interpreted as a confirmed NOT RECEIVED result.
+     */
+    $checkedBaseKeys = [];
+
+    /*
      * Only five exact references per SAP query.
      */
     foreach (
@@ -1684,7 +1768,28 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
         );
 
         if (!is_array($chunkRows)) {
+            error_log(
+                'ScanPlus SAP validation query failed; ' .
+                'cache status was left unchanged for this chunk.'
+            );
+
             continue;
+        }
+
+        /*
+         * An empty array is still a successful validation: SAP returned no
+         * matching transfer. Only now is it safe to generate NOT RECEIVED.
+         */
+        foreach ($queryChunk as $checkedRef) {
+            $checkedKey = scanplus_key(
+                $checkedRef['doc_entry'] ?? 0,
+                $checkedRef['line_num'] ?? null,
+                $checkedRef['item_code'] ?? ''
+            );
+
+            if ($checkedKey !== '') {
+                $checkedBaseKeys[$checkedKey] = true;
+            }
         }
 
         foreach ($chunkRows as $chunkRow) {
@@ -1861,6 +1966,7 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
             'received_lot_no' => '',
             'received_qty' => 0.0,
             'scan_status' => 'SAP_RECEIVED',
+            'validation_complete' => true,
             'received_lots' => [],
             'it_numbers' => [],
             '_closed' => false
@@ -2029,10 +2135,39 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
             $requestedRef['lot_no']
         );
 
+        /*
+         * If this base key belonged to a failed query chunk, leave the existing
+         * cache value untouched. Absence of data is not a negative validation.
+         */
+        if (
+            $baseKey === '' ||
+            !isset($checkedBaseKeys[$baseKey])
+        ) {
+            continue;
+        }
+
         $targetKey =
             $lotKey !== ''
                 ? $lotKey
                 : $baseKey;
+
+        /*
+         * SAP found the transfer line but returned no batch/lot details. In
+         * that case the line is received, but the requested lot cannot be
+         * validated safely. Do not create a false lot-level NOT RECEIVED row.
+         */
+        if (
+            $lotKey !== '' &&
+            isset($results[$baseKey]) &&
+            trim(
+                (string)(
+                    $results[$baseKey]['received_lot_no'] ??
+                    ''
+                )
+            ) === ''
+        ) {
+            continue;
+        }
 
         $notReceived = [
             'barcode_user' => '',
@@ -2041,7 +2176,8 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
             'received_lot_no' => '',
             'received_qty' => 0,
             'scan_status' => 'NOT RECEIVED IN SAP',
-            'it_numbers' => ''
+            'it_numbers' => '',
+            'validation_complete' => true
         ];
 
         if (
