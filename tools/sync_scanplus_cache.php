@@ -164,12 +164,20 @@ function sync_finish_log($conn, ?int $syncId, string $status, string $message, i
 
 function sync_upsert_cache($conn, array $ref, ?array $scan): void
 {
+    $hasScan = $scan !== null;
     $scanStatus = $scan['scan_status'] ?? ($scan ? 'SAP PARTIAL' : 'NOT RECEIVED IN SAP');
     $receivedQty = $scan['received_qty'] ?? null;
     $barcodeUser = $scan['barcode_user'] ?? null;
     $receivedAt = $scan['received_at'] ?? null;
     $receivedLotNo = $scan['received_lot_no'] ?? $scan['lot_no'] ?? null;
 
+    /*
+     * Only overwrite an existing cache row when this pass actually found scan
+     * data, or when the existing row never had real received data to begin
+     * with. Otherwise a ref that momentarily fails to match in the ERP query
+     * (chunking, timing, format mismatch, etc.) would blank out previously
+     * confirmed "SAP_RECEIVED"/"CLOSED" data on every later sync run.
+     */
     sync_exec(
         $conn,
         "MERGE dbo.RawmatTraceScanPlusCache WITH (HOLDLOCK) AS T
@@ -185,7 +193,7 @@ function sync_upsert_cache($conn, array $ref, ?array $scan): void
             AND ISNULL(T.SAP_IT_LineNum, -1) = ISNULL(S.SAP_IT_LineNum, -1)
             AND T.ItemCode = S.ItemCode
             AND UPPER(LTRIM(RTRIM(ISNULL(T.LotNo, N'')))) = UPPER(LTRIM(RTRIM(ISNULL(S.LotNo, N''))))
-         WHEN MATCHED THEN UPDATE SET
+         WHEN MATCHED AND (? = 1 OR ISNULL(T.ReceivedQty, 0) <= 0) THEN UPDATE SET
             ReceivedLotNo = ?,
             ScanStatus = ?,
             ReceivedQty = ?,
@@ -208,6 +216,7 @@ function sync_upsert_cache($conn, array $ref, ?array $scan): void
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE());",
         [
             $ref['doc_entry'], $ref['line_num'], $ref['item_code'], $ref['lot_no'],
+            $hasScan ? 1 : 0,
             $receivedLotNo, $scanStatus, $receivedQty, $barcodeUser, $receivedAt,
             $ref['doc_entry'], $ref['line_num'], $ref['item_code'], $ref['lot_no'],
             $receivedLotNo, $scanStatus, $receivedQty, $barcodeUser, $receivedAt,

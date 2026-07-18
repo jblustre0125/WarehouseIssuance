@@ -293,12 +293,20 @@ function scanplus_cache_write($conn, array $ref, ?array $scan)
         return false;
     }
 
+    $hasScan = $scan !== null;
     $scanStatus = $scan['scan_status'] ?? null;
     $receivedLotNo = $scan['received_lot_no'] ?? null;
     $receivedQty = $scan['received_qty'] ?? null;
     $barcodeUser = $scan['barcode_user'] ?? null;
     $receivedAt = $scan['received_at'] ?? null;
 
+    /*
+     * Only overwrite an existing cache row when this lookup actually produced
+     * data, or when the existing row never had real received data to begin
+     * with. Without this guard, a lookup that simply fails to find the exact
+     * (DocEntry, LineNum, ItemCode, LotNo) match on a later run would blank
+     * out previously-good scan data instead of leaving it alone.
+     */
     return sqlsrv_query(
         $conn,
         "MERGE dbo.RawmatTraceScanPlusCache AS T
@@ -314,7 +322,7 @@ function scanplus_cache_write($conn, array $ref, ?array $scan)
             AND ISNULL(T.SAP_IT_LineNum, -1) = ISNULL(S.SAP_IT_LineNum, -1)
             AND T.ItemCode = S.ItemCode
             AND ISNULL(T.LotNo, '') = ISNULL(S.LotNo, '')
-         WHEN MATCHED THEN
+         WHEN MATCHED AND (? = 1 OR ISNULL(T.ReceivedQty, 0) <= 0) THEN
             UPDATE SET
                 ScanStatus = ?,
                 ReceivedLotNo = ?,
@@ -342,6 +350,7 @@ function scanplus_cache_write($conn, array $ref, ?array $scan)
             $itemCode,
             $lotNo,
 
+            $hasScan ? 1 : 0,
             $scanStatus,
             $receivedLotNo,
             $receivedQty,
