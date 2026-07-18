@@ -352,7 +352,7 @@ function enrich_issuer_scan_rows_with_scanplus(&$rows, $whpConn, $allowLiveRefre
         $scanLotKey = scanplus_lot_key($ref['doc_entry'], $ref['line_num'], $ref['item_code'], $ref['lot_no']);
         $targetKey = $scanLotKey !== '' ? $scanLotKey : $scanKey;
         $cachedScan = $scanLotKey !== ''
-            ? ($scanplusRows[$scanLotKey] ?? ($scanplusRows[$scanKey] ?? null))
+            ? ($scanplusRows[$scanLotKey] ?? null)
             : ($scanKey !== '' ? ($scanplusRows[$scanKey] ?? null) : null);
 
         if ($targetKey !== '' && (!isset($freshKeys[$targetKey]) || !$scanHasReceivedData($cachedScan))) {
@@ -367,7 +367,7 @@ function enrich_issuer_scan_rows_with_scanplus(&$rows, $whpConn, $allowLiveRefre
             $scanKey = scanplus_key($ref['doc_entry'], $ref['line_num'], $ref['item_code']);
             $scanLotKey = scanplus_lot_key($ref['doc_entry'], $ref['line_num'], $ref['item_code'], $ref['lot_no']);
             $scan = $scanLotKey !== ''
-                ? ($freshScanplusRows[$scanLotKey] ?? ($freshScanplusRows[$scanKey] ?? null))
+                ? ($freshScanplusRows[$scanLotKey] ?? null)
                 : ($scanKey !== '' ? ($freshScanplusRows[$scanKey] ?? null) : null);
 
             scanplus_cache_write($whpConn, $ref, $scan);
@@ -386,7 +386,7 @@ function enrich_issuer_scan_rows_with_scanplus(&$rows, $whpConn, $allowLiveRefre
         $scanKey = scanplus_key($row['ITRDocEntry'] ?? 0, $row['ITRLineNum'] ?? null, $row['ItemCode'] ?? '');
         $scanLotKey = scanplus_lot_key($row['ITRDocEntry'] ?? 0, $row['ITRLineNum'] ?? null, $row['ItemCode'] ?? '', $row['LotNo'] ?? '');
         $scan = $scanLotKey !== ''
-            ? ($scanplusRows[$scanLotKey] ?? ($scanplusRows[$scanKey] ?? null))
+            ? ($scanplusRows[$scanLotKey] ?? null)
             : ($scanKey !== '' ? ($scanplusRows[$scanKey] ?? null) : null);
 
         $row['ScanStatus'] = $scan['scan_status'] ?? '';
@@ -403,6 +403,24 @@ function issuer_report_valid_datetime($value): bool
 {
     $dateValue = trim(report_cell($value));
     return $dateValue !== '' && strpos($dateValue, '1900-01-01') !== 0;
+}
+
+function issuer_report_datetime_timestamp($value): ?int
+{
+    if (!issuer_report_valid_datetime($value)) {
+        return null;
+    }
+
+    $timestamp = strtotime(report_cell($value));
+    return $timestamp === false ? null : $timestamp;
+}
+
+function issuer_report_scanplus_before_issue(array $row): bool
+{
+    $receivedAt = issuer_report_datetime_timestamp($row['ReceivedAt'] ?? '');
+    $issuedAt = issuer_report_datetime_timestamp($row['IssuedAt'] ?? '');
+
+    return $receivedAt !== null && $issuedAt !== null && $receivedAt < $issuedAt;
 }
 
 function issuer_report_received_status($status): bool
@@ -499,6 +517,13 @@ function report_received_value($row, $field)
 // Show received values only when receiving is confirmed locally or SAP returns a real
 // receive timestamp/status. Do not show SAP_RECEIVED rows with the placeholder 1900 date.
 foreach ($rows as &$issuerReportRow) {
+    if (issuer_report_scanplus_before_issue($issuerReportRow)) {
+        $issuerReportRow['ScanStatus'] = '';
+        $issuerReportRow['ReceivedQty'] = '';
+        $issuerReportRow['BarcodeUser'] = '';
+        $issuerReportRow['ReceivedAt'] = '';
+    }
+
     $issuerReportRow['IssueStatus'] = 'ISSUED';
     $issuerReportRow['DisplayReceivedQty'] = report_received_value($issuerReportRow, 'ReceivedQty');
     $issuerReportRow['QtyVariance'] = issuer_report_qty_variance($issuerReportRow['Quantity'] ?? '', $issuerReportRow['DisplayReceivedQty']);
@@ -603,8 +628,8 @@ $columns = [
     'ITR/IT',
     'Iss By',
     'Issue Status',
-    'Barcode User',
-    'Scanned At',
+    'Received By',
+    'Received At',
     'Hostname',
     'IP Address',
     'Issued At'
@@ -1347,8 +1372,8 @@ if ($export) {
                                 <th class="col-itr">ITR/IT</th>
                                 <th class="col-user">Iss By</th>
                                 <th class="col-status">Issue Status</th>
-                                <th class="col-user">Barcode User</th>
-                                <th class="col-date">Scanned At</th>
+                                <th class="col-user">Received By</th>
+                                <th class="col-date">Received At</th>
                                 <th class="col-host">Hostname</th>
                                 <th class="col-ip">IP Address</th>
                                 <th class="col-date">Issued At</th>

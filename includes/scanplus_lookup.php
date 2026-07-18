@@ -214,6 +214,11 @@ function scanplus_cache_read($conn, array $refs, $ttlSeconds = SCANPLUS_CACHE_TT
                     ON C.SAP_IT_DocEntry = Ref.SAP_IT_DocEntry
                    AND ISNULL(C.SAP_IT_LineNum, -1) = ISNULL(Ref.SAP_IT_LineNum, -1)
                    AND C.ItemCode = Ref.ItemCode
+                   AND (
+                        ISNULL(Ref.LotNo, '') = ''
+                        OR ISNULL(C.LotNo, '') = ISNULL(Ref.LotNo, '')
+                        OR ISNULL(C.ReceivedLotNo, '') = ISNULL(Ref.LotNo, '')
+                   )
              )
              SELECT
                 RefIdx,
