@@ -207,10 +207,39 @@ function scanplus_datetime_text($dateValue, $timeValue = null)
 |--------------------------------------------------------------------------
 | Cache table and index
 |--------------------------------------------------------------------------
+|
+| OPTIMIZATION: this used to run 3 sqlsrv_query() calls (CREATE TABLE IF
+| NOT EXISTS / ALTER TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS)
+| on *every* call from scanplus_cache_read() and independently again from
+| scanplus_cache_write(). SQL Server has to parse and evaluate each
+| IF OBJECT_ID(...) / IF COL_LENGTH(...) / IF NOT EXISTS(...) branch on
+| every call even though the schema never changes after the very first
+| run. That's wasted PHP-to-SQL round trips and wasted SQL Server CPU on
+| every cache read/write in a request.
+|
+| Fix: memoize the verified state once per PHP request (per connection)
+| so the DDL-existence checks run at most once, and have both the reader
+| and writer share that same memoized result instead of tracking it
+| separately.
+|
 */
 
 function scanplus_cache_ensure($conn)
 {
+    // Memoize per-connection so a second connection (rare, but possible)
+    // still gets its own verification instead of a stale "true".
+    static $verifiedConnections = [];
+
+    $connKey = is_object($conn)
+        ? spl_object_id($conn)
+        : (is_resource($conn)
+            ? (int)$conn
+            : md5(serialize($conn)));
+
+    if (!empty($verifiedConnections[$connKey])) {
+        return true;
+    }
+
     $statement = sqlsrv_query(
         $conn,
         "
@@ -313,10 +342,14 @@ function scanplus_cache_ensure($conn)
         sqlsrv_free_stmt($statement);
     }
 
-    return scanplus_has_table(
+    $ready = scanplus_has_table(
         $conn,
         'RawmatTraceScanPlusCache'
     );
+
+    $verifiedConnections[$connKey] = $ready;
+
+    return $ready;
 }
 
 /*
@@ -349,8 +382,14 @@ function scanplus_cache_read(
     $freshKeys = [];
     $normalizedRefs = [];
 
-    foreach (array_values($refs) as $idx => $ref) {
+    // OPTIMIZATION: avoid array_values() copying the whole $refs array
+    // just to get sequential keys; foreach + manual counter does the
+    // same job without duplicating the array in memory.
+    $idx = 0;
+
+    foreach ($refs as $ref) {
         if (!is_array($ref)) {
+            $idx++;
             continue;
         }
 
@@ -378,6 +417,7 @@ function scanplus_cache_read(
         );
 
         if ($scanKey === '') {
+            $idx++;
             continue;
         }
 
@@ -388,6 +428,8 @@ function scanplus_cache_read(
             'lot_no' => $lotNo,
             'scan_key' => $scanKey
         ];
+
+        $idx++;
     }
 
     if (empty($normalizedRefs)) {
@@ -428,17 +470,17 @@ function scanplus_cache_read(
             );
         }
 
+        $referenceSql = implode(
+            "\nUNION ALL\n",
+            $referenceQueries
+        );
+
         $cacheRows = fetch_all(
             $conn,
             "
             WITH Ref AS
             (
-                " .
-                implode(
-                    "\nUNION ALL\n",
-                    $referenceQueries
-                ) .
-                "
+                {$referenceSql}
             ),
             RankedCache AS
             (
@@ -633,13 +675,13 @@ function scanplus_cache_read(
         }
 
         foreach ($cacheRows as $cacheRow) {
-            $idx = (int)($cacheRow['RefIdx'] ?? -1);
+            $rowIdx = (int)($cacheRow['RefIdx'] ?? -1);
 
-            if (!isset($normalizedRefs[$idx])) {
+            if (!isset($normalizedRefs[$rowIdx])) {
                 continue;
             }
 
-            $ref = $normalizedRefs[$idx];
+            $ref = $normalizedRefs[$rowIdx];
 
             $scan = [
                 'scan_status' => trim(
@@ -746,13 +788,11 @@ function scanplus_cache_write(
         return false;
     }
 
-    static $cacheReady = false;
-
-    if (!$cacheReady) {
-        $cacheReady = scanplus_cache_ensure($conn);
-    }
-
-    if (!$cacheReady) {
+    // scanplus_cache_ensure() is now memoized internally (per connection),
+    // so this no longer needs its own separate static flag — that used to
+    // mean the same DDL-existence checks could run twice in one request
+    // (once via the reader's call, once via the writer's).
+    if (!scanplus_cache_ensure($conn)) {
         return false;
     }
 
