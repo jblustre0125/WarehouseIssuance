@@ -1,0 +1,52 @@
+2026-07-18 11:47:43 Starting ScanPlus cache refresh. Lookback=7 days, chunk=50, maxRefs=1000.
+2026-07-18 11:47:44 Unique local references found: 428
+2026-07-18 11:48:41 Chunk 1: rows=50, lookup=57.449 sec
+2026-07-18 11:49:35 Chunk 2: rows=50, lookup=53.813 sec
+2026-07-18 11:50:24 Chunk 3: rows=50, lookup=49.288 sec
+2026-07-18 11:51:24 Chunk 4: rows=50, lookup=59.328 sec
+2026-07-18 11:52:15 Chunk 5: rows=50, lookup=51.596 sec
+2026-07-18 11:53:06 Chunk 6: rows=50, lookup=51.02 sec
+2026-07-18 11:53:57 Chunk 7: rows=50, lookup=50.399 sec
+2026-07-18 11:54:48 Chunk 8: rows=50, lookup=51.054 sec
+2026-07-18 11:55:39 Chunk 9: rows=28, lookup=50.997 sec
+2026-07-18 11:55:39 Completed. Updated=428, matched=371, not_received_or_unmatched=57.
+2026-07-18 11:57:01 Starting ScanPlus cache refresh. Lookback=7 days, chunk=50, maxRefs=1000.
+2026-07-18 11:57:01 Unique local references found: 428
+2026-07-18 11:57:52 Chunk 1: rows=50, lookup=50.552 sec
+2026-07-18 11:58:46 Chunk 2: rows=50, lookup=53.568 sec
+2026-07-18 11:59:37 Chunk 3: rows=50, lookup=51.282 sec
+2026-07-18 12:00:27 Chunk 4: rows=50, lookup=50.528 sec
+2026-07-18 12:01:18 Chunk 5: rows=50, lookup=51.081 sec
+2026-07-18 12:02:11 Chunk 6: rows=50, lookup=52.226 sec
+2026-07-18 12:03:02 Chunk 7: rows=50, lookup=51.791 sec
+2026-07-18 12:03:53 Chunk 8: rows=50, lookup=50.508 sec
+2026-07-18 12:04:43 Chunk 9: rows=28, lookup=50.071 sec
+2026-07-18 12:04:43 Completed. Updated=428, matched=371, not_received_or_unmatched=57.
+2026-07-18 12:07:02 Starting ScanPlus cache refresh. Lookback=7 days, chunk=50, maxRefs=1000.
+2026-07-18 12:07:02 Unique local references found: 428
+2026-07-18 12:07:51 Chunk 1: rows=50, lookup=48.684 sec
+2026-07-18 12:08:42 Chunk 2: rows=50, lookup=50.888 sec
+2026-07-18 12:09:32 Chunk 3: rows=50, lookup=49.779 sec
+2026-07-18 12:10:22 Chunk 4: rows=50, lookup=49.966 sec
+2026-07-18 12:11:12 Chunk 5: rows=50, lookup=50.772 sec
+2026-07-18 12:12:04 Chunk 6: rows=50, lookup=51.819 sec
+2026-07-18 12:12:54 Chunk 7: rows=50, lookup=49.754 sec
+2026-07-18 12:13:44 Chunk 8: rows=50, lookup=49.996 sec
+2026-07-18 12:14:34 Chunk 9: rows=28, lookup=50.253 sec
+2026-07-18 12:14:34 Completed. Updated=428, matched=371, not_received_or_unmatched=57.
+2026-07-18 12:17:01 Starting ScanPlus cache refresh. Lookback=7 days, chunk=50, maxRefs=1000.
+2026-07-18 12:17:01 Unique local references found: 428
+2026-07-18 12:17:50 Chunk 1: rows=50, lookup=48.813 sec
+2026-07-18 12:18:40 Chunk 2: rows=50, lookup=50.126 sec
+2026-07-18 12:19:31 Chunk 3: rows=50, lookup=50.727 sec
+2026-07-18 12:20:20 Chunk 4: rows=50, lookup=49.316 sec
+2026-07-18 12:21:12 Chunk 5: rows=50, lookup=51.805 sec
+2026-07-18 12:22:03 Chunk 6: rows=50, lookup=51.269 sec
+2026-07-18 12:22:54 Chunk 7: rows=50, lookup=50.505 sec
+2026-07-18 12:23:43 Chunk 8: rows=50, lookup=49.443 sec
+2026-07-18 12:24:35 Chunk 9: rows=28, lookup=51.351 sec
+2026-07-18 12:24:35 Completed. Updated=428, matched=371, not_received_or_unmatched=57.
+2026-07-18 12:27:01 Starting ScanPlus cache refresh. Lookback=7 days, chunk=50, maxRefs=1000.
+2026-07-18 12:27:01 Unique local references found: 428
+2026-07-18 12:27:52 Chunk 1: rows=50, lookup=50.867 sec
+2026-07-18 12:28:43 Chunk 2: rows=50, lookup=51.013 sec

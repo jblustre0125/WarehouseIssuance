@@ -384,6 +384,7 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
     if (
         !scanplus_has_table($erp, 'OWTR') ||
         !scanplus_has_table($erp, 'WTR1') ||
+        !scanplus_has_table($erp, 'WTQ1') ||
         !scanplus_has_column($erp, 'WTR1', 'BaseType') ||
         !scanplus_has_column($erp, 'WTR1', 'BaseEntry') ||
         !scanplus_has_column($erp, 'WTR1', 'BaseLine')
@@ -399,9 +400,8 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
     $hasCreateDate = scanplus_has_column($erp, 'OWTR', 'CreateDate');
     $hasCreateTS = scanplus_has_column($erp, 'OWTR', 'CreateTS');
     $hasDocDate = scanplus_has_column($erp, 'OWTR', 'DocDate');
-    $hasWtq1 = scanplus_has_table($erp, 'WTQ1');
-    $hasLineStatus = $hasWtq1 && scanplus_has_column($erp, 'WTQ1', 'LineStatus');
-    $hasOpenQty = $hasWtq1 && scanplus_has_column($erp, 'WTQ1', 'OpenQty');
+    $hasLineStatus = scanplus_has_column($erp, 'WTQ1', 'LineStatus');
+    $hasOpenQty = scanplus_has_column($erp, 'WTQ1', 'OpenQty');
     $hasBatchJoin =
         scanplus_has_table($erp, 'IBT1') &&
         scanplus_has_column($erp, 'IBT1', 'BaseType') &&
@@ -435,10 +435,6 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
         : ($hasCreateTS ? 'T.CreateTS' : 'CAST(NULL AS INT)');
     $lineStatusExpr = $hasLineStatus ? 'R.LineStatus' : "CAST('' AS NVARCHAR(10))";
     $openQtyExpr = $hasOpenQty ? 'R.OpenQty' : 'CAST(NULL AS DECIMAL(18,3))';
-    $requestLineJoin = $hasWtq1
-        ? 'LEFT JOIN WTQ1 R ON R.DocEntry = L.BaseEntry AND R.LineNum = L.BaseLine'
-        : '';
-
     $userJoin = '';
     $scannedByParts = [];
 
@@ -474,14 +470,22 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
         : "CAST('' AS NVARCHAR(120))";
 
     if ($hasBatchJoin) {
-        $lotSelect = "B.BatchNum AS ReceivedLotNo, ABS(ISNULL(B.Quantity, 0)) AS ReceivedQty";
+        $lotSelect = "COALESCE(B.BatchNum, '') AS ReceivedLotNo,
+            CASE WHEN T.DocEntry IS NULL THEN 0
+                 WHEN B.BatchNum IS NULL THEN ABS(ISNULL(L.Quantity, 0))
+                 ELSE ABS(ISNULL(B.Quantity, 0))
+            END AS ReceivedQty";
         $lotJoin = "LEFT JOIN IBT1 B
            ON B.BaseType = 67
           AND B.BaseEntry = T.DocEntry
           AND B.BaseLinNum = L.LineNum
           AND B.ItemCode = L.ItemCode";
     } elseif ($hasInventoryLogBatchJoin) {
-        $lotSelect = "BT.DistNumber AS ReceivedLotNo, ABS(ISNULL(BL.Quantity, 0)) AS ReceivedQty";
+        $lotSelect = "COALESCE(BT.DistNumber, '') AS ReceivedLotNo,
+            CASE WHEN T.DocEntry IS NULL THEN 0
+                 WHEN BT.DistNumber IS NULL THEN ABS(ISNULL(L.Quantity, 0))
+                 ELSE ABS(ISNULL(BL.Quantity, 0))
+            END AS ReceivedQty";
         $lotJoin = "LEFT JOIN OITL IL
            ON IL.DocType = 67
           AND IL.DocEntry = T.DocEntry
@@ -496,21 +500,17 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
     $entryValues = array_keys($docEntries);
     $placeholders = implode(',', array_fill(0, count($entryValues), '?'));
     $where = [
-        'L.BaseType = ?',
-        "L.BaseEntry IN ({$placeholders})"
+        "R.DocEntry IN ({$placeholders})"
     ];
-    $params = array_merge([1250000001], $entryValues);
-
-    if ($hasCanceled) {
-        $where[] = "ISNULL(T.CANCELED, 'N') = 'N'";
-    }
+    $params = $entryValues;
+    $transferJoinCanceledSql = $hasCanceled ? " AND ISNULL(T.CANCELED, 'N') = 'N'" : '';
 
     $rows = fetch_all(
         $erp,
         "SELECT
-            L.BaseEntry AS ITRDocEntry,
-            L.BaseLine AS ITRLineNum,
-            L.ItemCode,
+            R.DocEntry AS ITRDocEntry,
+            R.LineNum AS ITRLineNum,
+            R.ItemCode,
             T.DocNum AS ITNumber,
             {$scanDateExpr} AS ScanDate,
             {$scanTimeExpr} AS ScanTime,
@@ -518,13 +518,19 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
             {$lineStatusExpr} AS ITRLineStatus,
             {$openQtyExpr} AS ITROpenQty,
             {$lotSelect}
-         FROM OWTR T
-         INNER JOIN WTR1 L ON L.DocEntry = T.DocEntry
-         {$requestLineJoin}
+         FROM WTQ1 R
+         LEFT JOIN WTR1 L
+            ON L.BaseType = 1250000001
+           AND L.BaseEntry = R.DocEntry
+           AND L.BaseLine = R.LineNum
+           AND L.ItemCode = R.ItemCode
+         LEFT JOIN OWTR T
+            ON T.DocEntry = L.DocEntry
+           {$transferJoinCanceledSql}
          {$lotJoin}
          {$userJoin}
          WHERE " . implode(' AND ', $where) . "
-         ORDER BY T.DocEntry DESC, L.LineNum DESC",
+         ORDER BY R.LineNum ASC, T.DocEntry DESC, L.LineNum DESC",
         $params
     );
 
@@ -548,9 +554,11 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
         $lineStatus = strtoupper(trim((string)($row['ITRLineStatus'] ?? '')));
         $openQty = $row['ITROpenQty'];
         $receivedLotNo = trim((string)($row['ReceivedLotNo'] ?? ''));
-        $status = ($lineStatus === 'C' || ($openQty !== null && (float)$openQty <= 0))
-            ? 'CLOSED'
-            : 'SAP_RECEIVED';
+        $receivedQty = (float)($row['ReceivedQty'] ?? 0);
+        $isClosed = $lineStatus === 'C' || ($openQty !== null && (float)$openQty <= 0);
+        $status = $receivedQty <= 0
+            ? 'NOT RECEIVED IN SAP'
+            : ($isClosed ? 'CLOSED' : 'SAP_RECEIVED');
 
         if (!isset($result[$key])) {
             $result[$key] = [
@@ -564,7 +572,7 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
             ];
         }
 
-        $result[$key]['received_qty'] += (float)($row['ReceivedQty'] ?? 0);
+        $result[$key]['received_qty'] += $receivedQty;
         if ($receivedLotNo !== '') {
             $result[$key]['received_lots'][$receivedLotNo] = true;
         }
@@ -582,7 +590,7 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
                 ];
             }
 
-            $result[$lotKey]['received_qty'] += (float)($row['ReceivedQty'] ?? 0);
+            $result[$lotKey]['received_qty'] += $receivedQty;
             if ($receivedLotNo !== '') {
                 $result[$lotKey]['received_lots'][$receivedLotNo] = true;
             }

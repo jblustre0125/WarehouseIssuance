@@ -1,16 +1,34 @@
 <?php
+
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/app_shell.php';
-require_once __DIR__ . '/../../includes/sap_cache.php';
+
 require_role([ROLE_REQUESTOR, ROLE_ADMIN]);
 
-function request_report_date_value($name, $default = '')
+/*
+|--------------------------------------------------------------------------
+| Requestor Report
+|--------------------------------------------------------------------------
+|
+| This page reads only the local WH PokaYoke database.
+|
+| SAP-derived information is read exclusively from:
+| dbo.RawmatTraceScanPlusCache
+|
+| The scheduled synchronization task is responsible for updating that table.
+|
+*/
+
+function request_report_date_value(string $name, string $default = ''): string
 {
     $value = trim((string)($_GET[$name] ?? $default));
-    return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) ? $value : $default;
+
+    return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)
+        ? $value
+        : $default;
 }
 
-function request_report_cell($value)
+function request_report_cell($value): string
 {
     if ($value instanceof DateTimeInterface) {
         return $value->format('Y-m-d H:i:s');
@@ -23,559 +41,244 @@ function request_report_cell($value)
     return (string)$value;
 }
 
-function request_report_date_cell($value)
+function request_report_date_cell($value): string
 {
     if ($value instanceof DateTimeInterface) {
         return $value->format('Y-m-d');
     }
 
-    if ($value === null) {
+    $text = trim((string)($value ?? ''));
+
+    if ($text === '') {
         return '';
     }
 
-    return (string)$value;
+    $timestamp = strtotime($text);
+
+    return $timestamp === false
+        ? $text
+        : date('Y-m-d', $timestamp);
 }
 
-function request_report_has_table($conn, $table)
+function request_report_number($value): string
 {
-    return (bool)fetch_one(
-        $conn,
-        "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = ?",
-        [$table]
+    if ($value === null || $value === '' || !is_numeric($value)) {
+        return '';
+    }
+
+    return rtrim(
+        rtrim(
+            number_format((float)$value, 3, '.', ''),
+            '0'
+        ),
+        '.'
     );
 }
 
-function request_report_has_column($conn, $table, $column)
+function request_report_status_class($status): string
 {
-    return (bool)fetch_one(
-        $conn,
-        "SELECT 1 AS HasColumn
-         FROM INFORMATION_SCHEMA.COLUMNS
-         WHERE TABLE_NAME = ?
-           AND COLUMN_NAME = ?",
-        [$table, $column]
+    $status = strtolower(trim((string)$status));
+    $status = preg_replace('/[^a-z0-9]+/', '_', $status);
+
+    return trim((string)$status, '_');
+}
+
+function request_report_excel_cell($value): string
+{
+    return htmlspecialchars(
+        request_report_cell($value),
+        ENT_QUOTES,
+        'UTF-8'
     );
 }
 
-function request_report_sap_datetime_text($dateValue, $timeValue = null)
+/**
+ * Load the required schema information once.
+ *
+ * This avoids executing one INFORMATION_SCHEMA query for every table
+ * and column check.
+ */
+function request_report_load_schema($conn): array
 {
-    if ($dateValue instanceof DateTimeInterface) {
-        $dateText = $dateValue->format('Y-m-d');
-    } else {
-        $dateText = trim((string)$dateValue);
-
-        if ($dateText !== '' && preg_match('/^\w{3}\s+\w{3}\s+\d{1,2}/', $dateText)) {
-            $ts = strtotime($dateText);
-            $dateText = $ts ? date('Y-m-d', $ts) : $dateText;
-        }
-    }
-
-    if ($dateText === '') {
-        return '';
-    }
-
-    if ($timeValue === null || $timeValue === '') {
-        return $dateText;
-    }
-
-    $timeText = preg_replace('/\D+/', '', (string)$timeValue);
-
-    if ($timeText === '') {
-        return $dateText;
-    }
-
-    if (strlen($timeText) <= 4) {
-        $timeText = str_pad(substr($timeText, -4), 4, '0', STR_PAD_LEFT);
-
-        return $dateText . ' ' .
-            substr($timeText, 0, 2) . ':' .
-            substr($timeText, 2, 2) . ':00';
-    }
-
-    $timeText = str_pad(substr($timeText, -6), 6, '0', STR_PAD_LEFT);
-
-    return $dateText . ' ' .
-        substr($timeText, 0, 2) . ':' .
-        substr($timeText, 2, 2) . ':' .
-        substr($timeText, 4, 2);
-}
-
-function request_report_sap_key($docEntry, $lineNum, $itemCode)
-{
-    if ($lineNum === null || trim((string)$lineNum) === '') {
-        return '';
-    }
-
-    $docEntry = (int)$docEntry;
-    $lineNum = (int)$lineNum;
-    $itemCode = strtoupper(trim((string)$itemCode));
-
-    if ($docEntry <= 0 || $lineNum < 0 || $itemCode === '') {
-        return '';
-    }
-
-    return $docEntry . '|' . $lineNum . '|' . $itemCode;
-}
-
-function request_report_is_received_status($status)
-{
-    $status = strtoupper(trim((string)$status));
-
-    return in_array($status, [
-        'RECEIVED',
-        'CLOSED',
-        'COMPLETED',
-        'MATCHED'
-    ], true);
-}
-
-function request_report_valid_datetime($value)
-{
-    $dateText = trim(request_report_cell($value));
-    return $dateText !== '' && strpos($dateText, '1900-01-01') !== 0;
-}
-
-function request_report_row_is_received(array $row)
-{
-    return request_report_is_received_status($row['HeaderStatus'] ?? '') ||
-        request_report_is_received_status($row['ReceiveStatus'] ?? '') ||
-        trim((string)($row['ScannedBy'] ?? '')) !== '' ||
-        request_report_valid_datetime($row['ScannedAt'] ?? '') ||
-        request_report_valid_datetime($row['ClosedAt'] ?? '');
-}
-
-function request_report_scanplus_is_received(array $scanPlus)
-{
-    return request_report_is_received_status($scanPlus['receive_status'] ?? '') ||
-        request_report_valid_datetime($scanPlus['scanned_at'] ?? '') ||
-        request_report_valid_datetime($scanPlus['closed_at'] ?? '');
-}
-
-
-function request_report_cap_received_qty($sapQty, array $row)
-{
-    $qty = (float)($sapQty ?? 0);
-
-    if ($qty <= 0) {
-        return '';
-    }
-
-    $limits = [];
-
-    foreach (['IssuedQty', 'RequestedQty'] as $field) {
-        if (isset($row[$field]) && is_numeric($row[$field]) && (float)$row[$field] > 0) {
-            $limits[] = (float)$row[$field];
-        }
-    }
-
-    if (!empty($limits)) {
-        $qty = min($qty, min($limits));
-    }
-
-    return rtrim(rtrim(number_format($qty, 3, '.', ''), '0'), '.');
-}
-
-function request_report_qty_variance($issuedQty, $receivedQty)
-{
-    $receivedText = trim((string)($receivedQty ?? ''));
-
-    if (!is_numeric($issuedQty) || $receivedText === '' || !is_numeric($receivedText)) {
-        return '';
-    }
-
-    $variance = (float)$issuedQty - (float)$receivedText;
-    return rtrim(rtrim(number_format($variance, 3, '.', ''), '0'), '.');
-}
-
-function request_report_positive_qty($value)
-{
-    $qtyText = trim((string)($value ?? ''));
-
-    if ($qtyText === '' || !is_numeric($qtyText) || (float)$qtyText <= 0) {
-        return '';
-    }
-
-    return $qtyText;
-}
-
-function request_report_apply_sap_issued_fallback(array &$row)
-{
-    if (request_report_positive_qty($row['IssuedQty'] ?? '') !== '') {
-        return;
-    }
-
-    foreach (['SAPTransferQty', 'SAPReceivedQty'] as $fallbackField) {
-        $fallbackQty = request_report_positive_qty($row[$fallbackField] ?? '');
-
-        if ($fallbackQty !== '') {
-            $row['IssuedQty'] = $fallbackQty;
-            return;
-        }
-    }
-}
-
-function request_report_enrich_cached_lots($conn, array &$rows)
-{
-    if (
-        empty($rows) ||
-        !request_report_has_table($conn, 'RawmatTraceScanPlusCache') ||
-        !request_report_has_column($conn, 'RawmatTraceScanPlusCache', 'ReceivedLotNo')
-    ) {
-        return;
-    }
-
-    $refs = [];
-
-    foreach ($rows as $idx => $row) {
-        if (trim((string)($row['LotNo'] ?? '')) !== '') {
-            continue;
-        }
-
-        $docEntry = (int)($row['LineSAPDocEntry'] ?? $row['HeaderSAPDocEntry'] ?? 0);
-        $lineNum = $row['SAP_IT_LineNum'] ?? null;
-        $itemCode = trim((string)($row['ItemCode'] ?? ''));
-
-        if (request_report_sap_key($docEntry, $lineNum, $itemCode) === '') {
-            continue;
-        }
-
-        $refs[] = [
-            'row_idx' => $idx,
-            'doc_entry' => $docEntry,
-            'line_num' => $lineNum === null || trim((string)$lineNum) === '' ? null : (int)$lineNum,
-            'item_code' => $itemCode
-        ];
-    }
-
-    if (empty($refs)) {
-        return;
-    }
-
-    $lotsByRow = [];
-
-    foreach (array_chunk($refs, 80) as $chunk) {
-        $refRows = [];
-        $params = [];
-
-        foreach ($chunk as $ref) {
-            $refRows[] = 'SELECT ? AS RowIdx, ? AS SAP_IT_DocEntry, ? AS SAP_IT_LineNum, ? AS ItemCode';
-            array_push($params, $ref['row_idx'], $ref['doc_entry'], $ref['line_num'], $ref['item_code']);
-        }
-
-        $refSql = implode(' UNION ALL ', $refRows);
-        $cacheRows = fetch_all(
-            $conn,
-            "SELECT
-                Ref.RowIdx,
-                COALESCE(NULLIF(LTRIM(RTRIM(C.ReceivedLotNo)), ''), NULLIF(LTRIM(RTRIM(C.LotNo)), '')) AS LotNo
-             FROM ({$refSql}) Ref
-             INNER JOIN RawmatTraceScanPlusCache C
-                ON C.SAP_IT_DocEntry = Ref.SAP_IT_DocEntry
-               AND ISNULL(C.SAP_IT_LineNum, -1) = ISNULL(Ref.SAP_IT_LineNum, -1)
-               AND C.ItemCode = Ref.ItemCode
-             WHERE COALESCE(NULLIF(LTRIM(RTRIM(C.ReceivedLotNo)), ''), NULLIF(LTRIM(RTRIM(C.LotNo)), '')) IS NOT NULL
-             ORDER BY C.LastSyncedAt DESC",
-            $params
-        );
-
-        foreach ($cacheRows as $cacheRow) {
-            $rowIdx = (int)($cacheRow['RowIdx'] ?? -1);
-            $lotNo = trim((string)($cacheRow['LotNo'] ?? ''));
-
-            if ($rowIdx < 0 || $lotNo === '') {
-                continue;
-            }
-
-            if (!isset($lotsByRow[$rowIdx])) {
-                $lotsByRow[$rowIdx] = [];
-            }
-
-            $lotsByRow[$rowIdx][$lotNo] = true;
-        }
-    }
-
-    foreach ($lotsByRow as $rowIdx => $lots) {
-        if (isset($rows[$rowIdx]) && trim((string)($rows[$rowIdx]['LotNo'] ?? '')) === '') {
-            $rows[$rowIdx]['LotNo'] = implode(', ', array_keys($lots));
-        }
-    }
-}
-
-function request_report_enrich_scanplus(array &$rows)
-{
-    if (empty($rows)) {
-        return;
-    }
-
-    $docEntries = [];
-
-    foreach ($rows as $r) {
-        $docEntry = (int)($r['LineSAPDocEntry'] ?? $r['HeaderSAPDocEntry'] ?? 0);
-        $lineNum = $r['SAP_IT_LineNum'] ?? null;
-        $itemCode = $r['ItemCode'] ?? '';
-        $key = request_report_sap_key($docEntry, $lineNum, $itemCode);
-
-        if ($key !== '') {
-            $docEntries[$docEntry] = true;
-        }
-    }
-
-    if (empty($docEntries)) {
-        return;
-    }
-
-    if (!sap_cache_live_queries_enabled()) {
-        return;
-    }
-
-    $erp = get_erp_connection();
-
-    if (
-        !request_report_has_table($erp, 'OWTR') ||
-        !request_report_has_table($erp, 'WTR1') ||
-        !request_report_has_column($erp, 'WTR1', 'BaseEntry') ||
-        !request_report_has_column($erp, 'WTR1', 'BaseLine') ||
-        !request_report_has_column($erp, 'WTR1', 'BaseType')
-    ) {
-        return;
-    }
-
-    $hasCanceled = request_report_has_column($erp, 'OWTR', 'CANCELED');
-    $hasDocDate = request_report_has_column($erp, 'OWTR', 'DocDate');
-    $hasCreateDate = request_report_has_column($erp, 'OWTR', 'CreateDate');
-    $hasCreateTS = request_report_has_column($erp, 'OWTR', 'CreateTS');
-    $hasUpdateDate = request_report_has_column($erp, 'OWTR', 'UpdateDate');
-    $hasUpdateTS = request_report_has_column($erp, 'OWTR', 'UpdateTS');
-    $hasUserSign = request_report_has_column($erp, 'OWTR', 'UserSign');
-    $hasScanPlusBarcodeUser = request_report_has_column($erp, 'OWTR', 'U_BarcodeUser');
-    $hasScanPlusDateTime = request_report_has_column($erp, 'OWTR', 'U_ScanDateTime');
-    $hasScanPlusTime = request_report_has_column($erp, 'OWTR', 'U_ScanTime');
-    $hasWhsCode = request_report_has_column($erp, 'WTR1', 'WhsCode');
-    $hasWtq1 = request_report_has_table($erp, 'WTQ1');
-    $hasLineStatus = $hasWtq1 && request_report_has_column($erp, 'WTQ1', 'LineStatus');
-    $hasOpenQty = $hasWtq1 && request_report_has_column($erp, 'WTQ1', 'OpenQty');
-
-    $scanDateExpr = $hasScanPlusDateTime
-        ? 'T.U_ScanDateTime'
-        : ($hasCreateDate
-        ? 'T.CreateDate'
-        : ($hasDocDate ? 'T.DocDate' : 'CAST(NULL AS DATETIME)'));
-    $scanTimeExpr = $hasScanPlusTime
-        ? 'T.U_ScanTime'
-        : ($hasCreateTS ? 'T.CreateTS' : 'CAST(NULL AS INT)');
-    $closeDateExpr = $hasUpdateDate
-        ? 'T.UpdateDate'
-        : ($hasCreateDate ? 'T.CreateDate' : ($hasDocDate ? 'T.DocDate' : 'CAST(NULL AS DATETIME)'));
-    $closeTimeExpr = $hasUpdateTS
-        ? 'T.UpdateTS'
-        : ($hasCreateTS ? 'T.CreateTS' : 'CAST(NULL AS INT)');
-    $toWhsExpr = $hasWhsCode ? 'L.WhsCode' : "CAST('' AS NVARCHAR(80))";
-    $lineStatusExpr = $hasLineStatus ? 'R.LineStatus' : "CAST('' AS NVARCHAR(10))";
-    $openQtyExpr = $hasOpenQty ? 'R.OpenQty' : 'CAST(NULL AS DECIMAL(18,3))';
-    $requestLineJoin = $hasWtq1
-        ? 'LEFT JOIN WTQ1 R ON R.DocEntry = L.BaseEntry AND R.LineNum = L.BaseLine'
-        : '';
-
-    $userJoin = '';
-    $scannedByParts = [];
-
-    if ($hasScanPlusBarcodeUser) {
-        $scannedByParts[] = "NULLIF(CAST(T.U_BarcodeUser AS NVARCHAR(120)), '')";
-    }
-
-    if ($hasUserSign) {
-        $hasOusr = request_report_has_table($erp, 'OUSR') &&
-            request_report_has_column($erp, 'OUSR', 'USERID');
-
-        if ($hasOusr) {
-            $nameParts = [];
-
-            if (request_report_has_column($erp, 'OUSR', 'USER_CODE')) {
-                $nameParts[] = "NULLIF(CAST(U1.USER_CODE AS NVARCHAR(120)), '')";
-            }
-
-            if (request_report_has_column($erp, 'OUSR', 'U_NAME')) {
-                $nameParts[] = "NULLIF(CAST(U1.U_NAME AS NVARCHAR(120)), '')";
-            }
-
-            $nameParts[] = 'CAST(T.UserSign AS NVARCHAR(120))';
-            $userJoin = 'LEFT JOIN OUSR U1 ON U1.USERID = T.UserSign';
-            $scannedByParts[] = 'COALESCE(' . implode(', ', $nameParts) . ')';
-        } else {
-            $scannedByParts[] = 'CAST(T.UserSign AS NVARCHAR(120))';
-        }
-    }
-
-    $scannedByExpr = !empty($scannedByParts)
-        ? 'COALESCE(' . implode(', ', $scannedByParts) . ')'
-        : "CAST('' AS NVARCHAR(120))";
-
-    $entryValues = array_keys($docEntries);
-    $placeholders = implode(',', array_fill(0, count($entryValues), '?'));
-    $where = [
-        'L.BaseType = ?',
-        "L.BaseEntry IN ({$placeholders})"
+    $tables = [
+        'WarehouseIssueRequestHeader',
+        'WarehouseIssueRequestLines',
+        'IssuanceTransactions',
+        'RawmatTraceHeader',
+        'RawmatTraceLines',
+        'RawmatTraceScanPlusCache'
     ];
-    $params = array_merge([1250000001], $entryValues);
 
-    if ($hasCanceled) {
-        $where[] = "ISNULL(T.CANCELED, 'N') = 'N'";
-    }
-
-    $sapRows = fetch_all(
-        $erp,
-        "SELECT
-            L.BaseEntry AS ITRDocEntry,
-            L.BaseLine AS ITRLineNum,
-            L.ItemCode,
-            T.DocEntry AS ITDocEntry,
-            T.DocNum AS ITNumber,
-            {$scanDateExpr} AS SAPScanDate,
-            {$scanTimeExpr} AS SAPScanTime,
-            {$closeDateExpr} AS SAPCloseDate,
-            {$closeTimeExpr} AS SAPCloseTime,
-            {$scannedByExpr} AS SAPScannedBy,
-            {$toWhsExpr} AS SAPScanArea,
-            {$lineStatusExpr} AS ITRLineStatus,
-            {$openQtyExpr} AS ITROpenQty,
-            L.LineNum AS ITLineNum,
-            L.Quantity AS TransferQty
-         FROM OWTR T
-         INNER JOIN WTR1 L ON L.DocEntry = T.DocEntry
-         {$requestLineJoin}
-         {$userJoin}
-         WHERE " . implode(' AND ', $where) . "
-         ORDER BY T.DocEntry DESC, L.LineNum DESC",
-        $params
+    $placeholders = implode(
+        ',',
+        array_fill(0, count($tables), '?')
     );
 
-    $scanPlusByLine = [];
+    $rows = fetch_all(
+        $conn,
+        "
+        SELECT
+            TABLE_NAME,
+            COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME IN ({$placeholders})
+        ",
+        $tables
+    );
 
-    foreach ($sapRows as $sapRow) {
-        $key = request_report_sap_key(
-            $sapRow['ITRDocEntry'] ?? 0,
-            $sapRow['ITRLineNum'] ?? null,
-            $sapRow['ItemCode'] ?? ''
+    $schema = [];
+
+    foreach ($rows as $row) {
+        $tableName = strtolower(
+            trim((string)($row['TABLE_NAME'] ?? ''))
         );
 
-        if ($key === '') {
-            continue;
-        }
-
-        $lineStatus = strtoupper(trim((string)($sapRow['ITRLineStatus'] ?? '')));
-        $openQty = $sapRow['ITROpenQty'];
-        $isClosed = $lineStatus === 'C' || ($openQty !== null && (float)$openQty <= 0);
-        $scanAt = request_report_sap_datetime_text($sapRow['SAPScanDate'] ?? '', $sapRow['SAPScanTime'] ?? null);
-        $closeAt = $isClosed
-            ? request_report_sap_datetime_text($sapRow['SAPCloseDate'] ?? '', $sapRow['SAPCloseTime'] ?? null)
-            : '';
-
-        $status = $isClosed ? 'CLOSED' : 'SAP_RECEIVED';
-
-        if (!isset($scanPlusByLine[$key])) {
-            $scanPlusByLine[$key] = [
-                'scanned_by' => trim((string)($sapRow['SAPScannedBy'] ?? '')),
-                'scan_area' => trim((string)($sapRow['SAPScanArea'] ?? '')),
-                'scanned_at' => $scanAt,
-                'receive_status' => $status,
-                'closed_at' => $closeAt,
-                'it_numbers' => [],
-                'transfer_qty' => 0.0,
-                'transfer_line_keys' => []
-            ];
-        }
-
-        $itNumber = trim((string)($sapRow['ITNumber'] ?? ''));
-
-        if ($itNumber !== '') {
-            $scanPlusByLine[$key]['it_numbers'][$itNumber] = true;
-        }
-
-        $transferLineKey = (string)($sapRow['ITDocEntry'] ?? '') . '|' . (string)($sapRow['ITLineNum'] ?? '');
-
-        if ($transferLineKey !== '|' && !isset($scanPlusByLine[$key]['transfer_line_keys'][$transferLineKey])) {
-            $scanPlusByLine[$key]['transfer_qty'] += (float)($sapRow['TransferQty'] ?? 0);
-            $scanPlusByLine[$key]['transfer_line_keys'][$transferLineKey] = true;
-        }
-
-        if ($scanAt !== '' && strcmp($scanAt, (string)$scanPlusByLine[$key]['scanned_at']) > 0) {
-            $scanPlusByLine[$key]['scanned_by'] = trim((string)($sapRow['SAPScannedBy'] ?? ''));
-            $scanPlusByLine[$key]['scan_area'] = trim((string)($sapRow['SAPScanArea'] ?? ''));
-            $scanPlusByLine[$key]['scanned_at'] = $scanAt;
-        }
-
-        if ($isClosed && $closeAt !== '') {
-            $scanPlusByLine[$key]['receive_status'] = 'CLOSED';
-            $scanPlusByLine[$key]['closed_at'] = $closeAt;
-        }
-    }
-
-    foreach ($scanPlusByLine as &$scanPlusLine) {
-        unset($scanPlusLine['transfer_line_keys']);
-    }
-    unset($scanPlusLine);
-
-    foreach ($rows as &$row) {
-        $key = request_report_sap_key(
-            $row['LineSAPDocEntry'] ?? $row['HeaderSAPDocEntry'] ?? 0,
-            $row['SAP_IT_LineNum'] ?? null,
-            $row['ItemCode'] ?? ''
+        $columnName = strtolower(
+            trim((string)($row['COLUMN_NAME'] ?? ''))
         );
 
-        if ($key === '' || !isset($scanPlusByLine[$key])) {
+        if ($tableName === '' || $columnName === '') {
             continue;
         }
 
-        $scanPlus = $scanPlusByLine[$key];
-        $localStatus = strtoupper(trim((string)($row['ReceiveStatus'] ?? '')));
-
-        // Show SAP received quantity only when receiving is confirmed locally or SAP has
-        // a real receive timestamp/status. This avoids showing placeholder SAP_RECEIVED data
-        // for newly issued rows that still have the default 1900 date.
-        $sapReceivedConfirmed = request_report_scanplus_is_received($scanPlus);
-        if (!request_report_row_is_received($row) && !$sapReceivedConfirmed) {
-            $row['SAPReceivedQty'] = '';
-            continue;
+        if (!isset($schema[$tableName])) {
+            $schema[$tableName] = [];
         }
 
-        $row['SAPTransferQty'] = request_report_cap_received_qty($scanPlus['transfer_qty'] ?? 0, $row);
-        $row['SAPReceivedQty'] = $row['SAPTransferQty'];
-
-        if (trim((string)($row['ScannedBy'] ?? '')) === '') {
-            $row['ScannedBy'] = $scanPlus['scanned_by'];
-        }
-
-        if (trim((string)($row['ScannedArea'] ?? '')) === '') {
-            $row['ScannedArea'] = $scanPlus['scan_area'];
-        }
-
-        if (trim((string)($row['ScannedAt'] ?? '')) === '') {
-            $row['ScannedAt'] = $scanPlus['scanned_at'];
-        }
-
-        if ($localStatus === '' || $localStatus === 'ISSUED' || $localStatus === 'PENDING_RECEIVE') {
-            $row['ReceiveStatus'] = $scanPlus['receive_status'];
-        }
-
-        if ($scanPlus['closed_at'] !== '') {
-            $row['ClosedAt'] = $scanPlus['closed_at'];
-        }
+        $schema[$tableName][$columnName] = true;
     }
-    unset($row);
+
+    return $schema;
 }
 
-function request_excel_cell($value)
+function request_report_has_table(
+    array $schema,
+    string $table
+): bool {
+    return isset($schema[strtolower($table)]);
+}
+
+function request_report_has_column(
+    array $schema,
+    string $table,
+    string $column
+): bool {
+    return isset(
+        $schema[strtolower($table)][strtolower($column)]
+    );
+}
+
+function request_report_url(array $changes = []): string
 {
-    return htmlspecialchars(request_report_cell($value), ENT_QUOTES, 'UTF-8');
+    $query = $_GET;
+
+    unset($query['export']);
+
+    foreach ($changes as $key => $value) {
+        if ($value === null || $value === '') {
+            unset($query[$key]);
+            continue;
+        }
+
+        $query[$key] = $value;
+    }
+
+    return
+        'pages/requestor/requestor_report.php?' .
+        http_build_query($query);
 }
+
+/*
+|--------------------------------------------------------------------------
+| Filters and pagination
+|--------------------------------------------------------------------------
+*/
 
 $today = date('Y-m-d');
-$dateFrom = request_report_date_value('date_from', $today);
-$dateTo = request_report_date_value('date_to', $today);
-$export = strtolower(trim((string)($_GET['export'] ?? ''))) === 'excel';
 
-$u = current_user();
-$currentRole = strtolower($u['role'] ?? '');
+$dateFrom = request_report_date_value(
+    'date_from',
+    $today
+);
+
+$dateTo = request_report_date_value(
+    'date_to',
+    $today
+);
+
+if ($dateFrom > $dateTo) {
+    [$dateFrom, $dateTo] = [$dateTo, $dateFrom];
+}
+
+$search = trim((string)($_GET['q'] ?? ''));
+
+$allowedPageSizes = [50, 100, 200];
+
+$pageSize = (int)($_GET['page_size'] ?? 100);
+
+if (!in_array($pageSize, $allowedPageSizes, true)) {
+    $pageSize = 100;
+}
+
+$page = filter_input(
+    INPUT_GET,
+    'page',
+    FILTER_VALIDATE_INT
+);
+
+if ($page === false || $page === null || $page < 1) {
+    $page = 1;
+}
+
+$export = strtolower(
+    trim((string)($_GET['export'] ?? ''))
+) === 'excel';
+
+if ($export) {
+    set_time_limit(180);
+}
+
+$currentUser = current_user();
+
+$currentRole = strtolower(
+    trim((string)($currentUser['role'] ?? ''))
+);
+
+$currentUsername = trim(
+    (string)($currentUser['username'] ?? '')
+);
+
+$conn = get_whpokayoke_connection();
+
+if (!$conn) {
+    http_response_code(500);
+    exit('Unable to connect to the WH PokaYoke database.');
+}
+
+$schema = request_report_load_schema($conn);
+
+if (
+    !request_report_has_table(
+        $schema,
+        'WarehouseIssueRequestHeader'
+    ) ||
+    !request_report_has_table(
+        $schema,
+        'WarehouseIssueRequestLines'
+    )
+) {
+    http_response_code(500);
+
+    exit(
+        'The issue request tables were not found in the local database.'
+    );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Build local report filters
+|--------------------------------------------------------------------------
+*/
 
 $where = [
     'H.RequestedAt >= ?',
@@ -587,111 +290,886 @@ $params = [
     $dateTo
 ];
 
-if (($u['role'] ?? '') !== ROLE_ADMIN) {
+if ($currentRole !== strtolower((string)ROLE_ADMIN)) {
     $where[] = 'H.RequestedByUsername = ?';
-    $params[] = $u['username'] ?? '';
+    $params[] = $currentUsername;
 }
 
-$conn = get_whpokayoke_connection();
+if ($search !== '') {
+    $like = '%' . $search . '%';
 
-$traceQtyColumn = '';
-foreach (['IssuedQty', 'IssueQty', 'Qty', 'Quantity', 'ScannedQty'] as $candidateQtyColumn) {
-    if (request_report_has_column($conn, 'RawmatTraceLines', $candidateQtyColumn)) {
-        $traceQtyColumn = $candidateQtyColumn;
-        break;
-    }
+    $where[] = "
+        (
+            CAST(H.RequestNo AS NVARCHAR(100)) LIKE ?
+            OR CAST(H.ITRNumber AS NVARCHAR(100)) LIKE ?
+            OR L.ItemCode LIKE ?
+            OR L.PartName LIKE ?
+            OR H.Status LIKE ?
+            OR L.Status LIKE ?
+            OR H.Remarks LIKE ?
+            OR H.RequestedByUsername LIKE ?
+        )
+    ";
+
+    array_push(
+        $params,
+        $like,
+        $like,
+        $like,
+        $like,
+        $like,
+        $like,
+        $like,
+        $like
+    );
 }
 
-$traceQtyExpr = $traceQtyColumn !== ''
-    ? 'TRY_CONVERT(DECIMAL(18,3), TL.' . $traceQtyColumn . ')'
-    : 'CAST(NULL AS DECIMAL(18,3))';
+$whereSql = implode(' AND ', $where);
 
-$traceHasWarehouseLot = request_report_has_column($conn, 'RawmatTraceLines', 'WarehouseLotNo');
-$requestLineHasWarehouseLot = request_report_has_column($conn, 'WarehouseIssueRequestLines', 'WarehouseLotNo');
+/*
+|--------------------------------------------------------------------------
+| Count request lines
+|--------------------------------------------------------------------------
+*/
 
-$traceWarehouseLotExpr = $traceHasWarehouseLot
-    ? "NULLIF(LTRIM(RTRIM(TL.WarehouseLotNo)), '')"
-    : "CAST(NULL AS NVARCHAR(80))";
-$requestWarehouseLotExpr = $requestLineHasWarehouseLot
-    ? "NULLIF(LTRIM(RTRIM(L.WarehouseLotNo)), '')"
-    : "CAST(NULL AS NVARCHAR(80))";
-$traceLineWarehouseLotMatchSql = ($traceHasWarehouseLot && $requestLineHasWarehouseLot)
-    ? "
-                OR (
-                    LEN(LTRIM(RTRIM(ISNULL(TL0.WarehouseLotNo, N'')))) > 0
-                    AND LEN(LTRIM(RTRIM(ISNULL(L.WarehouseLotNo, N'')))) > 0
-                    AND LTRIM(RTRIM(TL0.WarehouseLotNo)) = LTRIM(RTRIM(L.WarehouseLotNo))
-                )"
-    : '';
-$traceLineLotMatchSql = "
-            AND (
-                LEN(LTRIM(RTRIM(ISNULL(L.LotNo, N'')))) = 0
-                OR LEN(LTRIM(RTRIM(ISNULL(TL0.LotNo, N'')))) = 0
-                OR LTRIM(RTRIM(TL0.LotNo)) = LTRIM(RTRIM(L.LotNo))
-                {$traceLineWarehouseLotMatchSql}
-            )";
+$countSql = "
+    SELECT
+        COUNT_BIG(*) AS TotalRows
+    FROM dbo.WarehouseIssueRequestHeader H
+    INNER JOIN dbo.WarehouseIssueRequestLines L
+        ON L.RequestID = H.RequestID
+    WHERE {$whereSql}
+";
 
-$hasIssuanceTransactions = request_report_has_table($conn, 'IssuanceTransactions');
-$txHasTraceNo = $hasIssuanceTransactions && request_report_has_column($conn, 'IssuanceTransactions', 'TraceNo');
-$txHasItrDocEntry = $hasIssuanceTransactions && request_report_has_column($conn, 'IssuanceTransactions', 'ITRDocEntry');
-$txHasItrLineNum = $hasIssuanceTransactions && request_report_has_column($conn, 'IssuanceTransactions', 'ITRLineNum');
-$txHasRequestId = $hasIssuanceTransactions && request_report_has_column($conn, 'IssuanceTransactions', 'IssueRequestID');
-$txHasRequestLineId = $hasIssuanceTransactions && request_report_has_column($conn, 'IssuanceTransactions', 'IssueRequestLineID');
-$txHasWarehouseLot = $hasIssuanceTransactions && request_report_has_column($conn, 'IssuanceTransactions', 'WarehouseLotNo');
-$txHasIssuedAt = $hasIssuanceTransactions && request_report_has_column($conn, 'IssuanceTransactions', 'IssuedAt');
+$countResult = fetch_one(
+    $conn,
+    $countSql,
+    $params
+);
 
-$issuanceApply = "OUTER APPLY (
+$totalRows = (int)($countResult['TotalRows'] ?? 0);
+
+$totalPages = max(
+    1,
+    (int)ceil($totalRows / $pageSize)
+);
+
+if ($page > $totalPages) {
+    $page = $totalPages;
+}
+
+$offset = ($page - 1) * $pageSize;
+
+$firstRow = $offset + 1;
+$lastRow = $offset + $pageSize;
+
+/*
+|--------------------------------------------------------------------------
+| Optional local columns
+|--------------------------------------------------------------------------
+*/
+
+$requestLineHasWarehouseLot =
+    request_report_has_column(
+        $schema,
+        'WarehouseIssueRequestLines',
+        'WarehouseLotNo'
+    );
+
+$requestWarehouseLotExpression =
+    $requestLineHasWarehouseLot
+        ? "NULLIF(LTRIM(RTRIM(L.WarehouseLotNo)), '')"
+        : "CAST(NULL AS NVARCHAR(100))";
+
+/*
+|--------------------------------------------------------------------------
+| Local trace lookup
+|--------------------------------------------------------------------------
+*/
+
+$hasTraceTables =
+    request_report_has_table(
+        $schema,
+        'RawmatTraceLines'
+    ) &&
+    request_report_has_table(
+        $schema,
+        'RawmatTraceHeader'
+    );
+
+$traceApply = "
+    OUTER APPLY
+    (
         SELECT
-            CAST(NULL AS NVARCHAR(80)) AS LotNo,
-            CAST(NULL AS NVARCHAR(80)) AS WarehouseLotNo,
-            CAST(NULL AS DECIMAL(18,3)) AS Quantity
-    ) ITX";
+            CAST(NULL AS INT) AS TraceLineID,
+            CAST(NULL AS DECIMAL(18, 3)) AS TraceIssuedQty,
+            CAST(NULL AS NVARCHAR(100)) AS LotNo,
+            CAST(NULL AS NVARCHAR(100)) AS WarehouseLotNo,
+            CAST(NULL AS NVARCHAR(120)) AS ReceivedByUsername,
+            CAST(NULL AS NVARCHAR(100)) AS ReceiverArea,
+            CAST(NULL AS DATETIME) AS LocalReceivedAt,
+            CAST(NULL AS NVARCHAR(50)) AS VerificationStatus
+    ) TL
+";
+
+if ($hasTraceTables) {
+    $traceQtyColumn = '';
+
+    foreach (
+        [
+            'IssuedQty',
+            'IssueQty',
+            'Qty',
+            'Quantity',
+            'ScannedQty'
+        ] as $candidate
+    ) {
+        if (
+            request_report_has_column(
+                $schema,
+                'RawmatTraceLines',
+                $candidate
+            )
+        ) {
+            $traceQtyColumn = $candidate;
+            break;
+        }
+    }
+
+    $traceQuantityExpression =
+        $traceQtyColumn !== ''
+            ? "TRY_CONVERT(
+                    DECIMAL(18, 3),
+                    TL0.[{$traceQtyColumn}]
+               )"
+            : "CAST(NULL AS DECIMAL(18, 3))";
+
+    $traceWarehouseLotExpression =
+        request_report_has_column(
+            $schema,
+            'RawmatTraceLines',
+            'WarehouseLotNo'
+        )
+            ? "NULLIF(
+                    LTRIM(RTRIM(TL0.WarehouseLotNo)),
+                    ''
+               )"
+            : "CAST(NULL AS NVARCHAR(100))";
+
+    $traceReceivedByExpression =
+        request_report_has_column(
+            $schema,
+            'RawmatTraceLines',
+            'ReceivedByUsername'
+        )
+            ? "TL0.ReceivedByUsername"
+            : "CAST(NULL AS NVARCHAR(120))";
+
+    $traceReceiverAreaExpression =
+        request_report_has_column(
+            $schema,
+            'RawmatTraceLines',
+            'ReceiverArea'
+        )
+            ? "TL0.ReceiverArea"
+            : "CAST(NULL AS NVARCHAR(100))";
+
+    $traceHasReceivedScanAt =
+        request_report_has_column(
+            $schema,
+            'RawmatTraceLines',
+            'ReceivedScanAt'
+        );
+
+    $traceHasReceivedAt =
+        request_report_has_column(
+            $schema,
+            'RawmatTraceLines',
+            'ReceivedAt'
+        );
+
+    if ($traceHasReceivedScanAt && $traceHasReceivedAt) {
+        $traceReceivedAtExpression =
+            "COALESCE(
+                TL0.ReceivedScanAt,
+                TL0.ReceivedAt
+            )";
+    } elseif ($traceHasReceivedScanAt) {
+        $traceReceivedAtExpression = 'TL0.ReceivedScanAt';
+    } elseif ($traceHasReceivedAt) {
+        $traceReceivedAtExpression = 'TL0.ReceivedAt';
+    } else {
+        $traceReceivedAtExpression =
+            'CAST(NULL AS DATETIME)';
+    }
+
+    $traceStatusExpression =
+        request_report_has_column(
+            $schema,
+            'RawmatTraceLines',
+            'VerificationStatus'
+        )
+            ? "TL0.VerificationStatus"
+            : "CAST(NULL AS NVARCHAR(50))";
+
+    $traceApply = "
+        OUTER APPLY
+        (
+            SELECT TOP (1)
+                TL0.TraceLineID,
+
+                {$traceQuantityExpression}
+                    AS TraceIssuedQty,
+
+                NULLIF(
+                    LTRIM(RTRIM(TL0.LotNo)),
+                    ''
+                ) AS LotNo,
+
+                {$traceWarehouseLotExpression}
+                    AS WarehouseLotNo,
+
+                {$traceReceivedByExpression}
+                    AS ReceivedByUsername,
+
+                {$traceReceiverAreaExpression}
+                    AS ReceiverArea,
+
+                {$traceReceivedAtExpression}
+                    AS LocalReceivedAt,
+
+                {$traceStatusExpression}
+                    AS VerificationStatus
+
+            FROM dbo.RawmatTraceLines TL0
+
+            LEFT JOIN dbo.RawmatTraceHeader TH0
+                ON TH0.TraceID = TL0.TraceID
+
+            WHERE
+                TL0.IssueRequestLineID = B.RequestLineID
+
+                OR
+                (
+                    NULLIF(
+                        LTRIM(RTRIM(B.IssuedTraceNo)),
+                        ''
+                    ) IS NOT NULL
+
+                    AND TH0.TraceNo = B.IssuedTraceNo
+                    AND TL0.ItemCode = B.ItemCode
+
+                    AND
+                    (
+                        NULLIF(
+                            LTRIM(RTRIM(B.LineLotNo)),
+                            ''
+                        ) IS NULL
+
+                        OR
+                        NULLIF(
+                            LTRIM(RTRIM(TL0.LotNo)),
+                            ''
+                        ) IS NULL
+
+                        OR
+                        LTRIM(RTRIM(TL0.LotNo))
+                            = LTRIM(RTRIM(B.LineLotNo))
+
+                        OR
+                        (
+                            TRY_CONVERT(
+                                BIGINT,
+                                TL0.LotNo
+                            ) IS NOT NULL
+
+                            AND TRY_CONVERT(
+                                BIGINT,
+                                TL0.LotNo
+                            ) = TRY_CONVERT(
+                                BIGINT,
+                                B.LineLotNo
+                            )
+                        )
+                    )
+                )
+
+            ORDER BY
+                CASE
+                    WHEN TL0.IssueRequestLineID
+                            = B.RequestLineID
+                        THEN 0
+                    ELSE 1
+                END,
+
+                TL0.TraceLineID DESC
+        ) TL
+    ";
+}
+
+/*
+|--------------------------------------------------------------------------
+| Local issuance transaction lookup
+|--------------------------------------------------------------------------
+*/
+
+$hasIssuanceTransactions =
+    request_report_has_table(
+        $schema,
+        'IssuanceTransactions'
+    );
+
+$issuanceApply = "
+    OUTER APPLY
+    (
+        SELECT
+            CAST(NULL AS INT) AS TransactionID,
+            CAST(NULL AS NVARCHAR(100)) AS LotNo,
+            CAST(NULL AS NVARCHAR(100)) AS WarehouseLotNo,
+            CAST(NULL AS DECIMAL(18, 3)) AS Quantity,
+            CAST(NULL AS DATETIME) AS IssuedAt
+    ) ITX
+";
 
 if ($hasIssuanceTransactions) {
-    $txMatch = [];
-    $txOrder = [];
+    $transactionMatches = [];
+    $transactionOrder = [];
 
-    if ($txHasRequestLineId) {
-        $txMatch[] = 'IT0.IssueRequestLineID = L.RequestLineID';
-        $txOrder[] = 'CASE WHEN IT0.IssueRequestLineID = L.RequestLineID THEN 0 ELSE 1 END';
+    $txHasRequestLineID =
+        request_report_has_column(
+            $schema,
+            'IssuanceTransactions',
+            'IssueRequestLineID'
+        );
+
+    $txHasRequestID =
+        request_report_has_column(
+            $schema,
+            'IssuanceTransactions',
+            'IssueRequestID'
+        );
+
+    $txHasTraceNo =
+        request_report_has_column(
+            $schema,
+            'IssuanceTransactions',
+            'TraceNo'
+        );
+
+    $txHasItrDocEntry =
+        request_report_has_column(
+            $schema,
+            'IssuanceTransactions',
+            'ITRDocEntry'
+        );
+
+    $txHasItrLineNum =
+        request_report_has_column(
+            $schema,
+            'IssuanceTransactions',
+            'ITRLineNum'
+        );
+
+    $txHasWarehouseLot =
+        request_report_has_column(
+            $schema,
+            'IssuanceTransactions',
+            'WarehouseLotNo'
+        );
+
+    $txHasIssuedAt =
+        request_report_has_column(
+            $schema,
+            'IssuanceTransactions',
+            'IssuedAt'
+        );
+
+    if ($txHasRequestLineID) {
+        $transactionMatches[] =
+            'IT0.IssueRequestLineID = B.RequestLineID';
+
+        $transactionOrder[] = "
+            CASE
+                WHEN IT0.IssueRequestLineID
+                        = B.RequestLineID
+                    THEN 0
+                ELSE 1
+            END
+        ";
     }
 
-    if ($txHasRequestId) {
-        $txMatch[] = '(IT0.IssueRequestID = H.RequestID AND IT0.ItemCode = L.ItemCode)';
-        $txOrder[] = 'CASE WHEN IT0.IssueRequestID = H.RequestID THEN 0 ELSE 1 END';
+    if ($txHasRequestID) {
+        $transactionMatches[] =
+            'IT0.IssueRequestID = B.RequestID';
+
+        $transactionOrder[] = "
+            CASE
+                WHEN IT0.IssueRequestID = B.RequestID
+                    THEN 0
+                ELSE 1
+            END
+        ";
     }
 
     if ($txHasTraceNo) {
-        $txMatch[] = "(NULLIF(LTRIM(RTRIM(H.IssuedTraceNo)), '') IS NOT NULL AND IT0.TraceNo = H.IssuedTraceNo AND IT0.ItemCode = L.ItemCode)";
-        $txOrder[] = "CASE WHEN IT0.TraceNo = H.IssuedTraceNo THEN 0 ELSE 1 END";
+        $transactionMatches[] = "
+            (
+                NULLIF(
+                    LTRIM(RTRIM(B.IssuedTraceNo)),
+                    ''
+                ) IS NOT NULL
+
+                AND IT0.TraceNo = B.IssuedTraceNo
+            )
+        ";
+
+        $transactionOrder[] = "
+            CASE
+                WHEN IT0.TraceNo = B.IssuedTraceNo
+                    THEN 0
+                ELSE 1
+            END
+        ";
     }
 
     if ($txHasItrDocEntry && $txHasItrLineNum) {
-        $txMatch[] = '(IT0.ITRDocEntry = COALESCE(L.SAP_IT_DocEntry, H.SAP_IT_DocEntry) AND IT0.ITRLineNum = L.SAP_IT_LineNum AND IT0.ItemCode = L.ItemCode)';
-        $txOrder[] = 'CASE WHEN IT0.ITRDocEntry = COALESCE(L.SAP_IT_DocEntry, H.SAP_IT_DocEntry) AND IT0.ITRLineNum = L.SAP_IT_LineNum THEN 0 ELSE 1 END';
+        $transactionMatches[] = "
+            (
+                IT0.ITRDocEntry = COALESCE(
+                    B.LineSAPDocEntry,
+                    B.HeaderSAPDocEntry
+                )
+
+                AND ISNULL(
+                    IT0.ITRLineNum,
+                    -1
+                ) = ISNULL(
+                    B.SAP_IT_LineNum,
+                    -1
+                )
+            )
+        ";
+
+        $transactionOrder[] = "
+            CASE
+                WHEN
+                    IT0.ITRDocEntry = COALESCE(
+                        B.LineSAPDocEntry,
+                        B.HeaderSAPDocEntry
+                    )
+
+                    AND ISNULL(
+                        IT0.ITRLineNum,
+                        -1
+                    ) = ISNULL(
+                        B.SAP_IT_LineNum,
+                        -1
+                    )
+                    THEN 0
+                ELSE 1
+            END
+        ";
     }
 
-    if (!empty($txMatch)) {
-        $txWarehouseLotSelect = $txHasWarehouseLot
-            ? "NULLIF(LTRIM(RTRIM(IT0.WarehouseLotNo)), '') AS WarehouseLotNo"
-            : "CAST(NULL AS NVARCHAR(80)) AS WarehouseLotNo";
-        $txOrder[] = $txHasIssuedAt ? 'IT0.IssuedAt DESC' : 'IT0.TransactionID DESC';
-        $txOrder[] = 'IT0.TransactionID DESC';
+    if (!empty($transactionMatches)) {
+        $transactionWarehouseLotExpression =
+            $txHasWarehouseLot
+                ? "NULLIF(
+                        LTRIM(RTRIM(IT0.WarehouseLotNo)),
+                        ''
+                   )"
+                : "CAST(NULL AS NVARCHAR(100))";
 
-        $issuanceApply = "OUTER APPLY (
-        SELECT TOP 1
-            NULLIF(LTRIM(RTRIM(IT0.LotNo)), '') AS LotNo,
-            {$txWarehouseLotSelect},
-            TRY_CONVERT(DECIMAL(18,3), IT0.Quantity) AS Quantity
-        FROM IssuanceTransactions IT0
-        WHERE " . implode(' OR ', $txMatch) . "
-        ORDER BY " . implode(', ', array_unique($txOrder)) . "
-    ) ITX";
+        $transactionIssuedAtExpression =
+            $txHasIssuedAt
+                ? 'IT0.IssuedAt'
+                : 'CAST(NULL AS DATETIME)';
+
+        if ($txHasIssuedAt) {
+            $transactionOrder[] = 'IT0.IssuedAt DESC';
+        }
+
+        $transactionOrder[] = 'IT0.TransactionID DESC';
+
+        $transactionMatchSql = implode(
+            ' OR ',
+            $transactionMatches
+        );
+
+        $transactionOrderSql = implode(
+            ', ',
+            $transactionOrder
+        );
+
+        $issuanceApply = "
+            OUTER APPLY
+            (
+                SELECT TOP (1)
+                    IT0.TransactionID,
+
+                    NULLIF(
+                        LTRIM(RTRIM(IT0.LotNo)),
+                        ''
+                    ) AS LotNo,
+
+                    {$transactionWarehouseLotExpression}
+                        AS WarehouseLotNo,
+
+                    TRY_CONVERT(
+                        DECIMAL(18, 3),
+                        IT0.Quantity
+                    ) AS Quantity,
+
+                    {$transactionIssuedAtExpression}
+                        AS IssuedAt
+
+                FROM dbo.IssuanceTransactions IT0
+
+                WHERE
+                    IT0.ItemCode = B.ItemCode
+
+                    AND
+                    (
+                        {$transactionMatchSql}
+                    )
+
+                ORDER BY
+                    {$transactionOrderSql}
+            ) ITX
+        ";
     }
 }
 
+/*
+|--------------------------------------------------------------------------
+| Local scheduled cache lookup
+|--------------------------------------------------------------------------
+*/
+
+$hasCache =
+    request_report_has_table(
+        $schema,
+        'RawmatTraceScanPlusCache'
+    ) &&
+    request_report_has_column(
+        $schema,
+        'RawmatTraceScanPlusCache',
+        'SAP_IT_DocEntry'
+    ) &&
+    request_report_has_column(
+        $schema,
+        'RawmatTraceScanPlusCache',
+        'SAP_IT_LineNum'
+    ) &&
+    request_report_has_column(
+        $schema,
+        'RawmatTraceScanPlusCache',
+        'ItemCode'
+    ) &&
+    request_report_has_column(
+        $schema,
+        'RawmatTraceScanPlusCache',
+        'LotNo'
+    );
+
+$cacheApply = "
+    OUTER APPLY
+    (
+        SELECT
+            CAST(NULL AS INT) AS SAP_IT_DocEntry,
+            CAST(NULL AS INT) AS SAP_IT_LineNum,
+            CAST(NULL AS NVARCHAR(100)) AS ItemCode,
+            CAST(NULL AS NVARCHAR(100)) AS LotNo,
+            CAST(NULL AS NVARCHAR(100)) AS ReceivedLotNo,
+            CAST(NULL AS NVARCHAR(50)) AS ScanStatus,
+            CAST(NULL AS DECIMAL(18, 3)) AS ReceivedQty,
+            CAST(NULL AS NVARCHAR(120)) AS BarcodeUser,
+            CAST(NULL AS DATETIME) AS ReceivedAt,
+            CAST(NULL AS DATETIME) AS LastSyncedAt
+    ) C
+";
+
+if ($hasCache) {
+    $cacheReceivedLotExpression =
+        request_report_has_column(
+            $schema,
+            'RawmatTraceScanPlusCache',
+            'ReceivedLotNo'
+        )
+            ? "NULLIF(
+                    LTRIM(RTRIM(C0.ReceivedLotNo)),
+                    ''
+               )"
+            : "CAST(NULL AS NVARCHAR(100))";
+
+    $cacheStatusExpression =
+        request_report_has_column(
+            $schema,
+            'RawmatTraceScanPlusCache',
+            'ScanStatus'
+        )
+            ? 'C0.ScanStatus'
+            : "CAST(NULL AS NVARCHAR(50))";
+
+    $cacheQuantityExpression =
+        request_report_has_column(
+            $schema,
+            'RawmatTraceScanPlusCache',
+            'ReceivedQty'
+        )
+            ? "TRY_CONVERT(
+                    DECIMAL(18, 3),
+                    C0.ReceivedQty
+               )"
+            : "CAST(NULL AS DECIMAL(18, 3))";
+
+    $cacheBarcodeUserExpression =
+        request_report_has_column(
+            $schema,
+            'RawmatTraceScanPlusCache',
+            'BarcodeUser'
+        )
+            ? 'C0.BarcodeUser'
+            : "CAST(NULL AS NVARCHAR(120))";
+
+    $cacheHasReceivedAt =
+        request_report_has_column(
+            $schema,
+            'RawmatTraceScanPlusCache',
+            'ReceivedAt'
+        );
+
+    $cacheHasLastSyncedAt =
+        request_report_has_column(
+            $schema,
+            'RawmatTraceScanPlusCache',
+            'LastSyncedAt'
+        );
+
+    $cacheReceivedAtExpression =
+        $cacheHasReceivedAt
+            ? 'C0.ReceivedAt'
+            : 'CAST(NULL AS DATETIME)';
+
+    $cacheLastSyncedExpression =
+        $cacheHasLastSyncedAt
+            ? 'C0.LastSyncedAt'
+            : 'CAST(NULL AS DATETIME)';
+
+    $cacheDateCondition = '';
+
+    if ($cacheHasReceivedAt && $cacheHasLastSyncedAt) {
+        $cacheDateCondition = "
+            AND
+            (
+                C0.ReceivedAt >= R.RequestEventAt
+
+                OR
+                (
+                    C0.ReceivedAt IS NULL
+                    AND C0.LastSyncedAt >= R.RequestEventAt
+                )
+            )
+        ";
+    } elseif ($cacheHasReceivedAt) {
+        $cacheDateCondition = "
+            AND
+            (
+                C0.ReceivedAt IS NULL
+                OR C0.ReceivedAt >= R.RequestEventAt
+            )
+        ";
+    } elseif ($cacheHasLastSyncedAt) {
+        $cacheDateCondition = "
+            AND C0.LastSyncedAt >= R.RequestEventAt
+        ";
+    }
+
+    $cacheReceivedAtOrder =
+        $cacheHasReceivedAt
+            ? 'C0.ReceivedAt DESC,'
+            : '';
+
+    $cacheLastSyncedOrder =
+        $cacheHasLastSyncedAt
+            ? 'C0.LastSyncedAt DESC'
+            : 'C0.SAP_IT_DocEntry DESC';
+
+    $cacheApply = "
+        OUTER APPLY
+        (
+            SELECT TOP (1)
+                C0.SAP_IT_DocEntry,
+                C0.SAP_IT_LineNum,
+                C0.ItemCode,
+
+                NULLIF(
+                    LTRIM(RTRIM(C0.LotNo)),
+                    ''
+                ) AS LotNo,
+
+                {$cacheReceivedLotExpression}
+                    AS ReceivedLotNo,
+
+                {$cacheStatusExpression}
+                    AS ScanStatus,
+
+                {$cacheQuantityExpression}
+                    AS ReceivedQty,
+
+                {$cacheBarcodeUserExpression}
+                    AS BarcodeUser,
+
+                {$cacheReceivedAtExpression}
+                    AS ReceivedAt,
+
+                {$cacheLastSyncedExpression}
+                    AS LastSyncedAt
+
+            FROM dbo.RawmatTraceScanPlusCache C0
+
+            WHERE
+                C0.SAP_IT_DocEntry = COALESCE(
+                    B.LineSAPDocEntry,
+                    B.HeaderSAPDocEntry
+                )
+
+                AND ISNULL(
+                    C0.SAP_IT_LineNum,
+                    -1
+                ) = ISNULL(
+                    B.SAP_IT_LineNum,
+                    -1
+                )
+
+                AND C0.ItemCode = B.ItemCode
+
+                AND
+                (
+                    NULLIF(
+                        LTRIM(RTRIM(R.LocalLotNo)),
+                        ''
+                    ) IS NULL
+
+                    OR
+                    NULLIF(
+                        LTRIM(RTRIM(C0.LotNo)),
+                        ''
+                    ) IS NULL
+
+                    OR
+                    LTRIM(RTRIM(C0.LotNo))
+                        = LTRIM(RTRIM(R.LocalLotNo))
+
+                    OR
+                    (
+                        TRY_CONVERT(
+                            BIGINT,
+                            C0.LotNo
+                        ) IS NOT NULL
+
+                        AND TRY_CONVERT(
+                            BIGINT,
+                            C0.LotNo
+                        ) = TRY_CONVERT(
+                            BIGINT,
+                            R.LocalLotNo
+                        )
+                    )
+                )
+
+                {$cacheDateCondition}
+
+            ORDER BY
+                CASE
+                    WHEN
+                        NULLIF(
+                            LTRIM(RTRIM(C0.LotNo)),
+                            ''
+                        ) IS NOT NULL
+
+                        AND
+                        (
+                            LTRIM(RTRIM(C0.LotNo))
+                                = LTRIM(RTRIM(R.LocalLotNo))
+
+                            OR
+                            (
+                                TRY_CONVERT(
+                                    BIGINT,
+                                    C0.LotNo
+                                ) IS NOT NULL
+
+                                AND TRY_CONVERT(
+                                    BIGINT,
+                                    C0.LotNo
+                                ) = TRY_CONVERT(
+                                    BIGINT,
+                                    R.LocalLotNo
+                                )
+                            )
+                        )
+                        THEN 0
+
+                    WHEN NULLIF(
+                        LTRIM(RTRIM(C0.LotNo)),
+                        ''
+                    ) IS NULL
+                        THEN 1
+
+                    ELSE 2
+                END,
+
+                CASE
+                    WHEN ISNULL(
+                        TRY_CONVERT(
+                            DECIMAL(18, 3),
+                            C0.ReceivedQty
+                        ),
+                        0
+                    ) > 0
+                        THEN 0
+                    ELSE 1
+                END,
+
+                {$cacheReceivedAtOrder}
+                {$cacheLastSyncedOrder}
+        ) C
+    ";
+}
+
+/*
+|--------------------------------------------------------------------------
+| Main paginated query
+|--------------------------------------------------------------------------
+*/
+
+$pageFilterSql = '';
+
+$queryParams = $params;
+
+if (!$export) {
+    $pageFilterSql = "
+        WHERE RowNo BETWEEN ? AND ?
+    ";
+
+    $queryParams[] = $firstRow;
+    $queryParams[] = $lastRow;
+}
+
 $sql = "
+WITH FilteredRows AS
+(
     SELECT
+        ROW_NUMBER() OVER
+        (
+            ORDER BY
+                H.RequestedAt DESC,
+                H.RequestID DESC,
+                L.RequestLineID ASC
+        ) AS RowNo,
+
+        H.RequestID,
         H.RequestNo,
         H.ITRNumber,
         H.NeededDate,
@@ -700,74 +1178,403 @@ $sql = "
         H.RequestedByUsername,
         H.RequestedAt,
         H.IssuedTraceNo,
-        H.ClosedAt,
+        H.ClosedAt AS HeaderClosedAt,
         H.SAP_IT_DocEntry AS HeaderSAPDocEntry,
 
         L.RequestLineID,
+        L.Status AS RequestLineStatus,
         L.SAP_IT_DocEntry AS LineSAPDocEntry,
         L.SAP_IT_LineNum,
         L.ItemCode,
         L.PartName,
         L.RequestedQty,
-        COALESCE(NULLIF({$traceQtyExpr}, 0), NULLIF(ITX.Quantity, 0), L.IssuedQty) AS IssuedQty,
-        COALESCE(NULLIF(LTRIM(RTRIM(TL.LotNo)), ''), ITX.LotNo, L.LotNo) AS LotNo,
-        COALESCE({$traceWarehouseLotExpr}, ITX.WarehouseLotNo, {$requestWarehouseLotExpr}) AS WarehouseLotNo,
+        L.IssuedQty AS LineIssuedQty,
+        L.LotNo AS LineLotNo,
 
-        TL.ReceivedByUsername AS ScannedBy,
-        TL.ReceiverArea AS ScannedArea,
-        COALESCE(TL.ReceivedScanAt, TL.ReceivedAt) AS ScannedAt,
-        TL.VerificationStatus AS ReceiveStatus
+        {$requestWarehouseLotExpression}
+            AS LineWarehouseLotNo
 
-    FROM WarehouseIssueRequestHeader H
-    INNER JOIN WarehouseIssueRequestLines L ON L.RequestID = H.RequestID
+    FROM dbo.WarehouseIssueRequestHeader H
 
-    OUTER APPLY (
-        SELECT TL0.*
-        FROM RawmatTraceLines TL0
-        LEFT JOIN RawmatTraceHeader TH0 ON TH0.TraceID = TL0.TraceID
-        WHERE TL0.IssueRequestLineID = L.RequestLineID
-           OR (
-                TH0.TraceNo = H.IssuedTraceNo
-            AND TL0.ItemCode = L.ItemCode
-            {$traceLineLotMatchSql}
-           )
-    ) TL
+    INNER JOIN dbo.WarehouseIssueRequestLines L
+        ON L.RequestID = H.RequestID
 
-    {$issuanceApply}
+    WHERE {$whereSql}
+),
+PagedRows AS
+(
+    SELECT *
+    FROM FilteredRows
+    {$pageFilterSql}
+)
+SELECT
+    B.RowNo,
+    B.RequestID,
+    B.RequestLineID,
+    B.RequestNo,
+    B.ITRNumber,
+    B.NeededDate,
 
-    WHERE " . implode(' AND ', $where) . "
-    ORDER BY H.RequestedAt DESC, H.RequestID DESC, L.RequestLineID ASC, TL.TraceLineID ASC
+    COALESCE(
+        NULLIF(
+            LTRIM(RTRIM(B.RequestLineStatus)),
+            ''
+        ),
+        B.HeaderStatus
+    ) AS IssueStatus,
+
+    B.ItemCode,
+    B.PartName,
+    B.RequestedQty,
+
+    COALESCE(
+        R.BaseIssuedQty,
+        Q.CacheReceivedQty
+    ) AS IssuedQty,
+
+    Q.CacheReceivedQty AS SAPReceivedQty,
+
+    CASE
+        WHEN
+            COALESCE(
+                R.BaseIssuedQty,
+                Q.CacheReceivedQty
+            ) IS NULL
+
+            OR Q.CacheReceivedQty IS NULL
+            THEN NULL
+
+        ELSE
+            COALESCE(
+                R.BaseIssuedQty,
+                Q.CacheReceivedQty
+            ) - Q.CacheReceivedQty
+    END AS QtyVariance,
+
+    COALESCE(
+        NULLIF(
+            LTRIM(RTRIM(R.LocalLotNo)),
+            ''
+        ),
+        NULLIF(
+            LTRIM(RTRIM(C.ReceivedLotNo)),
+            ''
+        ),
+        NULLIF(
+            LTRIM(RTRIM(C.LotNo)),
+            ''
+        )
+    ) AS LotNo,
+
+    R.WarehouseLotNo,
+
+    B.RequestedByUsername,
+    B.RequestedAt,
+
+    CASE
+        WHEN V.LocalReceiveValid = 1
+            THEN TL.ReceivedByUsername
+
+        WHEN Q.CacheReceivedQty > 0
+            THEN C.BarcodeUser
+
+        ELSE ''
+    END AS ScannedBy,
+
+    CASE
+        WHEN V.LocalReceiveValid = 1
+            THEN TL.ReceiverArea
+        ELSE ''
+    END AS ScannedArea,
+
+    CASE
+        WHEN V.LocalReceiveValid = 1
+            THEN TL.LocalReceivedAt
+
+        WHEN Q.CacheReceivedQty > 0
+            THEN C.ReceivedAt
+
+        ELSE NULL
+    END AS ScannedAt,
+
+    CASE
+        WHEN
+            V.LocalReceiveValid = 1
+
+            AND NULLIF(
+                LTRIM(RTRIM(TL.VerificationStatus)),
+                ''
+            ) IS NOT NULL
+            THEN TL.VerificationStatus
+
+        WHEN Q.CacheReceivedQty > 0
+            THEN
+                CASE
+                    WHEN UPPER(
+                        LTRIM(
+                            RTRIM(
+                                ISNULL(C.ScanStatus, '')
+                            )
+                        )
+                    ) IN
+                    (
+                        'RECEIVED',
+                        'CLOSED',
+                        'COMPLETED',
+                        'MATCHED',
+                        'SAP PARTIAL',
+                        'SAP_RECEIVED'
+                    )
+                    THEN
+                        CASE
+                            WHEN UPPER(
+                                LTRIM(
+                                    RTRIM(
+                                        ISNULL(
+                                            C.ScanStatus,
+                                            ''
+                                        )
+                                    )
+                                )
+                            ) = 'SAP_RECEIVED'
+                                THEN 'SAP PARTIAL'
+
+                            ELSE C.ScanStatus
+                        END
+
+                    ELSE 'SAP PARTIAL'
+                END
+
+        WHEN UPPER(
+            LTRIM(
+                RTRIM(
+                    ISNULL(C.ScanStatus, '')
+                )
+            )
+        ) = 'NOT RECEIVED IN SAP'
+            THEN 'NOT RECEIVED IN SAP'
+
+        ELSE 'NOT CONFIRMED'
+    END AS ReceiveStatus,
+
+    CASE
+        WHEN
+            V.LocalReceiveValid = 1
+
+            AND UPPER(
+                LTRIM(
+                    RTRIM(
+                        ISNULL(
+                            TL.VerificationStatus,
+                            ''
+                        )
+                    )
+                )
+            ) IN
+            (
+                'RECEIVED',
+                'CLOSED',
+                'COMPLETED',
+                'MATCHED'
+            )
+            THEN B.HeaderClosedAt
+
+        WHEN
+            Q.CacheReceivedQty > 0
+
+            AND UPPER(
+                LTRIM(
+                    RTRIM(
+                        ISNULL(C.ScanStatus, '')
+                    )
+                )
+            ) IN
+            (
+                'CLOSED',
+                'COMPLETED',
+                'MATCHED'
+            )
+            THEN C.ReceivedAt
+
+        ELSE NULL
+    END AS ClosedAt,
+
+    B.Remarks,
+    C.LastSyncedAt AS CacheLastSyncedAt
+
+FROM PagedRows B
+
+{$traceApply}
+
+{$issuanceApply}
+
+CROSS APPLY
+(
+    SELECT
+        COALESCE(
+            NULLIF(TL.TraceIssuedQty, 0),
+            NULLIF(ITX.Quantity, 0),
+            NULLIF(
+                TRY_CONVERT(
+                    DECIMAL(18, 3),
+                    B.LineIssuedQty
+                ),
+                0
+            )
+        ) AS BaseIssuedQty,
+
+        COALESCE(
+            NULLIF(
+                LTRIM(RTRIM(TL.LotNo)),
+                ''
+            ),
+            NULLIF(
+                LTRIM(RTRIM(ITX.LotNo)),
+                ''
+            ),
+            NULLIF(
+                LTRIM(RTRIM(B.LineLotNo)),
+                ''
+            )
+        ) AS LocalLotNo,
+
+        COALESCE(
+            NULLIF(
+                LTRIM(RTRIM(TL.WarehouseLotNo)),
+                ''
+            ),
+            NULLIF(
+                LTRIM(RTRIM(ITX.WarehouseLotNo)),
+                ''
+            ),
+            NULLIF(
+                LTRIM(
+                    RTRIM(
+                        B.LineWarehouseLotNo
+                    )
+                ),
+                ''
+            )
+        ) AS WarehouseLotNo,
+
+        COALESCE(
+            ITX.IssuedAt,
+            B.RequestedAt
+        ) AS RequestEventAt
+) R
+
+CROSS APPLY
+(
+    SELECT
+        CASE
+            WHEN
+                TL.LocalReceivedAt IS NOT NULL
+
+                AND TL.LocalReceivedAt >= R.RequestEventAt
+                THEN 1
+            ELSE 0
+        END AS LocalReceiveValid
+) V
+
+{$cacheApply}
+
+CROSS APPLY
+(
+    SELECT
+        CASE
+            WHEN ISNULL(
+                TRY_CONVERT(
+                    DECIMAL(18, 3),
+                    C.ReceivedQty
+                ),
+                0
+            ) <= 0
+                THEN NULL
+
+            WHEN
+                COALESCE(
+                    R.BaseIssuedQty,
+                    TRY_CONVERT(
+                        DECIMAL(18, 3),
+                        B.RequestedQty
+                    )
+                ) > 0
+
+                AND TRY_CONVERT(
+                    DECIMAL(18, 3),
+                    C.ReceivedQty
+                ) > COALESCE(
+                    R.BaseIssuedQty,
+                    TRY_CONVERT(
+                        DECIMAL(18, 3),
+                        B.RequestedQty
+                    )
+                )
+                THEN COALESCE(
+                    R.BaseIssuedQty,
+                    TRY_CONVERT(
+                        DECIMAL(18, 3),
+                        B.RequestedQty
+                    )
+                )
+
+            ELSE TRY_CONVERT(
+                DECIMAL(18, 3),
+                C.ReceivedQty
+            )
+        END AS CacheReceivedQty
+) Q
+
+ORDER BY B.RowNo
 ";
 
-$rows = fetch_all($conn, $sql, $params);
-request_report_enrich_cached_lots($conn, $rows);
-request_report_enrich_scanplus($rows);
+$rows = fetch_all(
+    $conn,
+    $sql,
+    $queryParams
+);
 
-foreach ($rows as &$requestReportRow) {
-    if (!request_report_row_is_received($requestReportRow)) {
-        $requestReportRow['SAPReceivedQty'] = '';
-        $requestReportRow['ScannedBy'] = '';
-        $requestReportRow['ScannedArea'] = '';
-        $requestReportRow['ScannedAt'] = '';
-        $requestReportRow['ClosedAt'] = '';
+/*
+|--------------------------------------------------------------------------
+| Latest local cache synchronization
+|--------------------------------------------------------------------------
+*/
 
-        if (in_array(strtoupper(trim((string)($requestReportRow['ReceiveStatus'] ?? ''))), ['SAP_RECEIVED', 'ISSUED', 'PENDING_RECEIVE'], true)) {
-            $requestReportRow['ReceiveStatus'] = '';
-        }
-    } elseif (!isset($requestReportRow['SAPReceivedQty'])) {
-        $requestReportRow['SAPReceivedQty'] = '';
-    }
+$latestCacheSync = '';
 
-    request_report_apply_sap_issued_fallback($requestReportRow);
-    $requestReportRow['QtyVariance'] = request_report_qty_variance($requestReportRow['IssuedQty'] ?? '', $requestReportRow['SAPReceivedQty'] ?? '');
+if (
+    $hasCache &&
+    request_report_has_column(
+        $schema,
+        'RawmatTraceScanPlusCache',
+        'LastSyncedAt'
+    )
+) {
+    $latestCacheResult = fetch_one(
+        $conn,
+        "
+        SELECT
+            MAX(LastSyncedAt) AS LatestSync
+        FROM dbo.RawmatTraceScanPlusCache
+        "
+    );
+
+    $latestCacheSync = request_report_cell(
+        $latestCacheResult['LatestSync'] ?? ''
+    );
 }
-unset($requestReportRow);
+
+/*
+|--------------------------------------------------------------------------
+| Report columns
+|--------------------------------------------------------------------------
+*/
 
 $columns = [
     'Request No',
     'ITR/IT',
     'Needed Date',
-    'Request Status',
+    'Issue Status',
     'Part Number',
     'Part Name',
     'Requested Qty',
@@ -786,85 +1593,266 @@ $columns = [
     'Remarks'
 ];
 
-if ($export) {
-    $filename = 'requestor_requests_' . $dateFrom . '_to_' . $dateTo . '.xls';
+/*
+|--------------------------------------------------------------------------
+| Excel export
+|--------------------------------------------------------------------------
+*/
 
-    header('Content-Type: application/vnd.ms-excel; charset=utf-8');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
+if ($export) {
+    $filename =
+        'requestor_requests_' .
+        $dateFrom .
+        '_to_' .
+        $dateTo .
+        '.xls';
+
+    header(
+        'Content-Type: application/vnd.ms-excel; charset=utf-8'
+    );
+
+    header(
+        'Content-Disposition: attachment; filename="' .
+        $filename .
+        '"'
+    );
+
     header('Pragma: no-cache');
     header('Expires: 0');
+
     ?>
-<!doctype html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Requestor Requests</title>
-</head>
-<body>
-<table border="1">
-    <thead>
+    <!doctype html>
+    <html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Requestor Requests</title>
+    </head>
+    <body>
+
+    <table border="1">
+        <thead>
         <tr>
-            <?php foreach ($columns as $c): ?>
-                <th><?= request_excel_cell($c) ?></th>
+            <?php foreach ($columns as $column): ?>
+                <th>
+                    <?= request_report_excel_cell($column) ?>
+                </th>
             <?php endforeach; ?>
         </tr>
-    </thead>
-    <tbody>
+        </thead>
+
+        <tbody>
+
         <?php if (empty($rows)): ?>
+
             <tr>
-                <td colspan="<?= count($columns) ?>">No records found.</td>
+                <td colspan="<?= count($columns) ?>">
+                    No records found.
+                </td>
             </tr>
+
         <?php else: ?>
-            <?php foreach ($rows as $r): ?>
+
+            <?php foreach ($rows as $row): ?>
                 <tr>
-                    <td><?= request_excel_cell($r['RequestNo'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['ITRNumber'] ?? '') ?></td>
-                    <td><?= request_excel_cell(request_report_date_cell($r['NeededDate'] ?? '')) ?></td>
-                    <td><?= request_excel_cell($r['HeaderStatus'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['ItemCode'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['PartName'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['RequestedQty'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['IssuedQty'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['SAPReceivedQty'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['QtyVariance'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['LotNo'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['WarehouseLotNo'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['RequestedByUsername'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['RequestedAt'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['ScannedBy'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['ScannedArea'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['ScannedAt'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['ReceiveStatus'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['ClosedAt'] ?? '') ?></td>
-                    <td><?= request_excel_cell($r['Remarks'] ?? '') ?></td>
+                    <td>
+                        <?= request_report_excel_cell(
+                            $row['RequestNo'] ?? ''
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            $row['ITRNumber'] ?? ''
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            request_report_date_cell(
+                                $row['NeededDate'] ?? ''
+                            )
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            $row['IssueStatus'] ?? ''
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            $row['ItemCode'] ?? ''
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            $row['PartName'] ?? ''
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            request_report_number(
+                                $row['RequestedQty'] ?? ''
+                            )
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            request_report_number(
+                                $row['IssuedQty'] ?? ''
+                            )
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            request_report_number(
+                                $row['SAPReceivedQty'] ?? ''
+                            )
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            request_report_number(
+                                $row['QtyVariance'] ?? ''
+                            )
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            $row['LotNo'] ?? ''
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            $row['WarehouseLotNo'] ?? ''
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            $row['RequestedByUsername'] ?? ''
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            $row['RequestedAt'] ?? ''
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            $row['ScannedBy'] ?? ''
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            $row['ScannedArea'] ?? ''
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            $row['ScannedAt'] ?? ''
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            $row['ReceiveStatus'] ?? ''
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            $row['ClosedAt'] ?? ''
+                        ) ?>
+                    </td>
+
+                    <td>
+                        <?= request_report_excel_cell(
+                            $row['Remarks'] ?? ''
+                        ) ?>
+                    </td>
                 </tr>
             <?php endforeach; ?>
+
         <?php endif; ?>
-    </tbody>
-</table>
-</body>
-</html>
+
+        </tbody>
+    </table>
+
+    </body>
+    </html>
     <?php
+
     exit;
 }
+
+/*
+|--------------------------------------------------------------------------
+| URLs and display totals
+|--------------------------------------------------------------------------
+*/
+
+$exportQuery = [
+    'date_from' => $dateFrom,
+    'date_to' => $dateTo,
+    'q' => $search,
+    'export' => 'excel'
+];
+
+$exportUrl =
+    'pages/requestor/requestor_report.php?' .
+    http_build_query($exportQuery);
+
+$showingFrom = $totalRows > 0
+    ? $firstRow
+    : 0;
+
+$showingTo = min(
+    $lastRow,
+    $totalRows
+);
+
 ?>
 <!doctype html>
 <html lang="en">
+
 <head>
     <title>Requestor Report</title>
+
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+
     <base href="<?= h(app_path('')) ?>">
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="assets/app-shell.css" rel="stylesheet">
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    >
+
+    <link
+        href="assets/app-shell.css"
+        rel="stylesheet"
+    >
 
     <style>
         :root {
             --sidebar-width: 250px;
-            --sidebar-bg: #111827;
-            --sidebar-hover: #1f2937;
-            --sidebar-active: #2563eb;
             --body-bg: #f4f7fb;
             --border-soft: #e5eaf2;
             --text-dark: #1f2937;
@@ -875,7 +1863,12 @@ if ($export) {
             min-height: 100vh;
             margin: 0;
             background: var(--body-bg);
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-family:
+                system-ui,
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                sans-serif;
             overflow-x: hidden;
         }
 
@@ -884,171 +1877,25 @@ if ($export) {
             min-height: 100vh;
         }
 
-        .sidebar {
-            width: var(--sidebar-width);
-            background: var(--sidebar-bg);
-            color: #ffffff;
-            position: fixed;
-            inset: 0 auto 0 0;
-            z-index: 1030;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 8px 0 30px rgba(15, 23, 42, 0.12);
-        }
-
-        .sidebar-brand {
-            padding: 20px 18px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .sidebar-logo {
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            background: #ffffff;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-
-        .sidebar-logo img {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-            display: block;
-        }
-
-        .sidebar-title {
-            font-size: 15px;
-            font-weight: 800;
-            line-height: 1.2;
-        }
-
-        .sidebar-subtitle {
-            font-size: 12px;
-            color: #9ca3af;
-            margin-top: 2px;
-        }
-
-        .sidebar-menu {
-            padding: 14px 10px;
-            flex: 1;
-            overflow-y: auto;
-        }
-
-        .sidebar-section {
-            color: #6b7280;
-            font-size: 11px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .06em;
-            padding: 12px 12px 6px;
-        }
-
-        .sidebar-link {
-            color: #d1d5db;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 12px;
-            border-radius: 11px;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 5px;
-        }
-
-        .sidebar-link:hover {
-            background: var(--sidebar-hover);
-            color: #ffffff;
-        }
-
-        .sidebar-link.active {
-            background: var(--sidebar-active);
-            color: #ffffff;
-        }
-
-        .sidebar-icon {
-            width: 22px;
-            text-align: center;
-            flex-shrink: 0;
-        }
-
-        .sidebar-footer {
-            padding: 14px 16px;
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
-        }
-
-        .user-box {
-            background: rgba(255, 255, 255, 0.06);
-            border-radius: 14px;
-            padding: 11px;
-            margin-bottom: 10px;
-        }
-
-        .user-name {
-            font-size: 14px;
-            font-weight: 700;
-            color: #ffffff;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .user-role {
-            font-size: 12px;
-            color: #9ca3af;
-            text-transform: uppercase;
-        }
-
-        .logout-link {
-            display: block;
-            text-align: center;
-            color: #fecaca;
-            text-decoration: none;
-            font-size: 13px;
-            font-weight: 700;
-            padding: 9px 10px;
-            border-radius: 10px;
-        }
-
-        .logout-link:hover {
-            background: rgba(239, 68, 68, 0.14);
-            color: #ffffff;
-        }
-
         .main-content {
-            margin-left: var(--sidebar-width);
             width: calc(100% - var(--sidebar-width));
+            margin-left: var(--sidebar-width);
             padding: 18px;
             overflow-x: hidden;
         }
 
-        .mobile-topbar {
-            display: none;
-        }
-
-        .sidebar-backdrop {
-            display: none;
-        }
-
         .page-header {
             display: flex;
+            align-items: flex-start;
             justify-content: space-between;
-            align-items: start;
             gap: 16px;
             margin-bottom: 18px;
         }
 
         .page-title {
+            margin-bottom: 4px;
             color: var(--text-dark);
             font-weight: 800;
-            margin-bottom: 4px;
             letter-spacing: -0.03em;
         }
 
@@ -1057,31 +1904,51 @@ if ($export) {
             font-size: 14px;
         }
 
+        .cache-information {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 7px;
+            margin-top: 8px;
+            color: #166534;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .cache-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+        }
+
         .content-card {
+            overflow: hidden;
             background: #ffffff;
             border: 1px solid var(--border-soft);
             border-radius: 16px;
-            box-shadow: 0 12px 35px rgba(15, 23, 42, 0.06);
-            overflow: hidden;
+            box-shadow:
+                0 12px 35px
+                rgba(15, 23, 42, 0.06);
         }
 
         .content-card-header {
             padding: 16px 18px;
-            border-bottom: 1px solid var(--border-soft);
             background: #ffffff;
+            border-bottom: 1px solid var(--border-soft);
         }
 
         .content-card-title {
+            margin: 0;
+            color: var(--text-dark);
             font-size: 16px;
             font-weight: 800;
-            color: var(--text-dark);
-            margin: 0;
         }
 
         .content-card-subtitle {
-            font-size: 13px;
-            color: var(--text-muted);
             margin-top: 3px;
+            color: var(--text-muted);
+            font-size: 13px;
         }
 
         .content-card-body {
@@ -1089,31 +1956,35 @@ if ($export) {
         }
 
         .filter-box {
-            background: #f8fafc;
-            border: 1px solid #e5eaf2;
-            border-radius: 14px;
             padding: 14px;
             margin-bottom: 14px;
+            background: #f8fafc;
+            border: 1px solid var(--border-soft);
+            border-radius: 14px;
         }
 
         .form-label {
+            margin-bottom: 6px;
+            color: #374151;
             font-size: 13px;
             font-weight: 700;
-            color: #374151;
-            margin-bottom: 6px;
         }
 
-        .form-control {
-            border-radius: 11px;
-            border: 1px solid #d9e2ef;
+        .form-control,
+        .form-select {
             min-height: 42px;
-            font-size: 14px;
             background-color: #ffffff;
+            border: 1px solid #d9e2ef;
+            border-radius: 11px;
+            font-size: 14px;
         }
 
-        .form-control:focus {
+        .form-control:focus,
+        .form-select:focus {
             border-color: #0d6efd;
-            box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.12);
+            box-shadow:
+                0 0 0 4px
+                rgba(13, 110, 253, 0.12);
         }
 
         .btn {
@@ -1123,79 +1994,73 @@ if ($export) {
 
         .report-table-wrap {
             max-height: 68vh;
-            overflow-y: auto;
-            overflow-x: hidden;
+            overflow: auto;
+            background: #ffffff;
             border: 1px solid var(--border-soft);
             border-radius: 14px;
-            background: #ffffff;
         }
 
         .report-table {
-            width: 100%;
-            table-layout: fixed;
-            font-size: 10px;
+            min-width: 1850px;
             margin-bottom: 0;
+            font-size: 10px;
         }
 
         .report-table thead th {
             position: sticky;
             top: 0;
             z-index: 5;
+            padding: 8px 5px;
             background: #f8fafc;
             color: #374151;
+            border-bottom: 1px solid #d8e0eb;
             font-size: 8px;
             font-weight: 800;
             text-transform: uppercase;
-            border-bottom: 1px solid #d8e0eb;
-            padding: 8px 5px;
             white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
 
         .report-table td {
             padding: 7px 5px;
-            vertical-align: middle;
             color: #111827;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            vertical-align: middle;
+            white-space: nowrap;
         }
 
         .report-table tbody tr:hover {
             background: #eef6ff;
         }
 
-        .col-request { width: 8%; white-space: nowrap; }
-        .col-itr { width: 6%; white-space: nowrap; }
-        .col-needed { width: 7%; white-space: nowrap; }
-        .col-header-status { width: 8%; white-space: nowrap; }
-        .col-item { width: 8%; white-space: nowrap; }
-        .col-part { width: 14%; white-space: normal; line-height: 1.25; }
-        .col-qty { width: 6%; text-align: right; white-space: nowrap; }
-        .col-lot { width: 7%; white-space: nowrap; }
-        .col-user { width: 8%; white-space: nowrap; }
-        .col-date { width: 10%; white-space: nowrap; }
-        .col-closed { width: 10%; white-space: nowrap; }
-        .col-remarks { width: 10%; white-space: nowrap; }
+        .part-name-cell,
+        .remarks-cell {
+            min-width: 220px;
+            max-width: 260px;
+            white-space: normal !important;
+            line-height: 1.25;
+        }
+
+        .quantity-cell {
+            text-align: right;
+        }
 
         .empty-row {
             padding: 34px !important;
-            text-align: center;
             color: #6b7280 !important;
+            text-align: center;
         }
 
         .status-pill {
             display: inline-flex;
-            max-width: 100%;
+            max-width: 150px;
             align-items: center;
             justify-content: center;
-            padding: 3px 6px;
+            padding: 3px 7px;
+            overflow: hidden;
             border-radius: 999px;
             font-size: 8px;
             font-weight: 800;
-            white-space: nowrap;
-            overflow: hidden;
             text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .status-open,
@@ -1205,8 +2070,24 @@ if ($export) {
             color: #92400e;
         }
 
+        .status-not_confirmed {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .status-sap_partial,
+        .status-sap_received {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .status-not_received_in_sap {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
         .status-issued,
-        .status-sap_received,
+        .status-received,
         .status-closed,
         .status-completed,
         .status-matched {
@@ -1223,135 +2104,71 @@ if ($export) {
             color: #991b1b;
         }
 
-        @media (max-width: 1300px) {
-            .report-table {
-                font-size: 10px;
-            }
+        .pagination {
+            margin-bottom: 0;
+        }
 
-            .report-table thead th {
-                font-size: 8px;
-                padding: 7px 4px;
-            }
-
-            .report-table td {
-                padding: 6px 4px;
-            }
-
-            .status-pill {
-                font-size: 7.5px;
-                padding: 3px 5px;
-            }
+        .page-link {
+            min-width: 38px;
+            text-align: center;
         }
 
         @media (max-width: 900px) {
-            .sidebar {
-                transform: translateX(-100%);
-                transition: transform 0.2s ease;
-            }
-
-            .sidebar.show {
-                transform: translateX(0);
-            }
-
             .main-content {
-                margin-left: 0;
                 width: 100%;
+                margin-left: 0;
                 padding: 14px;
-            }
-
-            .mobile-topbar {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                background: #ffffff;
-                border: 1px solid var(--border-soft);
-                border-radius: 14px;
-                padding: 12px 14px;
-                margin-bottom: 14px;
-                box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
-            }
-
-            .sidebar-backdrop {
-                display: none;
-                position: fixed;
-                inset: 0;
-                background: rgba(15, 23, 42, 0.45);
-                z-index: 1029;
-            }
-
-            .sidebar-backdrop.show {
-                display: block;
             }
 
             .page-header {
                 flex-direction: column;
             }
 
-            .report-table-wrap {
-                overflow: auto;
-            }
-
             .report-table {
-                min-width: 1750px;
-                table-layout: auto;
                 font-size: 12px;
             }
 
             .report-table thead th {
                 font-size: 10px;
-                padding: 8px 6px;
-            }
-
-            .report-table td {
-                padding: 7px 6px;
-                white-space: nowrap;
-            }
-
-            .col-request,
-            .col-itr,
-            .col-needed,
-            .col-header-status,
-            .col-item,
-            .col-part,
-            .col-qty,
-            .col-lot,
-            .col-user,
-            .col-date,
-            .col-closed,
-            .col-remarks {
-                width: auto;
-                min-width: 100px;
-            }
-
-            .col-part {
-                min-width: 240px;
-            }
-
-            .col-date,
-            .col-closed {
-                min-width: 160px;
-            }
-
-            .col-remarks {
-                min-width: 220px;
             }
         }
     </style>
 </head>
 
 <body>
+
 <header class="sap-shellbar">
-    <button class="shell-menu-btn" type="button" id="sidebarToggle" aria-label="Open navigation">&#9776;</button>
+    <button
+        class="shell-menu-btn"
+        type="button"
+        id="sidebarToggle"
+        aria-label="Open navigation"
+    >
+        &#9776;
+    </button>
+
     <div class="shell-logo" aria-hidden="true">
-        <img src="image/nbc-bg-dashboard.jpg" alt="NBC Logo">
+        <img
+            src="image/nbc-bg-dashboard.jpg"
+            alt="NBC Logo"
+        >
     </div>
+
     <div class="shell-title-wrap">
-        <div class="shell-title">NBC Rawmats Traceability</div>
-        <div class="shell-subtitle">Requestor reporting</div>
+        <div class="shell-title">
+            NBC Rawmats Traceability
+        </div>
+
+        <div class="shell-subtitle">
+            Requestor reporting
+        </div>
     </div>
 </header>
 
-<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+<div
+    class="sidebar-backdrop"
+    id="sidebarBackdrop"
+></div>
 
 <div class="app-layout">
 
@@ -1359,40 +2176,66 @@ if ($export) {
 
     <main class="main-content">
 
-        <div class="mobile-topbar">
-            <strong>Requestor Report</strong>
-            <button class="btn btn-sm btn-primary" type="button" id="sidebarToggle">
-                Menu
-            </button>
-        </div>
-
         <div class="page-header">
+
             <div>
-                <h4 class="page-title">Requestor Report</h4>
+                <h4 class="page-title">
+                    Requestor Report
+                </h4>
+
                 <div class="page-subtitle">
-                    Issue request history by date range. Receiver scan details and SAP received quantity appear only after receiving is completed.
+                    Issue requests, local receiving records and
+                    scheduled SAP-cache information.
+                </div>
+
+            </div>
+
+            <div class="text-end">
+                <span
+                    class="badge bg-primary rounded-pill px-3 py-2"
+                >
+                    <?= number_format($totalRows) ?> line(s)
+                </span>
+
+                <div class="small text-muted mt-1">
+                    Showing
+                    <?= number_format($showingFrom) ?>
+                    –
+                    <?= number_format($showingTo) ?>
                 </div>
             </div>
 
-            <span class="badge bg-primary rounded-pill px-3 py-2">
-                <?= count($rows) ?> line(s)
-            </span>
         </div>
 
         <div class="content-card">
+
             <div class="content-card-header">
-                <h5 class="content-card-title">Report Filters</h5>
+                <h5 class="content-card-title">
+                    Report Filters
+                </h5>
+
                 <div class="content-card-subtitle">
-                    Filter issue requests and export the result to Excel.
+                    Filter local request records and export the
+                    selected range.
                 </div>
             </div>
 
             <div class="content-card-body">
 
-                <form class="filter-box" method="get">
+                <form
+                    class="filter-box"
+                    method="get"
+                >
                     <div class="row g-2 align-items-end">
-                        <div class="col-sm-6 col-md-3">
-                            <label class="form-label" for="date_from">Date From</label>
+
+                        <div class="col-sm-6 col-lg-2">
+                            <label
+                                class="form-label"
+                                for="date_from"
+                            >
+                                Date From
+                            </label>
+
                             <input
                                 class="form-control"
                                 type="date"
@@ -1402,8 +2245,14 @@ if ($export) {
                             >
                         </div>
 
-                        <div class="col-sm-6 col-md-3">
-                            <label class="form-label" for="date_to">Date To</label>
+                        <div class="col-sm-6 col-lg-2">
+                            <label
+                                class="form-label"
+                                for="date_to"
+                            >
+                                Date To
+                            </label>
+
                             <input
                                 class="form-control"
                                 type="date"
@@ -1413,161 +2262,402 @@ if ($export) {
                             >
                         </div>
 
-                        <div class="col-sm-6 col-md-3 d-grid">
-                            <button class="btn btn-primary" type="submit">
+                        <div class="col-sm-8 col-lg-4">
+                            <label
+                                class="form-label"
+                                for="q"
+                            >
+                                Search
+                            </label>
+
+                            <input
+                                class="form-control"
+                                type="search"
+                                id="q"
+                                name="q"
+                                value="<?= h($search) ?>"
+                                placeholder="Request, ITR, item, part name or status"
+                            >
+                        </div>
+
+                        <div class="col-sm-4 col-lg-1">
+                            <label
+                                class="form-label"
+                                for="page_size"
+                            >
+                                Rows
+                            </label>
+
+                            <select
+                                class="form-select"
+                                id="page_size"
+                                name="page_size"
+                            >
+                                <?php foreach (
+                                    $allowedPageSizes as $size
+                                ): ?>
+                                    <option
+                                        value="<?= $size ?>"
+                                        <?= $pageSize === $size
+                                            ? 'selected'
+                                            : '' ?>
+                                    >
+                                        <?= $size ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+
+                        <div class="col-sm-6 col-lg-1 d-grid">
+                            <button
+                                class="btn btn-primary"
+                                type="submit"
+                            >
                                 Filter
                             </button>
                         </div>
 
-                        <div class="col-sm-6 col-md-3 d-grid">
+                        <div class="col-sm-6 col-lg-2 d-grid">
                             <a
                                 class="btn btn-success"
-                                href="pages/requestor/requestor_report.php?date_from=<?= urlencode($dateFrom) ?>&date_to=<?= urlencode($dateTo) ?>&export=excel"
+                                href="<?= h($exportUrl) ?>"
                             >
                                 Export Excel
                             </a>
                         </div>
+
                     </div>
                 </form>
 
-                <input
-                    id="searchReport"
-                    class="form-control form-control-sm mb-3"
-                    placeholder="Search request, ITR, item, GRPO lot, WH lot, status, received qty, scanned by..."
-                >
-
                 <div class="report-table-wrap">
-                    <table class="table table-bordered table-striped align-middle report-table" id="reportTable">
+
+                    <table
+                        class="table table-bordered table-striped align-middle report-table"
+                    >
                         <thead>
-                            <tr>
-                                <th class="col-request">Request No</th>
-                                <th class="col-itr">ITR/IT</th>
-                                <th class="col-needed">Needed</th>
-                                <th class="col-header-status">Req Status</th>
-                                <th class="col-item">Part No</th>
-                                <th class="col-part">Part Name</th>
-                                <th class="col-qty">Req Qty</th>
-                                <th class="col-qty">Iss Qty</th>
-                                <th class="col-qty">Received Qty (SAP)</th>
-                                <th class="col-qty">Variance</th>
-                                <th class="col-lot">GRPO Lot No</th>
-                                <th class="col-lot">WH Lot No</th>
-                                <th class="col-user">Req By</th>
-                                <th class="col-date">Requested At</th>
-                                <th class="col-user">Scanned By</th>
-                                <th class="col-user">Scan Area</th>
-                                <th class="col-date">Scanned At</th>
-                                <th class="col-header-status">Receive Status</th>
-                                <th class="col-closed">Closed At</th>
-                                <th class="col-remarks">Remarks</th>
-                            </tr>
+                        <tr>
+                            <?php foreach ($columns as $column): ?>
+                                <th><?= h($column) ?></th>
+                            <?php endforeach; ?>
+                        </tr>
                         </thead>
 
                         <tbody>
-                            <?php if (empty($rows)): ?>
+
+                        <?php if (empty($rows)): ?>
+
+                            <tr>
+                                <td
+                                    colspan="<?= count($columns) ?>"
+                                    class="empty-row"
+                                >
+                                    No records found for the selected
+                                    filters.
+                                </td>
+                            </tr>
+
+                        <?php else: ?>
+
+                            <?php foreach ($rows as $row): ?>
+
+                                <?php
+                                $issueStatusClass =
+                                    request_report_status_class(
+                                        $row['IssueStatus'] ?? ''
+                                    );
+
+                                $receiveStatusClass =
+                                    request_report_status_class(
+                                        $row['ReceiveStatus'] ?? ''
+                                    );
+                                ?>
+
                                 <tr>
-                                    <td colspan="<?= count($columns) ?>" class="empty-row">
-                                        No records found for the selected date range.
+                                    <td>
+                                        <?= h(
+                                            request_report_cell(
+                                                $row['RequestNo'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        <?= h(
+                                            request_report_cell(
+                                                $row['ITRNumber'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        <?= h(
+                                            request_report_date_cell(
+                                                $row['NeededDate'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        <span
+                                            class="status-pill status-<?= h(
+                                                $issueStatusClass
+                                            ) ?>"
+                                        >
+                                            <?= h(
+                                                request_report_cell(
+                                                    $row['IssueStatus'] ?? ''
+                                                )
+                                            ) ?>
+                                        </span>
+                                    </td>
+
+                                    <td>
+                                        <?= h(
+                                            request_report_cell(
+                                                $row['ItemCode'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td class="part-name-cell">
+                                        <?= h(
+                                            request_report_cell(
+                                                $row['PartName'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td class="quantity-cell">
+                                        <?= h(
+                                            request_report_number(
+                                                $row['RequestedQty'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td class="quantity-cell">
+                                        <?= h(
+                                            request_report_number(
+                                                $row['IssuedQty'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td class="quantity-cell">
+                                        <?= h(
+                                            request_report_number(
+                                                $row['SAPReceivedQty'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td class="quantity-cell">
+                                        <?= h(
+                                            request_report_number(
+                                                $row['QtyVariance'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        <?= h(
+                                            request_report_cell(
+                                                $row['LotNo'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        <?= h(
+                                            request_report_cell(
+                                                $row['WarehouseLotNo'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        <?= h(
+                                            request_report_cell(
+                                                $row['RequestedByUsername']
+                                                    ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        <?= h(
+                                            request_report_cell(
+                                                $row['RequestedAt'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        <?= h(
+                                            request_report_cell(
+                                                $row['ScannedBy'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        <?= h(
+                                            request_report_cell(
+                                                $row['ScannedArea'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        <?= h(
+                                            request_report_cell(
+                                                $row['ScannedAt'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td>
+                                        <span
+                                            class="status-pill status-<?= h(
+                                                $receiveStatusClass
+                                            ) ?>"
+                                        >
+                                            <?= h(
+                                                request_report_cell(
+                                                    $row['ReceiveStatus']
+                                                        ?? ''
+                                                )
+                                            ) ?>
+                                        </span>
+                                    </td>
+
+                                    <td>
+                                        <?= h(
+                                            request_report_cell(
+                                                $row['ClosedAt'] ?? ''
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td class="remarks-cell">
+                                        <?= h(
+                                            request_report_cell(
+                                                $row['Remarks'] ?? ''
+                                            )
+                                        ) ?>
                                     </td>
                                 </tr>
-                            <?php else: ?>
-                                <?php foreach ($rows as $r): ?>
-                                    <?php
-                                        $headerStatus = strtolower((string)($r['HeaderStatus'] ?? ''));
-                                        $receiveStatus = strtolower((string)($r['ReceiveStatus'] ?? ''));
-                                    ?>
-                                    <tr>
-                                        <td class="col-request" title="<?= h(request_report_cell($r['RequestNo'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['RequestNo'] ?? '')) ?>
-                                        </td>
 
-                                        <td class="col-itr" title="<?= h(request_report_cell($r['ITRNumber'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['ITRNumber'] ?? '')) ?>
-                                        </td>
+                            <?php endforeach; ?>
 
-                                        <td class="col-needed" title="<?= h(request_report_date_cell($r['NeededDate'] ?? '')) ?>">
-                                            <?= h(request_report_date_cell($r['NeededDate'] ?? '')) ?>
-                                        </td>
+                        <?php endif; ?>
 
-                                        <td class="col-header-status" title="<?= h(request_report_cell($r['HeaderStatus'] ?? '')) ?>">
-                                            <span class="status-pill status-<?= h($headerStatus) ?>">
-                                                <?= h(request_report_cell($r['HeaderStatus'] ?? '')) ?>
-                                            </span>
-                                        </td>
-
-                                        <td class="col-item" title="<?= h(request_report_cell($r['ItemCode'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['ItemCode'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-part" title="<?= h(request_report_cell($r['PartName'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['PartName'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-qty" title="<?= h(request_report_cell($r['RequestedQty'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['RequestedQty'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-qty" title="<?= h(request_report_cell($r['IssuedQty'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['IssuedQty'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-qty" title="<?= h(request_report_cell($r['SAPReceivedQty'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['SAPReceivedQty'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-qty" title="Issued minus SAP received: <?= h(request_report_cell($r['QtyVariance'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['QtyVariance'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-lot" title="<?= h(request_report_cell($r['LotNo'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['LotNo'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-lot" title="<?= h(request_report_cell($r['WarehouseLotNo'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['WarehouseLotNo'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-user" title="<?= h(request_report_cell($r['RequestedByUsername'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['RequestedByUsername'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-date" title="<?= h(request_report_cell($r['RequestedAt'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['RequestedAt'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-user" title="<?= h(request_report_cell($r['ScannedBy'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['ScannedBy'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-user" title="<?= h(request_report_cell($r['ScannedArea'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['ScannedArea'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-date" title="<?= h(request_report_cell($r['ScannedAt'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['ScannedAt'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-header-status" title="<?= h(request_report_cell($r['ReceiveStatus'] ?? '')) ?>">
-                                            <?php if (trim((string)($r['ReceiveStatus'] ?? '')) !== ''): ?>
-                                                <span class="status-pill status-<?= h($receiveStatus) ?>">
-                                                    <?= h(request_report_cell($r['ReceiveStatus'] ?? '')) ?>
-                                                </span>
-                                            <?php endif; ?>
-                                        </td>
-
-                                        <td class="col-closed" title="<?= h(request_report_cell($r['ClosedAt'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['ClosedAt'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-remarks" title="<?= h(request_report_cell($r['Remarks'] ?? '')) ?>">
-                                            <?= h(request_report_cell($r['Remarks'] ?? '')) ?>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
                         </tbody>
                     </table>
+
                 </div>
+
+                <?php if (!$export && $totalPages > 1): ?>
+
+                    <div
+                        class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3"
+                    >
+                        <div class="small text-muted">
+                            Showing
+                            <?= number_format($showingFrom) ?>
+                            to
+                            <?= number_format($showingTo) ?>
+                            of
+                            <?= number_format($totalRows) ?>
+                            lines
+                        </div>
+
+                        <nav aria-label="Request report pagination">
+                            <ul class="pagination pagination-sm">
+
+                                <li
+                                    class="page-item <?= $page <= 1
+                                        ? 'disabled'
+                                        : '' ?>"
+                                >
+                                    <a
+                                        class="page-link"
+                                        href="<?= h(
+                                            request_report_url([
+                                                'page' => max(
+                                                    1,
+                                                    $page - 1
+                                                )
+                                            ])
+                                        ) ?>"
+                                    >
+                                        Previous
+                                    </a>
+                                </li>
+
+                                <?php
+                                $pageStart = max(
+                                    1,
+                                    $page - 2
+                                );
+
+                                $pageEnd = min(
+                                    $totalPages,
+                                    $page + 2
+                                );
+                                ?>
+
+                                <?php for (
+                                    $pageNumber = $pageStart;
+                                    $pageNumber <= $pageEnd;
+                                    $pageNumber++
+                                ): ?>
+
+                                    <li
+                                        class="page-item <?= $pageNumber
+                                            === $page
+                                                ? 'active'
+                                                : '' ?>"
+                                    >
+                                        <a
+                                            class="page-link"
+                                            href="<?= h(
+                                                request_report_url([
+                                                    'page' => $pageNumber
+                                                ])
+                                            ) ?>"
+                                        >
+                                            <?= $pageNumber ?>
+                                        </a>
+                                    </li>
+
+                                <?php endfor; ?>
+
+                                <li
+                                    class="page-item <?= $page >= $totalPages
+                                        ? 'disabled'
+                                        : '' ?>"
+                                >
+                                    <a
+                                        class="page-link"
+                                        href="<?= h(
+                                            request_report_url([
+                                                'page' => min(
+                                                    $totalPages,
+                                                    $page + 1
+                                                )
+                                            ])
+                                        ) ?>"
+                                    >
+                                        Next
+                                    </a>
+                                </li>
+
+                            </ul>
+                        </nav>
+                    </div>
+
+                <?php endif; ?>
 
             </div>
         </div>
@@ -1575,33 +2665,26 @@ if ($export) {
     </main>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+></script>
 
 <script>
-const searchInput = document.getElementById('searchReport');
-
-if (searchInput) {
-    searchInput.addEventListener('input', function () {
-        const q = this.value.toLowerCase();
-
-        document.querySelectorAll('#reportTable tbody tr').forEach(function (row) {
-            row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
-        });
-    });
-}
-
 const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebarToggle');
 const sidebarBackdrop = document.getElementById('sidebarBackdrop');
 
-if (sidebarToggle) {
+if (sidebarToggle && sidebar) {
     sidebarToggle.addEventListener('click', function () {
         sidebar.classList.add('show');
-        sidebarBackdrop.classList.add('show');
+
+        if (sidebarBackdrop) {
+            sidebarBackdrop.classList.add('show');
+        }
     });
 }
 
-if (sidebarBackdrop) {
+if (sidebarBackdrop && sidebar) {
     sidebarBackdrop.addEventListener('click', function () {
         sidebar.classList.remove('show');
         sidebarBackdrop.classList.remove('show');

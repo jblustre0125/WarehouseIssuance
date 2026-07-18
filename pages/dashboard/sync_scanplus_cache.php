@@ -122,10 +122,17 @@ $missing = 0;
 foreach ($scanRefs as $ref) {
     $scanKey = scanplus_key($ref['doc_entry'], $ref['line_num'], $ref['item_code']);
     $scanLotKey = scanplus_lot_key($ref['doc_entry'], $ref['line_num'], $ref['item_code'], $ref['lot_no']);
+    $genericScan = $scanKey !== '' ? ($scanplusRows[$scanKey] ?? null) : null;
 
-    $scan = $scanLotKey !== ''
-        ? ($scanplusRows[$scanLotKey] ?? ($scanplusRows[$scanKey] ?? null))
-        : ($scanplusRows[$scanKey] ?? null);
+    if ($scanLotKey !== '') {
+        $scan = $scanplusRows[$scanLotKey] ?? null;
+
+        if (!$scan && strtoupper(trim((string)($genericScan['scan_status'] ?? ''))) === 'NOT RECEIVED IN SAP') {
+            $scan = $genericScan;
+        }
+    } else {
+        $scan = $genericScan;
+    }
 
     if (!$scan) {
         $missing++;
