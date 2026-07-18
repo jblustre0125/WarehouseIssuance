@@ -22,6 +22,21 @@ function scanplus_has_table($conn, $table)
     );
 }
 
+function scanplus_is_base_table($conn, $table)
+{
+    return (bool)fetch_one(
+        $conn,
+        "
+        SELECT TOP 1
+            1 AS IsBaseTable
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_NAME = ?
+          AND TABLE_TYPE = 'BASE TABLE'
+        ",
+        [$table]
+    );
+}
+
 function scanplus_has_column($conn, $table, $column)
 {
     return (bool)fetch_one(
@@ -1057,8 +1072,8 @@ function scanplus_cache_write(
 | - No large ORDER BY.
 | - MAXDOP 1 removes CXPACKET parallelism.
 | - RECOMPILE avoids a bad cached execution plan.
-| - FORCE ORDER starts from the small reference list.
-| - LOOP JOIN encourages indexed lookups.
+| - Lets SQL Server choose the join strategy.
+| - IBT1 views are skipped in favor of OITL/ITL1/OBTN.
 |
 */
 
@@ -1203,7 +1218,7 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
 
         $hasBatchJoin =
             $hasDestinationWarehouse &&
-            scanplus_has_table($erp, 'IBT1') &&
+            scanplus_is_base_table($erp, 'IBT1') &&
             scanplus_has_column(
                 $erp,
                 'IBT1',
@@ -1736,18 +1751,18 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
 
             FROM RequestedReferences X
 
-            INNER LOOP JOIN WTR1 L
+            INNER JOIN WTR1 L
                 ON L.BaseType = 1250000001
                AND L.BaseEntry = X.DocEntry
                AND L.BaseLine = X.LineNum
                AND L.ItemCode = X.ItemCode
 
-            INNER LOOP JOIN OWTR T
+            INNER JOIN OWTR T
                 ON T.DocEntry = L.DocEntry
 
                 {$canceledCondition}
 
-            INNER LOOP JOIN WTQ1 R
+            INNER JOIN WTQ1 R
                 ON R.DocEntry = X.DocEntry
                AND R.LineNum = X.LineNum
                AND R.ItemCode = X.ItemCode
@@ -1759,9 +1774,7 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
             OPTION
             (
                 MAXDOP 1,
-                RECOMPILE,
-                FORCE ORDER,
-                LOOP JOIN
+                RECOMPILE
             );
             ",
             $params
