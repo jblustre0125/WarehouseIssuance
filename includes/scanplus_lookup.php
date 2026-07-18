@@ -11,6 +11,19 @@ function scanplus_has_table($conn, $table)
     );
 }
 
+function scanplus_has_base_table($conn, $table)
+{
+    return (bool)fetch_one(
+        $conn,
+        "SELECT 1 AS HasBaseTable
+         FROM INFORMATION_SCHEMA.TABLES
+         WHERE TABLE_SCHEMA = 'dbo'
+           AND TABLE_NAME = ?
+           AND TABLE_TYPE = 'BASE TABLE'",
+        [$table]
+    );
+}
+
 function scanplus_has_column($conn, $table, $column)
 {
     return (bool)fetch_one(
@@ -372,6 +385,13 @@ function scanplus_cache_write($conn, array $ref, ?array $scan)
 
 function scanplus_lookup_by_itr_lines($erp, array $refs)
 {
+    $allowWebLookup = defined('SCANPLUS_ALLOW_WEB_LIVE_LOOKUP') &&
+        SCANPLUS_ALLOW_WEB_LIVE_LOOKUP === true;
+
+    if (PHP_SAPI !== 'cli' && !$allowWebLookup) {
+        return [];
+    }
+
     $refTuples = [];
 
     foreach ($refs as $ref) {
@@ -417,16 +437,14 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
     $hasDocDate = scanplus_has_column($erp, 'OWTR', 'DocDate');
     $hasLineStatus = scanplus_has_column($erp, 'WTQ1', 'LineStatus');
     $hasOpenQty = scanplus_has_column($erp, 'WTQ1', 'OpenQty');
-    $hasBatchJoin =
-        scanplus_has_table($erp, 'IBT1') &&
-        scanplus_has_column($erp, 'IBT1', 'BaseType') &&
-        scanplus_has_column($erp, 'IBT1', 'BaseEntry') &&
-        scanplus_has_column($erp, 'IBT1', 'BaseLinNum') &&
-        scanplus_has_column($erp, 'IBT1', 'ItemCode') &&
-        scanplus_has_column($erp, 'IBT1', 'BatchNum') &&
-        scanplus_has_column($erp, 'IBT1', 'Quantity');
+    $hasWtrWarehouse = scanplus_has_column($erp, 'WTR1', 'WhsCode');
+
+    /*
+     * Prefer SAP's physical inventory-log tables. IBT1 is a compatibility view
+     * in this database and is extremely expensive when joined repeatedly.
+     */
     $hasInventoryLogBatchJoin =
-        !$hasBatchJoin &&
+        $hasWtrWarehouse &&
         scanplus_has_table($erp, 'OITL') &&
         scanplus_has_table($erp, 'ITL1') &&
         scanplus_has_table($erp, 'OBTN') &&
@@ -434,6 +452,7 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
         scanplus_has_column($erp, 'OITL', 'DocType') &&
         scanplus_has_column($erp, 'OITL', 'DocEntry') &&
         scanplus_has_column($erp, 'OITL', 'DocLine') &&
+        scanplus_has_column($erp, 'OITL', 'LocCode') &&
         scanplus_has_column($erp, 'ITL1', 'LogEntry') &&
         scanplus_has_column($erp, 'ITL1', 'ItemCode') &&
         scanplus_has_column($erp, 'ITL1', 'SysNumber') &&
@@ -441,6 +460,19 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
         scanplus_has_column($erp, 'OBTN', 'ItemCode') &&
         scanplus_has_column($erp, 'OBTN', 'SysNumber') &&
         scanplus_has_column($erp, 'OBTN', 'DistNumber');
+
+    /* Use IBT1 only when it is a real base table, never when it is a view. */
+    $hasBatchJoin =
+        !$hasInventoryLogBatchJoin &&
+        $hasWtrWarehouse &&
+        scanplus_has_base_table($erp, 'IBT1') &&
+        scanplus_has_column($erp, 'IBT1', 'BaseType') &&
+        scanplus_has_column($erp, 'IBT1', 'BaseEntry') &&
+        scanplus_has_column($erp, 'IBT1', 'BaseLinNum') &&
+        scanplus_has_column($erp, 'IBT1', 'ItemCode') &&
+        scanplus_has_column($erp, 'IBT1', 'BatchNum') &&
+        scanplus_has_column($erp, 'IBT1', 'Quantity') &&
+        scanplus_has_column($erp, 'IBT1', 'WhsCode');
 
     $scanDateExpr = $hasScanDateTime
         ? 'T.U_ScanDateTime'
@@ -484,18 +516,7 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
         ? 'COALESCE(' . implode(', ', $scannedByParts) . ')'
         : "CAST('' AS NVARCHAR(120))";
 
-    if ($hasBatchJoin) {
-        $lotSelect = "COALESCE(B.BatchNum, '') AS ReceivedLotNo,
-            CASE WHEN T.DocEntry IS NULL THEN 0
-                 WHEN B.BatchNum IS NULL THEN ABS(ISNULL(L.Quantity, 0))
-                 ELSE ABS(ISNULL(B.Quantity, 0))
-            END AS ReceivedQty";
-        $lotJoin = "LEFT JOIN IBT1 B
-           ON B.BaseType = 67
-          AND B.BaseEntry = T.DocEntry
-          AND B.BaseLinNum = L.LineNum
-          AND B.ItemCode = L.ItemCode";
-    } elseif ($hasInventoryLogBatchJoin) {
+    if ($hasInventoryLogBatchJoin) {
         $lotSelect = "COALESCE(BT.DistNumber, '') AS ReceivedLotNo,
             CASE WHEN T.DocEntry IS NULL THEN 0
                  WHEN BT.DistNumber IS NULL THEN ABS(ISNULL(L.Quantity, 0))
@@ -505,8 +526,25 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
            ON IL.DocType = 67
           AND IL.DocEntry = T.DocEntry
           AND IL.DocLine = L.LineNum
-        LEFT JOIN ITL1 BL ON BL.LogEntry = IL.LogEntry AND BL.ItemCode = L.ItemCode
-        LEFT JOIN OBTN BT ON BT.ItemCode = BL.ItemCode AND BT.SysNumber = BL.SysNumber";
+          AND IL.LocCode = L.WhsCode
+        LEFT JOIN ITL1 BL
+           ON BL.LogEntry = IL.LogEntry
+          AND BL.ItemCode = L.ItemCode
+        LEFT JOIN OBTN BT
+           ON BT.ItemCode = BL.ItemCode
+          AND BT.SysNumber = BL.SysNumber";
+    } elseif ($hasBatchJoin) {
+        $lotSelect = "COALESCE(B.BatchNum, '') AS ReceivedLotNo,
+            CASE WHEN T.DocEntry IS NULL THEN 0
+                 WHEN B.BatchNum IS NULL THEN ABS(ISNULL(L.Quantity, 0))
+                 ELSE ABS(ISNULL(B.Quantity, 0))
+            END AS ReceivedQty";
+        $lotJoin = "LEFT JOIN IBT1 B
+           ON B.BaseType = 67
+          AND B.BaseEntry = T.DocEntry
+          AND B.BaseLinNum = L.LineNum
+          AND B.ItemCode = L.ItemCode
+          AND B.WhsCode = L.WhsCode";
     } else {
         $lotSelect = "CAST('' AS NVARCHAR(80)) AS ReceivedLotNo, L.Quantity AS ReceivedQty";
         $lotJoin = '';
@@ -524,7 +562,7 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
      * usage seen in sp_who2 for this query. MAXDOP 1 also avoids parallel-plan
      * overhead for what is fundamentally a narrow, index-driven point lookup.
      */
-    foreach (array_chunk(array_values($refTuples), 350) as $tupleChunk) {
+    foreach (array_chunk(array_values($refTuples), 5) as $tupleChunk) {
         $refRows = [];
         $params = [];
 
@@ -564,10 +602,13 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
                {$transferJoinCanceledSql}
              {$lotJoin}
              {$userJoin}
-             ORDER BY R.LineNum ASC, T.DocEntry DESC, L.LineNum DESC
-             OPTION (MAXDOP 1)",
+             OPTION (MAXDOP 1, RECOMPILE)",
             $params
         );
+
+        if (!is_array($chunkRows)) {
+            continue;
+        }
 
         foreach ($chunkRows as $chunkRow) {
             $rows[] = $chunkRow;
