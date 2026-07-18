@@ -363,7 +363,7 @@ function scanplus_cache_write($conn, array $ref, ?array $scan)
 
 function scanplus_lookup_by_itr_lines($erp, array $refs)
 {
-    $docEntries = [];
+    $refTuples = [];
 
     foreach ($refs as $ref) {
         $key = scanplus_key(
@@ -372,12 +372,18 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
             $ref['item_code'] ?? ''
         );
 
-        if ($key !== '') {
-            $docEntries[(int)$ref['doc_entry']] = true;
+        if ($key === '') {
+            continue;
         }
+
+        $refTuples[$key] = [
+            (int)$ref['doc_entry'],
+            (int)$ref['line_num'],
+            trim((string)$ref['item_code'])
+        ];
     }
 
-    if (empty($docEntries)) {
+    if (empty($refTuples)) {
         return [];
     }
 
@@ -497,44 +503,67 @@ function scanplus_lookup_by_itr_lines($erp, array $refs)
         $lotJoin = '';
     }
 
-    $entryValues = array_keys($docEntries);
-    $placeholders = implode(',', array_fill(0, count($entryValues), '?'));
-    $where = [
-        "R.DocEntry IN ({$placeholders})"
-    ];
-    $params = $entryValues;
     $transferJoinCanceledSql = $hasCanceled ? " AND ISNULL(T.CANCELED, 'N') = 'N'" : '';
-
-    $rows = fetch_all(
-        $erp,
-        "SELECT
-            R.DocEntry AS ITRDocEntry,
-            R.LineNum AS ITRLineNum,
-            R.ItemCode,
-            T.DocNum AS ITNumber,
-            {$scanDateExpr} AS ScanDate,
-            {$scanTimeExpr} AS ScanTime,
-            {$scannedByExpr} AS BarcodeUser,
-            {$lineStatusExpr} AS ITRLineStatus,
-            {$openQtyExpr} AS ITROpenQty,
-            {$lotSelect}
-         FROM WTQ1 R
-         LEFT JOIN WTR1 L
-            ON L.BaseType = 1250000001
-           AND L.BaseEntry = R.DocEntry
-           AND L.BaseLine = R.LineNum
-           AND L.ItemCode = R.ItemCode
-         LEFT JOIN OWTR T
-            ON T.DocEntry = L.DocEntry
-           {$transferJoinCanceledSql}
-         {$lotJoin}
-         {$userJoin}
-         WHERE " . implode(' AND ', $where) . "
-         ORDER BY R.LineNum ASC, T.DocEntry DESC, L.LineNum DESC",
-        $params
-    );
-
     $result = [];
+    $rows = [];
+
+    /*
+     * Join against an exact (DocEntry, LineNum, ItemCode) tuple list instead of
+     * filtering WTQ1 by DocEntry alone. Filtering by DocEntry only pulls in every
+     * line of every referenced document (fine for single-line docs, very expensive
+     * for large multi-line documents), which was driving the heavy CXPACKET/CPU
+     * usage seen in sp_who2 for this query. MAXDOP 1 also avoids parallel-plan
+     * overhead for what is fundamentally a narrow, index-driven point lookup.
+     */
+    foreach (array_chunk(array_values($refTuples), 350) as $tupleChunk) {
+        $refRows = [];
+        $params = [];
+
+        foreach ($tupleChunk as $tuple) {
+            $refRows[] = 'SELECT ? AS DocEntry, ? AS LineNum, ? AS ItemCode';
+            array_push($params, $tuple[0], $tuple[1], $tuple[2]);
+        }
+
+        $chunkRows = fetch_all(
+            $erp,
+            "WITH Ref AS (
+                " . implode("\nUNION ALL\n", $refRows) . "
+             )
+             SELECT
+                R.DocEntry AS ITRDocEntry,
+                R.LineNum AS ITRLineNum,
+                R.ItemCode,
+                T.DocNum AS ITNumber,
+                {$scanDateExpr} AS ScanDate,
+                {$scanTimeExpr} AS ScanTime,
+                {$scannedByExpr} AS BarcodeUser,
+                {$lineStatusExpr} AS ITRLineStatus,
+                {$openQtyExpr} AS ITROpenQty,
+                {$lotSelect}
+             FROM Ref
+             INNER JOIN WTQ1 R
+                ON R.DocEntry = Ref.DocEntry
+               AND R.LineNum = Ref.LineNum
+               AND R.ItemCode = Ref.ItemCode
+             LEFT JOIN WTR1 L
+                ON L.BaseType = 1250000001
+               AND L.BaseEntry = R.DocEntry
+               AND L.BaseLine = R.LineNum
+               AND L.ItemCode = R.ItemCode
+             LEFT JOIN OWTR T
+                ON T.DocEntry = L.DocEntry
+               {$transferJoinCanceledSql}
+             {$lotJoin}
+             {$userJoin}
+             ORDER BY R.LineNum ASC, T.DocEntry DESC, L.LineNum DESC
+             OPTION (MAXDOP 1)",
+            $params
+        );
+
+        foreach ($chunkRows as $chunkRow) {
+            $rows[] = $chunkRow;
+        }
+    }
 
     foreach ($rows as $row) {
         $key = scanplus_key($row['ITRDocEntry'] ?? 0, $row['ITRLineNum'] ?? null, $row['ItemCode'] ?? '');
