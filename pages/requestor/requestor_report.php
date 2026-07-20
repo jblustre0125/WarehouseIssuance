@@ -1248,6 +1248,9 @@ $lineReceiveApply = "
     OUTER APPLY
     (
         SELECT
+            CAST(NULL AS BIT) AS IsCurrentMatch,
+            CAST(NULL AS NVARCHAR(50)) AS MatchStatus,
+            CAST(NULL AS DECIMAL(18, 3)) AS RawReceivedQty,
             CAST(NULL AS DECIMAL(18, 3)) AS ReceivedQty,
             CAST(NULL AS NVARCHAR(80)) AS ReceivedLotNo,
             CAST(NULL AS NVARCHAR(50)) AS ScanStatus,
@@ -1262,6 +1265,12 @@ if ($hasLineReceiveCache) {
         OUTER APPLY
         (
             SELECT TOP (1)
+                ISNULL(M0.IsCurrentMatch, 0) AS IsCurrentMatch,
+                M0.MatchStatus,
+                TRY_CONVERT(
+                    DECIMAL(18, 3),
+                    M0.RawReceivedQty
+                ) AS RawReceivedQty,
                 TRY_CONVERT(
                     DECIMAL(18, 3),
                     M0.ReceivedQty
@@ -1276,8 +1285,12 @@ if ($hasLineReceiveCache) {
                 M0.LastSyncedAt
             FROM dbo.WarehouseIssueRequestLineReceiveCache M0
             WHERE M0.RequestLineID = B.RequestLineID
-              AND ISNULL(M0.IsCurrentMatch, 0) = 1
-            ORDER BY M0.LastSyncedAt DESC
+            ORDER BY
+                CASE
+                    WHEN ISNULL(M0.IsCurrentMatch, 0) = 1 THEN 0
+                    ELSE 1
+                END,
+                M0.LastSyncedAt DESC
         ) M
     ";
 }
@@ -1514,6 +1527,13 @@ SELECT
                 = 'NOT RECEIVED IN SAP'
             THEN 'NOT RECEIVED IN SAP'
 
+        WHEN UPPER(LTRIM(RTRIM(ISNULL(M.MatchStatus, '')))) IN
+            (
+                'OLD_CACHE_RECEIVE',
+                'NOT_ALLOCATED_TO_REQUEST_LINE'
+            )
+            THEN M.MatchStatus
+
         ELSE 'NOT CONFIRMED'
     END AS ReceiveStatus,
 
@@ -1678,11 +1698,22 @@ CROSS APPLY
 (
     SELECT
         COALESCE(
-            TRY_CONVERT(
-                DECIMAL(18, 3),
-                M.ReceivedQty
-            ),
             CASE
+                WHEN ISNULL(M.IsCurrentMatch, 0) = 1
+                    THEN TRY_CONVERT(
+                        DECIMAL(18, 3),
+                        M.ReceivedQty
+                    )
+                ELSE NULL
+            END,
+            CASE
+                WHEN UPPER(LTRIM(RTRIM(ISNULL(M.MatchStatus, '')))) IN
+                    (
+                        'OLD_CACHE_RECEIVE',
+                        'NOT_ALLOCATED_TO_REQUEST_LINE'
+                    )
+                    THEN NULL
+
                 WHEN
                     C.ReceivedAt IS NOT NULL
                     AND CONVERT(date, C.ReceivedAt) < CONVERT(date, B.RequestedAt)
@@ -2353,6 +2384,11 @@ $showingTo = min(
             color: #9a3412;
         }
 
+        .status-not_allocated_to_request_line {
+            background: #f3f4f6;
+            color: #4b5563;
+        }
+
         .status-sap_partial,
         .status-sap_received,
         .status-partial_received {
@@ -2664,6 +2700,7 @@ $showingTo = min(
                     <strong>Timeline:</strong> Request Created At &rarr; Issued At &rarr; Received At.
                     <strong>PARTIAL</strong> under Issue Status means only part of the requested quantity was issued;
                     it does not mean the issued quantity was only partially received.
+                    <strong>OLD_CACHE_RECEIVE</strong> under Receive Status means the ScanPlus receive is older than this request date and is not counted for this request.
                 </div>
 
                 <div class="report-table-wrap">

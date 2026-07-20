@@ -375,6 +375,6 @@ verify_receive_json([
     'latest_scanplus_cache_sync' => verify_receive_cell($latestCacheSync['LatestSync'] ?? ''),
     'summary' => $summary,
     'lines' => $lines,
-    'source' => 'WHPOKAYOKE dbo.RawmatTraceScanPlusCache only; no browser SAP query was executed.'
+    'source' => 'WHPOKAYOKE request-line receive cache and dbo.RawmatTraceScanPlusCache only; no browser SAP query was executed.'
 ]);
 ?>
