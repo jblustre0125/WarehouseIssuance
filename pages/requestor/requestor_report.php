@@ -983,54 +983,13 @@ if ($hasCache) {
             ? 'C0.LastSyncedAt'
             : 'CAST(NULL AS DATETIME)';
 
+    /*
+     * The ScanPlus cache is keyed by SAP IT DocEntry + line + item + lot.
+     * Do not reject it by ReceivedAt: SAP/ScanPlus receive timestamps can be
+     * earlier than the local request row even when the SAP document key is the
+     * same confirmed transfer.
+     */
     $cacheDateCondition = '';
-
-    if ($cacheHasReceivedAt && $cacheHasLastSyncedAt) {
-        $cacheDateCondition = "
-            AND
-            (
-                (
-                    C0.ReceivedAt IS NOT NULL
-                    AND C0.ReceivedAt >= B.RequestedAt
-                    AND
-                    (
-                        ITX.IssuedAt IS NULL
-                        OR C0.ReceivedAt >= ITX.IssuedAt
-                    )
-                )
-
-                OR
-                (
-                    C0.ReceivedAt IS NULL
-                    AND C0.LastSyncedAt >= B.RequestedAt
-                    AND
-                    (
-                        ITX.IssuedAt IS NULL
-                        OR C0.LastSyncedAt >= ITX.IssuedAt
-                    )
-                )
-            )
-        ";
-    } elseif ($cacheHasReceivedAt) {
-        $cacheDateCondition = "
-            AND C0.ReceivedAt IS NOT NULL
-            AND C0.ReceivedAt >= B.RequestedAt
-            AND
-            (
-                ITX.IssuedAt IS NULL
-                OR C0.ReceivedAt >= ITX.IssuedAt
-            )
-        ";
-    } elseif ($cacheHasLastSyncedAt) {
-        $cacheDateCondition = "
-            AND C0.LastSyncedAt >= B.RequestedAt
-            AND
-            (
-                ITX.IssuedAt IS NULL
-                OR C0.LastSyncedAt >= ITX.IssuedAt
-            )
-        ";
-    }
 
     $cacheReceivedAtOrder =
         $cacheHasReceivedAt
@@ -1399,12 +1358,6 @@ SELECT
         WHEN
             Q.CacheReceivedQty > 0
             AND C.ReceivedAt IS NOT NULL
-            AND C.ReceivedAt >= B.RequestedAt
-            AND
-            (
-                ITX.IssuedAt IS NULL
-                OR C.ReceivedAt >= ITX.IssuedAt
-            )
             THEN C.ReceivedAt
 
         ELSE NULL
