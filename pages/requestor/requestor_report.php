@@ -106,7 +106,8 @@ function request_report_load_schema($conn): array
         'IssuanceTransactions',
         'RawmatTraceHeader',
         'RawmatTraceLines',
-        'RawmatTraceScanPlusCache'
+        'RawmatTraceScanPlusCache',
+        'WarehouseIssueRequestLineReceiveCache'
     ];
 
     $placeholders = implode(
@@ -1218,6 +1219,71 @@ if ($hasCache) {
 
 /*
 |--------------------------------------------------------------------------
+| Request-line receive mapping
+|--------------------------------------------------------------------------
+|
+| This table is populated by the scheduled ScanPlus sync. It stores the
+| receive decision per local RequestLineID so repeated SAP IT/item/lot keys do
+| not cause one request's receive to be borrowed by another request.
+|
+*/
+
+$hasLineReceiveCache =
+    request_report_has_table(
+        $schema,
+        'WarehouseIssueRequestLineReceiveCache'
+    ) &&
+    request_report_has_column(
+        $schema,
+        'WarehouseIssueRequestLineReceiveCache',
+        'RequestLineID'
+    ) &&
+    request_report_has_column(
+        $schema,
+        'WarehouseIssueRequestLineReceiveCache',
+        'IsCurrentMatch'
+    );
+
+$lineReceiveApply = "
+    OUTER APPLY
+    (
+        SELECT
+            CAST(NULL AS DECIMAL(18, 3)) AS ReceivedQty,
+            CAST(NULL AS NVARCHAR(80)) AS ReceivedLotNo,
+            CAST(NULL AS NVARCHAR(50)) AS ScanStatus,
+            CAST(NULL AS NVARCHAR(120)) AS BarcodeUser,
+            CAST(NULL AS DATETIME) AS ReceivedAt,
+            CAST(NULL AS DATETIME) AS LastSyncedAt
+    ) M
+";
+
+if ($hasLineReceiveCache) {
+    $lineReceiveApply = "
+        OUTER APPLY
+        (
+            SELECT TOP (1)
+                TRY_CONVERT(
+                    DECIMAL(18, 3),
+                    M0.ReceivedQty
+                ) AS ReceivedQty,
+                NULLIF(
+                    LTRIM(RTRIM(M0.ReceivedLotNo)),
+                    ''
+                ) AS ReceivedLotNo,
+                M0.ScanStatus,
+                M0.BarcodeUser,
+                M0.ReceivedAt,
+                M0.LastSyncedAt
+            FROM dbo.WarehouseIssueRequestLineReceiveCache M0
+            WHERE M0.RequestLineID = B.RequestLineID
+              AND ISNULL(M0.IsCurrentMatch, 0) = 1
+            ORDER BY M0.LastSyncedAt DESC
+        ) M
+    ";
+}
+
+/*
+|--------------------------------------------------------------------------
 | Main paginated query
 |--------------------------------------------------------------------------
 */
@@ -1347,6 +1413,10 @@ SELECT
             ''
         ),
         NULLIF(
+            LTRIM(RTRIM(M.ReceivedLotNo)),
+            ''
+        ),
+        NULLIF(
             LTRIM(RTRIM(C.ReceivedLotNo)),
             ''
         ),
@@ -1371,14 +1441,14 @@ SELECT
                 ),
                 CASE
                     WHEN Q.CacheReceivedQty > 0
-                        THEN C.BarcodeUser
+                        THEN COALESCE(M.BarcodeUser, C.BarcodeUser)
                     ELSE NULL
                 END,
                 ''
             )
 
         WHEN Q.CacheReceivedQty > 0
-            THEN C.BarcodeUser
+            THEN COALESCE(M.BarcodeUser, C.BarcodeUser)
 
         ELSE ''
     END AS ScannedBy,
@@ -1397,8 +1467,8 @@ SELECT
 
         WHEN
             Q.CacheReceivedQty > 0
-            AND C.ReceivedAt IS NOT NULL
-            THEN C.ReceivedAt
+            AND COALESCE(M.ReceivedAt, C.ReceivedAt) IS NOT NULL
+            THEN COALESCE(M.ReceivedAt, C.ReceivedAt)
 
         ELSE NULL
     END AS ScannedAt,
@@ -1417,13 +1487,13 @@ SELECT
         WHEN Q.CacheReceivedQty > 0
             THEN
                 CASE
-                    WHEN UPPER(LTRIM(RTRIM(ISNULL(C.ScanStatus, '')))) IN
+                    WHEN UPPER(LTRIM(RTRIM(ISNULL(COALESCE(M.ScanStatus, C.ScanStatus), '')))) IN
                     (
                         'CLOSED',
                         'COMPLETED',
                         'MATCHED'
                     )
-                        THEN C.ScanStatus
+                        THEN COALESCE(M.ScanStatus, C.ScanStatus)
 
                     WHEN
                         COALESCE(
@@ -1440,7 +1510,7 @@ SELECT
                     ELSE 'SAP_RECEIVED'
                 END
 
-        WHEN UPPER(LTRIM(RTRIM(ISNULL(C.ScanStatus, ''))))
+        WHEN UPPER(LTRIM(RTRIM(ISNULL(COALESCE(M.ScanStatus, C.ScanStatus), ''))))
                 = 'NOT RECEIVED IN SAP'
             THEN 'NOT RECEIVED IN SAP'
 
@@ -1602,20 +1672,35 @@ CROSS APPLY
 
 {$cacheApply}
 
+{$lineReceiveApply}
+
+CROSS APPLY
+(
+    SELECT
+        COALESCE(
+            TRY_CONVERT(
+                DECIMAL(18, 3),
+                M.ReceivedQty
+            ),
+            CASE
+                WHEN
+                    C.ReceivedAt IS NOT NULL
+                    AND CONVERT(date, C.ReceivedAt) < CONVERT(date, B.RequestedAt)
+                    THEN NULL
+                ELSE TRY_CONVERT(
+                    DECIMAL(18, 3),
+                    C.ReceivedQty
+                )
+            END
+        ) AS SourceReceivedQty
+) SQ
+
 CROSS APPLY
 (
     SELECT
         CASE
-            WHEN
-                C.ReceivedAt IS NOT NULL
-                AND CONVERT(date, C.ReceivedAt) < CONVERT(date, B.RequestedAt)
-                THEN NULL
-
             WHEN ISNULL(
-                TRY_CONVERT(
-                    DECIMAL(18, 3),
-                    C.ReceivedQty
-                ),
+                SQ.SourceReceivedQty,
                 0
             ) <= 0
                 THEN NULL
@@ -1629,10 +1714,7 @@ CROSS APPLY
                     )
                 ) > 0
 
-                AND TRY_CONVERT(
-                    DECIMAL(18, 3),
-                    C.ReceivedQty
-                ) > COALESCE(
+                AND SQ.SourceReceivedQty > COALESCE(
                     R.BaseIssuedQty,
                     TRY_CONVERT(
                         DECIMAL(18, 3),
@@ -1647,10 +1729,7 @@ CROSS APPLY
                     )
                 )
 
-            ELSE TRY_CONVERT(
-                DECIMAL(18, 3),
-                C.ReceivedQty
-            )
+            ELSE SQ.SourceReceivedQty
         END AS CacheReceivedQty
 ) Q
 

@@ -72,6 +72,10 @@ function verify_receive_status(array $line)
     $requestedDate = verify_receive_date_key($line['RequestedAt'] ?? '');
     $receivedDate = verify_receive_date_key($line['CacheReceivedAt'] ?? '');
 
+    if ($cacheStatus === 'OLD_CACHE_RECEIVE') {
+        return 'OLD_CACHE_RECEIVE';
+    }
+
     if (
         $receivedQty > 0 &&
         $requestedDate !== '' &&
@@ -173,6 +177,45 @@ $cacheLastSyncedOrderExpr = $cacheHasLastSyncedAt
     ? 'C0.LastSyncedAt'
     : 'C0.SAP_IT_DocEntry';
 
+$hasLineReceiveCache = verify_receive_has_table($conn, 'WarehouseIssueRequestLineReceiveCache')
+    && verify_receive_has_column($conn, 'WarehouseIssueRequestLineReceiveCache', 'RequestLineID')
+    && verify_receive_has_column($conn, 'WarehouseIssueRequestLineReceiveCache', 'IsCurrentMatch');
+
+$lineReceiveApply = "
+    OUTER APPLY
+    (
+        SELECT
+            CAST(NULL AS INT) AS RequestLineID,
+            CAST(NULL AS NVARCHAR(50)) AS MatchStatus,
+            CAST(NULL AS DECIMAL(18, 3)) AS ReceivedQty,
+            CAST(NULL AS NVARCHAR(80)) AS ReceivedLotNo,
+            CAST(NULL AS NVARCHAR(120)) AS BarcodeUser,
+            CAST(NULL AS DATETIME) AS ReceivedAt,
+            CAST(NULL AS DATETIME) AS LastSyncedAt
+    ) M
+";
+
+if ($hasLineReceiveCache) {
+    $lineReceiveApply = "
+        OUTER APPLY
+        (
+            SELECT TOP (1)
+                M0.RequestLineID,
+                M0.MatchStatus,
+                M0.ReceivedQty,
+                M0.ReceivedLotNo,
+                M0.BarcodeUser,
+                M0.ReceivedAt,
+                M0.LastSyncedAt
+            FROM dbo.WarehouseIssueRequestLineReceiveCache M0
+            WHERE M0.RequestLineID = B.RequestLineID
+            ORDER BY
+                CASE WHEN ISNULL(M0.IsCurrentMatch, 0) = 1 THEN 0 ELSE 1 END,
+                M0.LastSyncedAt DESC
+        ) M
+    ";
+}
+
 $user = current_user();
 $role = strtolower(trim((string)($user['role'] ?? $user['RoleName'] ?? '')));
 $where = ['H.RequestNo = ?'];
@@ -213,14 +256,14 @@ $rows = fetch_all(
     )
     SELECT
         B.*,
-        CASE WHEN C.SAP_IT_DocEntry IS NULL THEN 0 ELSE 1 END AS HasCacheRow,
+        CASE WHEN C.SAP_IT_DocEntry IS NULL AND M.RequestLineID IS NULL THEN 0 ELSE 1 END AS HasCacheRow,
         C.LotNo AS CacheLotNo,
-        C.ReceivedLotNo AS CacheReceivedLotNo,
-        C.ScanStatus AS CacheStatus,
-        C.ReceivedQty AS CacheReceivedQty,
-        C.BarcodeUser AS CacheReceivedBy,
-        C.ReceivedAt AS CacheReceivedAt,
-        C.LastSyncedAt AS CacheLastSyncedAt
+        COALESCE(M.ReceivedLotNo, C.ReceivedLotNo) AS CacheReceivedLotNo,
+        COALESCE(M.MatchStatus, C.ScanStatus) AS CacheStatus,
+        COALESCE(M.ReceivedQty, C.ReceivedQty) AS CacheReceivedQty,
+        COALESCE(M.BarcodeUser, C.BarcodeUser) AS CacheReceivedBy,
+        COALESCE(M.ReceivedAt, C.ReceivedAt) AS CacheReceivedAt,
+        COALESCE(M.LastSyncedAt, C.LastSyncedAt) AS CacheLastSyncedAt
     FROM RequestLines B
     OUTER APPLY
     (
@@ -261,6 +304,7 @@ $rows = fetch_all(
             CASE WHEN ISNULL(TRY_CONVERT(DECIMAL(18, 3), C0.ReceivedQty), 0) > 0 THEN 0 ELSE 1 END,
             {$cacheLastSyncedOrderExpr} DESC
     ) C
+    {$lineReceiveApply}
     ORDER BY B.RequestLineID ASC
     ",
     $params

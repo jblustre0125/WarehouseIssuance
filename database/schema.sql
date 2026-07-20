@@ -479,6 +479,49 @@ BEGIN
 END
 GO
 
+IF OBJECT_ID('dbo.WarehouseIssueRequestLineReceiveCache', 'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.WarehouseIssueRequestLineReceiveCache (
+        RequestLineID INT NOT NULL PRIMARY KEY,
+        RequestNo NVARCHAR(80) NULL,
+        SAP_IT_DocEntry INT NOT NULL,
+        SAP_IT_LineNum INT NULL,
+        ItemCode NVARCHAR(50) NOT NULL,
+        LotNo NVARCHAR(80) NULL,
+        WarehouseLotNo NVARCHAR(80) NULL,
+        ReceivedLotNo NVARCHAR(80) NULL,
+        ScanStatus NVARCHAR(50) NULL,
+        MatchStatus NVARCHAR(50) NOT NULL DEFAULT 'NOT_CONFIRMED',
+        IsCurrentMatch BIT NOT NULL DEFAULT 0,
+        RawReceivedQty DECIMAL(18,3) NULL,
+        ReceivedQty DECIMAL(18,3) NULL,
+        BarcodeUser NVARCHAR(120) NULL,
+        ReceivedAt DATETIME NULL,
+        LastSyncedAt DATETIME NOT NULL DEFAULT GETDATE()
+    );
+END
+GO
+
+IF COL_LENGTH('dbo.WarehouseIssueRequestLineReceiveCache', 'RequestNo') IS NULL ALTER TABLE dbo.WarehouseIssueRequestLineReceiveCache ADD RequestNo NVARCHAR(80) NULL;
+IF COL_LENGTH('dbo.WarehouseIssueRequestLineReceiveCache', 'WarehouseLotNo') IS NULL ALTER TABLE dbo.WarehouseIssueRequestLineReceiveCache ADD WarehouseLotNo NVARCHAR(80) NULL;
+IF COL_LENGTH('dbo.WarehouseIssueRequestLineReceiveCache', 'ReceivedLotNo') IS NULL ALTER TABLE dbo.WarehouseIssueRequestLineReceiveCache ADD ReceivedLotNo NVARCHAR(80) NULL;
+IF COL_LENGTH('dbo.WarehouseIssueRequestLineReceiveCache', 'ScanStatus') IS NULL ALTER TABLE dbo.WarehouseIssueRequestLineReceiveCache ADD ScanStatus NVARCHAR(50) NULL;
+IF COL_LENGTH('dbo.WarehouseIssueRequestLineReceiveCache', 'MatchStatus') IS NULL ALTER TABLE dbo.WarehouseIssueRequestLineReceiveCache ADD MatchStatus NVARCHAR(50) NOT NULL DEFAULT 'NOT_CONFIRMED';
+IF COL_LENGTH('dbo.WarehouseIssueRequestLineReceiveCache', 'IsCurrentMatch') IS NULL ALTER TABLE dbo.WarehouseIssueRequestLineReceiveCache ADD IsCurrentMatch BIT NOT NULL DEFAULT 0;
+IF COL_LENGTH('dbo.WarehouseIssueRequestLineReceiveCache', 'RawReceivedQty') IS NULL ALTER TABLE dbo.WarehouseIssueRequestLineReceiveCache ADD RawReceivedQty DECIMAL(18,3) NULL;
+IF COL_LENGTH('dbo.WarehouseIssueRequestLineReceiveCache', 'ReceivedQty') IS NULL ALTER TABLE dbo.WarehouseIssueRequestLineReceiveCache ADD ReceivedQty DECIMAL(18,3) NULL;
+IF COL_LENGTH('dbo.WarehouseIssueRequestLineReceiveCache', 'BarcodeUser') IS NULL ALTER TABLE dbo.WarehouseIssueRequestLineReceiveCache ADD BarcodeUser NVARCHAR(120) NULL;
+IF COL_LENGTH('dbo.WarehouseIssueRequestLineReceiveCache', 'ReceivedAt') IS NULL ALTER TABLE dbo.WarehouseIssueRequestLineReceiveCache ADD ReceivedAt DATETIME NULL;
+IF COL_LENGTH('dbo.WarehouseIssueRequestLineReceiveCache', 'LastSyncedAt') IS NULL ALTER TABLE dbo.WarehouseIssueRequestLineReceiveCache ADD LastSyncedAt DATETIME NOT NULL DEFAULT GETDATE();
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_WIRLC_SapLookup' AND object_id = OBJECT_ID('dbo.WarehouseIssueRequestLineReceiveCache'))
+BEGIN
+    CREATE INDEX IX_WIRLC_SapLookup
+    ON dbo.WarehouseIssueRequestLineReceiveCache(SAP_IT_DocEntry, SAP_IT_LineNum, ItemCode, LotNo, WarehouseLotNo);
+END
+GO
+
 IF OBJECT_ID('dbo.SapCacheSyncLog', 'U') IS NULL
 BEGIN
     CREATE TABLE dbo.SapCacheSyncLog (

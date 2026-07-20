@@ -227,6 +227,7 @@ $sql = '
         Req.RequestedQty,
         Req.IssuedQty AS RequestLineIssuedQty,
         Req.RequestNo,
+        Req.RequestLineID,
         Req.RequestedByUsername,
         Req.RequestHeaderStatus,
         Req.RequestLineStatus,
@@ -248,6 +249,7 @@ $sql = '
     OUTER APPLY (
         SELECT TOP 1
             H.RequestNo,
+            L.RequestLineID,
             H.RequestedByUsername,
             H.Status AS RequestHeaderStatus,
             L.Status AS RequestLineStatus,
@@ -448,6 +450,67 @@ function enrich_issuer_scan_rows_with_scanplus(&$rows, $whpConn, $allowLiveRefre
 }
 
 enrich_issuer_scan_rows_with_scanplus($rows, $conn, false);
+
+function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
+{
+    if (empty($rows) || !issuer_report_has_column($conn, 'WarehouseIssueRequestLineReceiveCache', 'RequestLineID')) {
+        return;
+    }
+
+    $ids = [];
+
+    foreach ($rows as $row) {
+        $id = (int)($row['RequestLineID'] ?? 0);
+
+        if ($id > 0) {
+            $ids[$id] = true;
+        }
+    }
+
+    if (empty($ids)) {
+        return;
+    }
+
+    $mappedByLine = [];
+
+    foreach (array_chunk(array_keys($ids), 300) as $chunk) {
+        $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+        $mappedRows = fetch_all(
+            $conn,
+            "SELECT
+                RequestLineID,
+                ScanStatus,
+                ReceivedQty,
+                BarcodeUser,
+                ReceivedAt
+             FROM dbo.WarehouseIssueRequestLineReceiveCache
+             WHERE RequestLineID IN ({$placeholders})
+               AND ISNULL(IsCurrentMatch, 0) = 1",
+            $chunk
+        );
+
+        foreach ($mappedRows as $mappedRow) {
+            $mappedByLine[(int)$mappedRow['RequestLineID']] = $mappedRow;
+        }
+    }
+
+    foreach ($rows as &$row) {
+        $id = (int)($row['RequestLineID'] ?? 0);
+
+        if ($id <= 0 || !isset($mappedByLine[$id])) {
+            continue;
+        }
+
+        $mapped = $mappedByLine[$id];
+        $row['ScanStatus'] = $mapped['ScanStatus'] ?? $row['ScanStatus'] ?? '';
+        $row['ReceivedQty'] = $mapped['ReceivedQty'] ?? $row['ReceivedQty'] ?? '';
+        $row['BarcodeUser'] = $mapped['BarcodeUser'] ?? $row['BarcodeUser'] ?? '';
+        $row['ReceivedAt'] = $mapped['ReceivedAt'] ?? $row['ReceivedAt'] ?? '';
+    }
+    unset($row);
+}
+
+enrich_issuer_rows_with_request_line_receive_cache($rows, $conn);
 
 function issuer_report_valid_datetime($value): bool
 {

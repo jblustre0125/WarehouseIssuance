@@ -101,6 +101,16 @@ function sync_normalize_lot($value): string
 
 function sync_ref_key(array $ref): string
 {
+    $requestLineId = (int)($ref['local_request_line_id'] ?? 0);
+
+    if ($requestLineId > 0) {
+        return 'request-line|' . $requestLineId . '|'
+            . (int)$ref['doc_entry'] . '|'
+            . (($ref['line_num'] === null || $ref['line_num'] === '') ? '-1' : (int)$ref['line_num']) . '|'
+            . strtoupper(trim((string)$ref['item_code'])) . '|'
+            . sync_normalize_lot($ref['lot_no'] ?? '');
+    }
+
     return (int)$ref['doc_entry'] . '|'
         . (($ref['line_num'] === null || $ref['line_num'] === '') ? '-1' : (int)$ref['line_num']) . '|'
         . strtoupper(trim((string)$ref['item_code'])) . '|'
@@ -136,6 +146,17 @@ function sync_add_refs(array &$refs, array &$seen, array $rows): void
         if (array_key_exists('IssuedQty', $row)) {
             $ref['local_issued_qty'] = is_numeric($row['IssuedQty']) ? (float)$row['IssuedQty'] : null;
         }
+        if (array_key_exists('RequestLineID', $row)) {
+            $ref['local_request_line_id'] = (int)($row['RequestLineID'] ?? 0);
+        } elseif (array_key_exists('IssueRequestLineID', $row)) {
+            $ref['local_request_line_id'] = (int)($row['IssueRequestLineID'] ?? 0);
+        }
+        if (array_key_exists('RequestNo', $row)) {
+            $ref['local_request_no'] = trim((string)($row['RequestNo'] ?? ''));
+        }
+        if (array_key_exists('RequestedAt', $row)) {
+            $ref['local_requested_at'] = $row['RequestedAt'];
+        }
         if (array_key_exists('WarehouseLotNo', $row)) {
             $ref['local_warehouse_lot_no'] = trim((string)($row['WarehouseLotNo'] ?? ''));
         }
@@ -147,7 +168,7 @@ function sync_add_refs(array &$refs, array &$seen, array $rows): void
 
         if (isset($seen[$key])) {
             $existingIndex = $seen[$key];
-            foreach (['local_issued_qty', 'local_warehouse_lot_no', 'local_status'] as $field) {
+            foreach (['local_issued_qty', 'local_request_line_id', 'local_request_no', 'local_requested_at', 'local_warehouse_lot_no', 'local_status'] as $field) {
                 if (!array_key_exists($field, $refs[$existingIndex]) && array_key_exists($field, $ref)) {
                     $refs[$existingIndex][$field] = $ref[$field];
                 }
@@ -184,6 +205,259 @@ function sync_finish_log($conn, ?int $syncId, string $status, string $message, i
         $conn,
         'UPDATE dbo.SapCacheSyncLog SET FinishedAt = GETDATE(), Status = ?, Message = ?, RowCount = ? WHERE SyncID = ?',
         [$status, mb_substr($message, 0, 1000), $rowCount, $syncId]
+    );
+}
+
+function sync_ensure_request_line_receive_cache($conn): bool
+{
+    sync_exec(
+        $conn,
+        "IF OBJECT_ID('dbo.WarehouseIssueRequestLineReceiveCache', 'U') IS NULL
+         BEGIN
+            CREATE TABLE dbo.WarehouseIssueRequestLineReceiveCache (
+                RequestLineID INT NOT NULL PRIMARY KEY,
+                RequestNo NVARCHAR(80) NULL,
+                SAP_IT_DocEntry INT NOT NULL,
+                SAP_IT_LineNum INT NULL,
+                ItemCode NVARCHAR(50) NOT NULL,
+                LotNo NVARCHAR(80) NULL,
+                WarehouseLotNo NVARCHAR(80) NULL,
+                ReceivedLotNo NVARCHAR(80) NULL,
+                ScanStatus NVARCHAR(50) NULL,
+                MatchStatus NVARCHAR(50) NOT NULL DEFAULT 'NOT_CONFIRMED',
+                IsCurrentMatch BIT NOT NULL DEFAULT 0,
+                RawReceivedQty DECIMAL(18,3) NULL,
+                ReceivedQty DECIMAL(18,3) NULL,
+                BarcodeUser NVARCHAR(120) NULL,
+                ReceivedAt DATETIME NULL,
+                LastSyncedAt DATETIME NOT NULL DEFAULT GETDATE()
+            );
+         END"
+    );
+
+    foreach ([
+        'RequestNo NVARCHAR(80) NULL',
+        'WarehouseLotNo NVARCHAR(80) NULL',
+        'ReceivedLotNo NVARCHAR(80) NULL',
+        'ScanStatus NVARCHAR(50) NULL',
+        "MatchStatus NVARCHAR(50) NOT NULL CONSTRAINT DF_WIRLC_MatchStatus DEFAULT 'NOT_CONFIRMED'",
+        'IsCurrentMatch BIT NOT NULL CONSTRAINT DF_WIRLC_IsCurrentMatch DEFAULT 0',
+        'RawReceivedQty DECIMAL(18,3) NULL',
+        'ReceivedQty DECIMAL(18,3) NULL',
+        'BarcodeUser NVARCHAR(120) NULL',
+        'ReceivedAt DATETIME NULL',
+        'LastSyncedAt DATETIME NOT NULL CONSTRAINT DF_WIRLC_LastSyncedAt DEFAULT GETDATE()',
+    ] as $definition) {
+        $column = trim(strtok($definition, ' '));
+
+        if ($column !== '' && !sync_has_column($conn, 'WarehouseIssueRequestLineReceiveCache', $column)) {
+            sync_exec($conn, "ALTER TABLE dbo.WarehouseIssueRequestLineReceiveCache ADD {$definition}");
+        }
+    }
+
+    sync_exec(
+        $conn,
+        "IF NOT EXISTS (
+            SELECT 1
+            FROM sys.indexes
+            WHERE name = 'IX_WIRLC_SapLookup'
+              AND object_id = OBJECT_ID('dbo.WarehouseIssueRequestLineReceiveCache')
+         )
+         BEGIN
+            CREATE INDEX IX_WIRLC_SapLookup
+            ON dbo.WarehouseIssueRequestLineReceiveCache(SAP_IT_DocEntry, SAP_IT_LineNum, ItemCode, LotNo, WarehouseLotNo);
+         END"
+    );
+
+    return sync_has_table($conn, 'WarehouseIssueRequestLineReceiveCache');
+}
+
+function sync_date_key($value): string
+{
+    if ($value instanceof DateTimeInterface) {
+        return $value->format('Y-m-d');
+    }
+
+    $text = trim((string)$value);
+
+    if ($text === '') {
+        return '';
+    }
+
+    $timestamp = strtotime($text);
+
+    return $timestamp === false ? '' : date('Y-m-d', $timestamp);
+}
+
+function sync_datetime_sort_key($value): string
+{
+    if ($value instanceof DateTimeInterface) {
+        return $value->format('Y-m-d H:i:s');
+    }
+
+    return trim((string)$value);
+}
+
+function sync_ref_allocation_sort_key(array $ref): string
+{
+    return (int)$ref['doc_entry'] . '|'
+        . (($ref['line_num'] === null || $ref['line_num'] === '') ? '-1' : (int)$ref['line_num']) . '|'
+        . strtoupper(trim((string)$ref['item_code'])) . '|'
+        . sync_normalize_lot(($ref['local_warehouse_lot_no'] ?? '') !== '' ? $ref['local_warehouse_lot_no'] : ($ref['lot_no'] ?? ''));
+}
+
+function sync_allocate_request_line_scan(array $ref, ?array $scan, string $allocationKey, array &$remainingByScanKey): ?array
+{
+    if ((int)($ref['local_request_line_id'] ?? 0) <= 0 || !is_array($scan)) {
+        return $scan;
+    }
+
+    $rawQty = is_numeric($scan['received_qty'] ?? null)
+        ? (float)$scan['received_qty']
+        : 0.0;
+
+    if ($rawQty <= 0 || $allocationKey === '') {
+        return $scan;
+    }
+
+    if (!array_key_exists($allocationKey, $remainingByScanKey)) {
+        $remainingByScanKey[$allocationKey] = $rawQty;
+    }
+
+    $requestedQty = is_numeric($ref['local_issued_qty'] ?? null)
+        ? max(0.0, (float)$ref['local_issued_qty'])
+        : $rawQty;
+    $allocatedQty = min($requestedQty > 0 ? $requestedQty : $rawQty, max(0.0, $remainingByScanKey[$allocationKey]));
+    $remainingByScanKey[$allocationKey] = max(0.0, $remainingByScanKey[$allocationKey] - $allocatedQty);
+
+    $lineScan = $scan;
+    $lineScan['received_qty'] = $allocatedQty;
+
+    if ($allocatedQty <= 0) {
+        $lineScan['scan_status'] = 'NOT_ALLOCATED_TO_REQUEST_LINE';
+    }
+
+    return $lineScan;
+}
+
+function sync_upsert_request_line_receive_cache($conn, array $ref, ?array $scan): void
+{
+    $requestLineId = (int)($ref['local_request_line_id'] ?? 0);
+
+    if ($requestLineId <= 0 || !sync_has_table($conn, 'WarehouseIssueRequestLineReceiveCache')) {
+        return;
+    }
+
+    $rawReceivedQty = is_array($scan) && is_numeric($scan['received_qty'] ?? null)
+        ? (float)$scan['received_qty']
+        : null;
+    $receivedAt = is_array($scan) ? ($scan['received_at'] ?? null) : null;
+    $requestedDate = sync_date_key($ref['local_requested_at'] ?? '');
+    $receivedDate = sync_date_key($receivedAt);
+    $isOldReceive = $rawReceivedQty !== null
+        && $rawReceivedQty > 0
+        && $requestedDate !== ''
+        && $receivedDate !== ''
+        && $receivedDate < $requestedDate;
+    $isCurrentMatch = $rawReceivedQty !== null && $rawReceivedQty > 0 && !$isOldReceive;
+
+    $matchStatus = 'NOT_CONFIRMED';
+
+    if ($isOldReceive) {
+        $matchStatus = 'OLD_CACHE_RECEIVE';
+    } elseif ($isCurrentMatch) {
+        $matchStatus = (string)($scan['scan_status'] ?? 'RECEIVED');
+    } elseif (is_array($scan)) {
+        $matchStatus = (string)($scan['scan_status'] ?? 'NOT_RECEIVED_IN_SAP_CACHE');
+    }
+
+    $receivedQty = $isCurrentMatch ? $rawReceivedQty : null;
+    $receivedLotNo = is_array($scan) ? ($scan['received_lot_no'] ?? $scan['lot_no'] ?? null) : null;
+    $barcodeUser = is_array($scan) ? ($scan['barcode_user'] ?? null) : null;
+
+    sync_exec(
+        $conn,
+        "MERGE dbo.WarehouseIssueRequestLineReceiveCache WITH (HOLDLOCK) AS T
+         USING
+         (
+            SELECT
+                ? AS RequestLineID,
+                ? AS RequestNo,
+                ? AS SAP_IT_DocEntry,
+                ? AS SAP_IT_LineNum,
+                ? AS ItemCode,
+                ? AS LotNo,
+                ? AS WarehouseLotNo
+         ) AS S
+         ON T.RequestLineID = S.RequestLineID
+         WHEN MATCHED THEN UPDATE SET
+            RequestNo = S.RequestNo,
+            SAP_IT_DocEntry = S.SAP_IT_DocEntry,
+            SAP_IT_LineNum = S.SAP_IT_LineNum,
+            ItemCode = S.ItemCode,
+            LotNo = S.LotNo,
+            WarehouseLotNo = S.WarehouseLotNo,
+            ReceivedLotNo = ?,
+            ScanStatus = ?,
+            MatchStatus = ?,
+            IsCurrentMatch = ?,
+            RawReceivedQty = ?,
+            ReceivedQty = ?,
+            BarcodeUser = ?,
+            ReceivedAt = ?,
+            LastSyncedAt = GETDATE()
+         WHEN NOT MATCHED THEN INSERT
+         (
+            RequestLineID,
+            RequestNo,
+            SAP_IT_DocEntry,
+            SAP_IT_LineNum,
+            ItemCode,
+            LotNo,
+            WarehouseLotNo,
+            ReceivedLotNo,
+            ScanStatus,
+            MatchStatus,
+            IsCurrentMatch,
+            RawReceivedQty,
+            ReceivedQty,
+            BarcodeUser,
+            ReceivedAt,
+            LastSyncedAt
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE());",
+        [
+            $requestLineId,
+            $ref['local_request_no'] ?? null,
+            $ref['doc_entry'],
+            $ref['line_num'],
+            $ref['item_code'],
+            $ref['lot_no'] ?? null,
+            $ref['local_warehouse_lot_no'] ?? null,
+            $receivedLotNo,
+            is_array($scan) ? ($scan['scan_status'] ?? null) : null,
+            $matchStatus,
+            $isCurrentMatch ? 1 : 0,
+            $rawReceivedQty,
+            $receivedQty,
+            $barcodeUser,
+            $receivedAt,
+            $requestLineId,
+            $ref['local_request_no'] ?? null,
+            $ref['doc_entry'],
+            $ref['line_num'],
+            $ref['item_code'],
+            $ref['lot_no'] ?? null,
+            $ref['local_warehouse_lot_no'] ?? null,
+            $receivedLotNo,
+            is_array($scan) ? ($scan['scan_status'] ?? null) : null,
+            $matchStatus,
+            $isCurrentMatch ? 1 : 0,
+            $rawReceivedQty,
+            $receivedQty,
+            $barcodeUser,
+            $receivedAt,
+        ]
     );
 }
 
@@ -287,6 +561,7 @@ try {
     if (!sync_has_table($whp, 'RawmatTraceScanPlusCache')) {
         throw new RuntimeException('dbo.RawmatTraceScanPlusCache does not exist. Run scanplus_cache_fix.sql first.');
     }
+    sync_ensure_request_line_receive_cache($whp);
 
     $syncId = sync_begin_log($whp);
     sync_log("Starting ScanPlus cache refresh. Lookback={$lookbackDays} days, chunk={$chunkSize}, maxRefs={$maxRefs}.");
@@ -298,26 +573,38 @@ try {
         && sync_has_column($whp, 'IssuanceTransactions', 'ITRDocEntry')
         && sync_has_column($whp, 'IssuanceTransactions', 'ItemCode')) {
         $dateColumn = sync_has_column($whp, 'IssuanceTransactions', 'IssuedAt') ? 'IssuedAt' : null;
-        $lineExpr = sync_has_column($whp, 'IssuanceTransactions', 'ITRLineNum') ? 'ITRLineNum' : 'NULL';
-        $lotExpr = sync_has_column($whp, 'IssuanceTransactions', 'LotNo') ? 'LotNo' : "N''";
+        $lineExpr = sync_has_column($whp, 'IssuanceTransactions', 'ITRLineNum') ? 'IT.ITRLineNum' : 'NULL';
+        $lotExpr = sync_has_column($whp, 'IssuanceTransactions', 'LotNo') ? 'IT.LotNo' : "N''";
         $warehouseLotExpr = sync_has_column($whp, 'IssuanceTransactions', 'WarehouseLotNo')
-            ? 'WarehouseLotNo'
+            ? 'IT.WarehouseLotNo'
             : 'CAST(NULL AS NVARCHAR(100))';
+        $txHasRequestLineId = sync_has_column($whp, 'IssuanceTransactions', 'IssueRequestLineID')
+            && sync_has_table($whp, 'WarehouseIssueRequestLines')
+            && sync_has_table($whp, 'WarehouseIssueRequestHeader');
+        $requestLineSelect = $txHasRequestLineId
+            ? 'IT.IssueRequestLineID AS IssueRequestLineID, H.RequestNo, H.RequestedAt'
+            : 'CAST(NULL AS INT) AS IssueRequestLineID, CAST(NULL AS NVARCHAR(80)) AS RequestNo, CAST(NULL AS DATETIME) AS RequestedAt';
+        $requestLineJoin = $txHasRequestLineId
+            ? 'LEFT JOIN dbo.WarehouseIssueRequestLines RL ON RL.RequestLineID = IT.IssueRequestLineID
+               LEFT JOIN dbo.WarehouseIssueRequestHeader H ON H.RequestID = RL.RequestID'
+            : '';
         $whereDate = $dateColumn ? "AND {$dateColumn} >= DATEADD(DAY, -?, GETDATE())" : '';
         $params = $dateColumn ? [$lookbackDays] : [];
         sync_add_refs($refs, $seen, sync_fetch_all(
             $whp,
             "SELECT TOP {$maxRefs}
-                ITRDocEntry AS SAP_IT_DocEntry,
+                IT.ITRDocEntry AS SAP_IT_DocEntry,
                 {$lineExpr} AS SAP_IT_LineNum,
-                ItemCode,
+                IT.ItemCode,
                 {$lotExpr} AS LotNo,
-                {$warehouseLotExpr} AS WarehouseLotNo
-             FROM dbo.IssuanceTransactions
-             WHERE ISNULL(ITRDocEntry, 0) > 0
-               AND NULLIF(LTRIM(RTRIM(ItemCode)), '') IS NOT NULL
+                {$warehouseLotExpr} AS WarehouseLotNo,
+                {$requestLineSelect}
+             FROM dbo.IssuanceTransactions IT
+             {$requestLineJoin}
+             WHERE ISNULL(IT.ITRDocEntry, 0) > 0
+               AND NULLIF(LTRIM(RTRIM(IT.ItemCode)), '') IS NOT NULL
                {$whereDate}
-             ORDER BY " . ($dateColumn ?: 'ITRDocEntry') . ' DESC',
+             ORDER BY IT." . ($dateColumn ?: 'ITRDocEntry') . ' DESC',
             $params
         ));
     }
@@ -348,6 +635,9 @@ try {
         sync_add_refs($refs, $seen, sync_fetch_all(
             $whp,
             "SELECT TOP {$remaining}
+                L.RequestLineID,
+                H.RequestNo,
+                H.RequestedAt,
                 COALESCE(NULLIF(L.SAP_IT_DocEntry, 0), H.SAP_IT_DocEntry) AS SAP_IT_DocEntry,
                 L.SAP_IT_LineNum,
                 L.ItemCode,
@@ -368,9 +658,13 @@ try {
         && sync_has_table($whp, 'RawmatTraceHeader')
         && sync_has_table($whp, 'RawmatTraceLines')) {
         $remaining = $maxRefs - count($refs);
+        $traceRequestLineExpr = sync_has_column($whp, 'RawmatTraceLines', 'IssueRequestLineID')
+            ? 'L.IssueRequestLineID'
+            : 'CAST(NULL AS INT)';
         sync_add_refs($refs, $seen, sync_fetch_all(
             $whp,
             "SELECT TOP {$remaining}
+                {$traceRequestLineExpr} AS IssueRequestLineID,
                 COALESCE(NULLIF(L.SAP_IT_DocEntry, 0), H.SAP_IT_DocEntry) AS SAP_IT_DocEntry,
                 L.SAP_IT_LineNum,
                 L.ItemCode,
@@ -389,11 +683,23 @@ try {
         throw new RuntimeException('No local ITR/item references were found for the selected lookback period.');
     }
 
+    usort($refs, static function (array $a, array $b): int {
+        $keyCompare = strcmp(sync_ref_allocation_sort_key($a), sync_ref_allocation_sort_key($b));
+
+        if ($keyCompare !== 0) {
+            return $keyCompare;
+        }
+
+        return strcmp(sync_datetime_sort_key($a['local_requested_at'] ?? ''), sync_datetime_sort_key($b['local_requested_at'] ?? ''));
+    });
+
     sync_log('Unique local references found: ' . count($refs));
     $erp = get_erp_connection();
     if (!$erp) {
         throw new RuntimeException('Unable to connect to the SAP/ERP database from the scheduled task account.');
     }
+
+    $remainingByScanKey = [];
 
     foreach (array_chunk($refs, $chunkSize) as $chunkIndex => $chunk) {
         $started = microtime(true);
@@ -405,6 +711,7 @@ try {
         foreach ($chunk as $ref) {
             $baseKey = scanplus_key($ref['doc_entry'], $ref['line_num'], $ref['item_code']);
             $lotCandidates = [];
+            $selectedScanKey = '';
 
             foreach ([$ref['lot_no'] ?? '', $ref['local_warehouse_lot_no'] ?? ''] as $candidateLot) {
                 $candidateLot = trim((string)$candidateLot);
@@ -426,14 +733,23 @@ try {
 
                     if ($lotKey !== '' && isset($scanRows[$lotKey])) {
                         $scan = $scanRows[$lotKey];
+                        $selectedScanKey = $lotKey;
                         break;
                     }
                 }
             } else {
                 $scan = $scanRows[$baseKey] ?? null;
+                $selectedScanKey = $baseKey;
             }
 
             sync_upsert_cache($whp, $ref, is_array($scan) ? $scan : null);
+            $lineScan = sync_allocate_request_line_scan(
+                $ref,
+                is_array($scan) ? $scan : null,
+                $selectedScanKey,
+                $remainingByScanKey
+            );
+            sync_upsert_request_line_receive_cache($whp, $ref, $lineScan);
             $updated++;
             if (is_array($scan)) {
                 $matched++;
