@@ -2575,11 +2575,23 @@ $showingTo = min(
 
                                 <tr>
                                     <td>
-                                        <?= h(
+                                        <?php
+                                        $requestNoText =
                                             request_report_cell(
                                                 $row['RequestNo'] ?? ''
-                                            )
-                                        ) ?>
+                                            );
+                                        ?>
+
+                                        <a
+                                            href="<?= h(
+                                                'api/requestor/verify_receive.php?request_no=' .
+                                                rawurlencode($requestNoText)
+                                            ) ?>"
+                                            target="_blank"
+                                            rel="noopener"
+                                        >
+                                            <?= h($requestNoText) ?>
+                                        </a>
                                     </td>
 
                                     <td>
