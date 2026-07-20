@@ -1572,15 +1572,15 @@ CROSS APPLY
 (
     SELECT
         COALESCE(
-            NULLIF(TL.TraceIssuedQty, 0),
-            NULLIF(ITX.Quantity, 0),
             NULLIF(
                 TRY_CONVERT(
                     DECIMAL(18, 3),
                     B.LineIssuedQty
                 ),
                 0
-            )
+            ),
+            NULLIF(TL.TraceIssuedQty, 0),
+            NULLIF(ITX.Quantity, 0)
         ) AS BaseIssuedQty,
 
         COALESCE(
