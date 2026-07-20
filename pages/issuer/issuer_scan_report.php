@@ -290,27 +290,62 @@ function enrich_issuer_scan_rows_with_scanplus(&$rows, $whpConn, $allowLiveRefre
     $seenRefs = [];
 
     foreach ($rows as $row) {
-        $ref = [
+        $candidateLots = [
+            $row['LotNo'] ?? '',
+            $row['WarehouseLotNo'] ?? ''
+        ];
+
+        foreach ($candidateLots as $candidateLot) {
+            $candidateLot = trim((string)$candidateLot);
+
+            if ($candidateLot === '') {
+                continue;
+            }
+
+            $ref = [
+                'doc_entry' => $row['ITRDocEntry'] ?? 0,
+                'line_num' => $row['ITRLineNum'] ?? null,
+                'item_code' => $row['ItemCode'] ?? '',
+                'lot_no' => $candidateLot
+            ];
+
+            $scanKey = scanplus_key($ref['doc_entry'], $ref['line_num'], $ref['item_code']);
+
+            if ($scanKey === '') {
+                continue;
+            }
+
+            $dedupeKey = $scanKey . '|' . strtoupper($candidateLot);
+
+            if (isset($seenRefs[$dedupeKey])) {
+                continue;
+            }
+
+            $seenRefs[$dedupeKey] = true;
+            $scanRefs[] = $ref;
+        }
+
+        $baseRef = [
             'doc_entry' => $row['ITRDocEntry'] ?? 0,
             'line_num' => $row['ITRLineNum'] ?? null,
             'item_code' => $row['ItemCode'] ?? '',
-            'lot_no' => $row['LotNo'] ?? ''
+            'lot_no' => ''
         ];
 
-        $scanKey = scanplus_key($ref['doc_entry'], $ref['line_num'], $ref['item_code']);
+        $scanKey = scanplus_key($baseRef['doc_entry'], $baseRef['line_num'], $baseRef['item_code']);
 
         if ($scanKey === '') {
             continue;
         }
 
-        $dedupeKey = $scanKey . '|' . strtoupper(trim((string)$ref['lot_no']));
+        $dedupeKey = $scanKey . '|';
 
         if (isset($seenRefs[$dedupeKey])) {
             continue;
         }
 
         $seenRefs[$dedupeKey] = true;
-        $scanRefs[] = $ref;
+        $scanRefs[] = $baseRef;
     }
 
     $hasScanRefs = false;
@@ -382,12 +417,27 @@ function enrich_issuer_scan_rows_with_scanplus(&$rows, $whpConn, $allowLiveRefre
         }
     }
 
-    foreach ($rows as &$row) {
+    $findScanForRow = static function (array $row) use (&$scanplusRows) {
         $scanKey = scanplus_key($row['ITRDocEntry'] ?? 0, $row['ITRLineNum'] ?? null, $row['ItemCode'] ?? '');
-        $scanLotKey = scanplus_lot_key($row['ITRDocEntry'] ?? 0, $row['ITRLineNum'] ?? null, $row['ItemCode'] ?? '', $row['LotNo'] ?? '');
-        $scan = $scanLotKey !== ''
-            ? ($scanplusRows[$scanLotKey] ?? null)
-            : ($scanKey !== '' ? ($scanplusRows[$scanKey] ?? null) : null);
+
+        foreach ([$row['LotNo'] ?? '', $row['WarehouseLotNo'] ?? ''] as $candidateLot) {
+            $scanLotKey = scanplus_lot_key(
+                $row['ITRDocEntry'] ?? 0,
+                $row['ITRLineNum'] ?? null,
+                $row['ItemCode'] ?? '',
+                $candidateLot
+            );
+
+            if ($scanLotKey !== '' && isset($scanplusRows[$scanLotKey])) {
+                return $scanplusRows[$scanLotKey];
+            }
+        }
+
+        return $scanKey !== '' ? ($scanplusRows[$scanKey] ?? null) : null;
+    };
+
+    foreach ($rows as &$row) {
+        $scan = $findScanForRow($row);
 
         $row['ScanStatus'] = $scan['scan_status'] ?? '';
         $row['ReceivedQty'] = $scan['received_qty'] ?? '';
@@ -420,7 +470,11 @@ function issuer_report_scanplus_before_issue(array $row): bool
     $receivedAt = issuer_report_datetime_timestamp($row['ReceivedAt'] ?? '');
     $issuedAt = issuer_report_datetime_timestamp($row['IssuedAt'] ?? '');
 
-    return $receivedAt !== null && $issuedAt !== null && $receivedAt < $issuedAt;
+    if ($receivedAt === null || $issuedAt === null) {
+        return false;
+    }
+
+    return date('Y-m-d', $receivedAt) < date('Y-m-d', $issuedAt);
 }
 
 function issuer_report_received_status($status): bool

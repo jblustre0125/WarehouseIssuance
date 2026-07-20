@@ -1053,10 +1053,10 @@ if ($hasCache) {
                 AND
                 (
                     /* No issued lot: allow the base ITR-line cache row. */
-                    NULLIF(
-                        LTRIM(RTRIM(R.LocalLotNo)),
-                        ''
-                    ) IS NULL
+                    (
+                        NULLIF(LTRIM(RTRIM(R.LocalLotNo)), '') IS NULL
+                        AND NULLIF(LTRIM(RTRIM(R.WarehouseLotNo)), '') IS NULL
+                    )
 
                     /* Exact/normalized requested-lot match. */
                     OR
@@ -1071,12 +1071,23 @@ if ($hasCache) {
                             LTRIM(RTRIM(C0.LotNo))
                                 = LTRIM(RTRIM(R.LocalLotNo))
 
+                            OR LTRIM(RTRIM(C0.LotNo))
+                                = LTRIM(RTRIM(R.WarehouseLotNo))
+
                             OR
                             (
                                 TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
                                 AND TRY_CONVERT(BIGINT, R.LocalLotNo) IS NOT NULL
                                 AND TRY_CONVERT(BIGINT, C0.LotNo)
                                     = TRY_CONVERT(BIGINT, R.LocalLotNo)
+                            )
+
+                            OR
+                            (
+                                TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
+                                AND TRY_CONVERT(BIGINT, R.WarehouseLotNo) IS NOT NULL
+                                AND TRY_CONVERT(BIGINT, C0.LotNo)
+                                    = TRY_CONVERT(BIGINT, R.WarehouseLotNo)
                             )
                         )
                     )
@@ -1095,12 +1106,23 @@ if ($hasCache) {
                             LTRIM(RTRIM(C0.ReceivedLotNo))
                                 = LTRIM(RTRIM(R.LocalLotNo))
 
+                            OR LTRIM(RTRIM(C0.ReceivedLotNo))
+                                = LTRIM(RTRIM(R.WarehouseLotNo))
+
                             OR
                             (
                                 TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
                                 AND TRY_CONVERT(BIGINT, R.LocalLotNo) IS NOT NULL
                                 AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo)
                                     = TRY_CONVERT(BIGINT, R.LocalLotNo)
+                            )
+
+                            OR
+                            (
+                                TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
+                                AND TRY_CONVERT(BIGINT, R.WarehouseLotNo) IS NOT NULL
+                                AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo)
+                                    = TRY_CONVERT(BIGINT, R.WarehouseLotNo)
                             )
                         )
                     )
@@ -1124,12 +1146,21 @@ if ($hasCache) {
                         (
                             LTRIM(RTRIM(C0.LotNo))
                                 = LTRIM(RTRIM(R.LocalLotNo))
+                            OR LTRIM(RTRIM(C0.LotNo))
+                                = LTRIM(RTRIM(R.WarehouseLotNo))
                             OR
                             (
                                 TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
                                 AND TRY_CONVERT(BIGINT, R.LocalLotNo) IS NOT NULL
                                 AND TRY_CONVERT(BIGINT, C0.LotNo)
                                     = TRY_CONVERT(BIGINT, R.LocalLotNo)
+                            )
+                            OR
+                            (
+                                TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
+                                AND TRY_CONVERT(BIGINT, R.WarehouseLotNo) IS NOT NULL
+                                AND TRY_CONVERT(BIGINT, C0.LotNo)
+                                    = TRY_CONVERT(BIGINT, R.WarehouseLotNo)
                             )
                         )
                         THEN 0
@@ -1141,12 +1172,21 @@ if ($hasCache) {
                         (
                             LTRIM(RTRIM(C0.ReceivedLotNo))
                                 = LTRIM(RTRIM(R.LocalLotNo))
+                            OR LTRIM(RTRIM(C0.ReceivedLotNo))
+                                = LTRIM(RTRIM(R.WarehouseLotNo))
                             OR
                             (
                                 TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
                                 AND TRY_CONVERT(BIGINT, R.LocalLotNo) IS NOT NULL
                                 AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo)
                                     = TRY_CONVERT(BIGINT, R.LocalLotNo)
+                            )
+                            OR
+                            (
+                                TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
+                                AND TRY_CONVERT(BIGINT, R.WarehouseLotNo) IS NOT NULL
+                                AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo)
+                                    = TRY_CONVERT(BIGINT, R.WarehouseLotNo)
                             )
                         )
                         THEN 1
@@ -1566,6 +1606,11 @@ CROSS APPLY
 (
     SELECT
         CASE
+            WHEN
+                C.ReceivedAt IS NOT NULL
+                AND CONVERT(date, C.ReceivedAt) < CONVERT(date, B.RequestedAt)
+                THEN NULL
+
             WHEN ISNULL(
                 TRY_CONVERT(
                     DECIMAL(18, 3),
@@ -2222,6 +2267,11 @@ $showingTo = min(
         .status-cache_missing {
             background: #f3f4f6;
             color: #4b5563;
+        }
+
+        .status-old_cache_receive {
+            background: #ffedd5;
+            color: #9a3412;
         }
 
         .status-sap_partial,
@@ -3031,12 +3081,13 @@ function verifySetLoading(requestNo) {
 }
 
 function verifyRenderSummary(summary) {
-    const labels = {
+        const labels = {
         received: 'Received',
         partial_received: 'Partial',
         not_confirmed: 'Not Confirmed',
         cache_missing: 'Cache Missing',
-        not_received_in_sap_cache: 'Not Received'
+        not_received_in_sap_cache: 'Not Received',
+        old_cache_receive: 'Old Cache'
     };
 
     return Object.keys(labels).map(function (key) {
