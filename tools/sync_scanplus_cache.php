@@ -300,11 +300,19 @@ try {
         $dateColumn = sync_has_column($whp, 'IssuanceTransactions', 'IssuedAt') ? 'IssuedAt' : null;
         $lineExpr = sync_has_column($whp, 'IssuanceTransactions', 'ITRLineNum') ? 'ITRLineNum' : 'NULL';
         $lotExpr = sync_has_column($whp, 'IssuanceTransactions', 'LotNo') ? 'LotNo' : "N''";
+        $warehouseLotExpr = sync_has_column($whp, 'IssuanceTransactions', 'WarehouseLotNo')
+            ? 'WarehouseLotNo'
+            : 'CAST(NULL AS NVARCHAR(100))';
         $whereDate = $dateColumn ? "AND {$dateColumn} >= DATEADD(DAY, -?, GETDATE())" : '';
         $params = $dateColumn ? [$lookbackDays] : [];
         sync_add_refs($refs, $seen, sync_fetch_all(
             $whp,
-            "SELECT TOP {$maxRefs} ITRDocEntry AS SAP_IT_DocEntry, {$lineExpr} AS SAP_IT_LineNum, ItemCode, {$lotExpr} AS LotNo
+            "SELECT TOP {$maxRefs}
+                ITRDocEntry AS SAP_IT_DocEntry,
+                {$lineExpr} AS SAP_IT_LineNum,
+                ItemCode,
+                {$lotExpr} AS LotNo,
+                {$warehouseLotExpr} AS WarehouseLotNo
              FROM dbo.IssuanceTransactions
              WHERE ISNULL(ITRDocEntry, 0) > 0
                AND NULLIF(LTRIM(RTRIM(ItemCode)), '') IS NOT NULL
@@ -396,11 +404,31 @@ try {
 
         foreach ($chunk as $ref) {
             $baseKey = scanplus_key($ref['doc_entry'], $ref['line_num'], $ref['item_code']);
-            $lotKey = scanplus_lot_key($ref['doc_entry'], $ref['line_num'], $ref['item_code'], $ref['lot_no']);
+            $lotCandidates = [];
+
+            foreach ([$ref['lot_no'] ?? '', $ref['local_warehouse_lot_no'] ?? ''] as $candidateLot) {
+                $candidateLot = trim((string)$candidateLot);
+
+                if ($candidateLot === '') {
+                    continue;
+                }
+
+                $normalizedCandidate = sync_normalize_lot($candidateLot);
+                $lotCandidates[$normalizedCandidate !== '' ? $normalizedCandidate : $candidateLot] = $candidateLot;
+            }
 
             /* Never use an all-lot aggregate when the local row has a specific lot. */
-            if (trim((string)$ref['lot_no']) !== '') {
-                $scan = $lotKey !== '' ? ($scanRows[$lotKey] ?? null) : null;
+            if (!empty($lotCandidates)) {
+                $scan = null;
+
+                foreach ($lotCandidates as $candidateLot) {
+                    $lotKey = scanplus_lot_key($ref['doc_entry'], $ref['line_num'], $ref['item_code'], $candidateLot);
+
+                    if ($lotKey !== '' && isset($scanRows[$lotKey])) {
+                        $scan = $scanRows[$lotKey];
+                        break;
+                    }
+                }
             } else {
                 $scan = $scanRows[$baseKey] ?? null;
             }

@@ -2408,6 +2408,10 @@ $showingTo = min(
                 <div class="content-card-subtitle">
                     Filter local request records and export the
                     selected range.
+                    <?php if ($latestCacheSync !== ''): ?>
+                        ScanPlus cache last synced:
+                        <?= h($latestCacheSync) ?>.
+                    <?php endif; ?>
                 </div>
             </div>
 

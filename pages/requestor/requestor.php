@@ -1443,7 +1443,7 @@ async function loadSapInventoryTransfers() {
 
     try {
         const search = (document.getElementById('sapItSearchInput')?.value || '').trim();
-        let url = 'api/requestor/list_sap_inventory_transfers.php?max=20';
+        let url = 'api/requestor/list_sap_inventory_transfers.php?max=50';
 
         if (search !== '') {
             url += '&q=' + encodeURIComponent(search);

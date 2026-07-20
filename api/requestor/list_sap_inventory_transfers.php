@@ -57,6 +57,58 @@ function sap_it_like_param($value)
     return '%' . $value . '%';
 }
 
+function sap_it_document_matches_search(array $doc, $searchText)
+{
+    $searchText = strtolower(trim((string)$searchText));
+
+    if ($searchText === '') {
+        return true;
+    }
+
+    $parts = [
+        $doc['it_number'] ?? '',
+        $doc['itr_number'] ?? '',
+        $doc['it_date'] ?? '',
+    ];
+
+    foreach (($doc['lines'] ?? []) as $line) {
+        if (!is_array($line)) {
+            continue;
+        }
+
+        $parts[] = $line['item_code'] ?? '';
+        $parts[] = $line['part_name'] ?? '';
+        $parts[] = $line['lot_no'] ?? '';
+        $parts[] = $line['from_whs_code'] ?? '';
+        $parts[] = $line['to_whs_code'] ?? '';
+    }
+
+    return strpos(strtolower(implode(' ', array_map('strval', $parts))), $searchText) !== false;
+}
+
+function sap_it_filter_cached_payload(array $payload, $maxDocuments, $searchText)
+{
+    $documents = [];
+
+    foreach (($payload['documents'] ?? []) as $doc) {
+        if (!is_array($doc) || !sap_it_document_matches_search($doc, $searchText)) {
+            continue;
+        }
+
+        $documents[] = $doc;
+
+        if (count($documents) >= $maxDocuments) {
+            break;
+        }
+    }
+
+    $payload['documents'] = $documents;
+    $payload['limit'] = $maxDocuments;
+    $payload['filtered_from_base_cache'] = true;
+
+    return $payload;
+}
+
 $sectionWarehouseMap = [
     'backend' => ['HM', 'CSW', 'MR'],
     'back end' => ['HM', 'CSW', 'MR'],
@@ -126,6 +178,24 @@ $cached = sap_cache_get_preferred($whp, $cacheKey);
 
 if ($cached !== null) {
     sap_it_json_out($cached);
+}
+
+$baseCacheKey = sap_cache_make_key('sap.requestor.inventory_transfers', [
+    'role' => $currentRole,
+    'section' => $currentSection,
+    'warehouses' => implode(',', $allowedWarehouses),
+    'max' => 50,
+    'search' => '',
+    'month' => date('Y-m'),
+    'version' => 'stock-per-line-v1'
+]);
+
+if ($baseCacheKey !== $cacheKey) {
+    $baseCached = sap_cache_get_preferred($whp, $baseCacheKey);
+
+    if ($baseCached !== null) {
+        sap_it_json_out(sap_it_filter_cached_payload($baseCached, $maxDocuments, $searchText));
+    }
 }
 
 if (!sap_cache_live_queries_enabled()) {

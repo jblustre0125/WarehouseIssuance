@@ -50,3 +50,11 @@
 2026-07-18 12:27:01 Unique local references found: 428
 2026-07-18 12:27:52 Chunk 1: rows=50, lookup=50.867 sec
 2026-07-18 12:28:43 Chunk 2: rows=50, lookup=51.013 sec
+2026-07-18 12:29:31 Chunk 3: rows=50, lookup=48.311 sec
+2026-07-18 12:30:25 Chunk 4: rows=50, lookup=53.317 sec
+2026-07-18 12:31:26 Chunk 5: rows=50, lookup=60.882 sec
+2026-07-18 12:32:25 Chunk 6: rows=50, lookup=59.299 sec
+2026-07-18 12:33:51 Chunk 7: rows=50, lookup=86.259 sec
+2026-07-18 12:34:51 Chunk 8: rows=50, lookup=60.113 sec
+2026-07-18 12:35:29 Chunk 9: rows=28, lookup=37.883 sec
+2026-07-18 12:35:29 Completed. Updated=428, matched=345, not_received_or_unmatched=83.

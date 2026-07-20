@@ -191,7 +191,8 @@ function sync_task_selected($route, $interval, $syncMode, $includeHeavyTasks)
     }
 
     if ($syncMode === 'itr') {
-        return strpos($route, 'api/get_open_itr_requests.php') === 0;
+        return strpos($route, 'api/get_open_itr_requests.php') === 0 ||
+            strpos($route, 'api/requestor/list_sap_inventory_transfers.php') === 0;
     }
 
     if ($syncMode === 'po') {
@@ -204,6 +205,10 @@ function sync_task_selected($route, $interval, $syncMode, $includeHeavyTasks)
     }
 
     if (strpos($route, 'api/stocks/list.php') === 0) {
+        return true;
+    }
+
+    if (strpos($route, 'api/requestor/list_sap_inventory_transfers.php') === 0) {
         return true;
     }
 
