@@ -139,9 +139,15 @@ $cacheReceivedAtExpr = verify_receive_has_column($conn, 'RawmatTraceScanPlusCach
     ? 'C0.ReceivedAt'
     : 'CAST(NULL AS DATETIME)';
 
-$cacheLastSyncedAtExpr = verify_receive_has_column($conn, 'RawmatTraceScanPlusCache', 'LastSyncedAt')
+$cacheHasLastSyncedAt = verify_receive_has_column($conn, 'RawmatTraceScanPlusCache', 'LastSyncedAt');
+
+$cacheLastSyncedAtExpr = $cacheHasLastSyncedAt
     ? 'C0.LastSyncedAt'
     : 'CAST(NULL AS DATETIME)';
+
+$cacheLastSyncedOrderExpr = $cacheHasLastSyncedAt
+    ? 'C0.LastSyncedAt'
+    : 'C0.SAP_IT_DocEntry';
 
 $user = current_user();
 $role = strtolower(trim((string)($user['role'] ?? $user['RoleName'] ?? '')));
@@ -229,7 +235,7 @@ $rows = fetch_all(
                 ELSE 3
             END,
             CASE WHEN ISNULL(TRY_CONVERT(DECIMAL(18, 3), C0.ReceivedQty), 0) > 0 THEN 0 ELSE 1 END,
-            C0.LastSyncedAt DESC
+            {$cacheLastSyncedOrderExpr} DESC
     ) C
     ORDER BY B.RequestLineID ASC
     ",
@@ -245,10 +251,12 @@ if (empty($rows)) {
     ], 404);
 }
 
-$latestCacheSync = fetch_one(
-    $conn,
-    "SELECT MAX(LastSyncedAt) AS LatestSync FROM dbo.RawmatTraceScanPlusCache"
-);
+$latestCacheSync = $cacheHasLastSyncedAt
+    ? fetch_one(
+        $conn,
+        "SELECT MAX(LastSyncedAt) AS LatestSync FROM dbo.RawmatTraceScanPlusCache"
+    )
+    : ['LatestSync' => ''];
 
 $lines = [];
 $summary = [

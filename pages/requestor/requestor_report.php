@@ -2266,13 +2266,20 @@ $showingTo = min(
             color: #374151;
         }
 
+        .status-cache_missing {
+            background: #f3f4f6;
+            color: #4b5563;
+        }
+
         .status-sap_partial,
-        .status-sap_received {
+        .status-sap_received,
+        .status-partial_received {
             background: #dbeafe;
             color: #1d4ed8;
         }
 
-        .status-not_received_in_sap {
+        .status-not_received_in_sap,
+        .status-not_received_in_sap_cache {
             background: #fee2e2;
             color: #991b1b;
         }
@@ -2302,6 +2309,53 @@ $showingTo = min(
         .page-link {
             min-width: 38px;
             text-align: center;
+        }
+
+        .request-verify-link {
+            border: 0;
+            padding: 0;
+            background: transparent;
+            color: #0f6fd6;
+            font: inherit;
+            font-weight: 700;
+            text-align: left;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+
+        .verify-summary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .verify-summary .status-pill {
+            max-width: none;
+        }
+
+        .verify-table-wrap {
+            max-height: 58vh;
+            overflow: auto;
+            border: 1px solid #d8e0eb;
+            border-radius: 8px;
+        }
+
+        .verify-table {
+            margin-bottom: 0;
+            font-size: 12px;
+        }
+
+        .verify-table th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #f8fafc;
+            white-space: nowrap;
+        }
+
+        .verify-table td {
+            vertical-align: middle;
+            white-space: nowrap;
         }
 
         @media (max-width: 900px) {
@@ -2582,16 +2636,13 @@ $showingTo = min(
                                             );
                                         ?>
 
-                                        <a
-                                            href="<?= h(
-                                                'api/requestor/verify_receive.php?request_no=' .
-                                                rawurlencode($requestNoText)
-                                            ) ?>"
-                                            target="_blank"
-                                            rel="noopener"
+                                        <button
+                                            class="request-verify-link"
+                                            type="button"
+                                            data-request-no="<?= h($requestNoText) ?>"
                                         >
                                             <?= h($requestNoText) ?>
-                                        </a>
+                                        </button>
                                     </td>
 
                                     <td>
@@ -2886,6 +2937,71 @@ $showingTo = min(
     </main>
 </div>
 
+<div
+    class="modal fade"
+    id="receiveVerifyModal"
+    tabindex="-1"
+    aria-labelledby="receiveVerifyTitle"
+    aria-hidden="true"
+>
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" id="receiveVerifyTitle">
+                        Receive Verification
+                    </h5>
+                    <div class="text-muted small" id="receiveVerifySubtitle">
+                        Local ScanPlus cache check
+                    </div>
+                </div>
+
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                    aria-label="Close"
+                ></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="receiveVerifyStatus" class="alert alert-light border">
+                    Select a request to verify receive status.
+                </div>
+
+                <div
+                    class="verify-summary mb-3"
+                    id="receiveVerifySummary"
+                ></div>
+
+                <div
+                    class="verify-table-wrap d-none"
+                    id="receiveVerifyTableWrap"
+                >
+                    <table class="table table-sm table-striped table-bordered verify-table">
+                        <thead>
+                        <tr>
+                            <th>Result</th>
+                            <th>Item</th>
+                            <th>Part Name</th>
+                            <th class="text-end">Issued</th>
+                            <th class="text-end">SAP/Cache Received</th>
+                            <th>GRPO Lot</th>
+                            <th>WH Lot</th>
+                            <th>SAP Lot</th>
+                            <th>Received By</th>
+                            <th>Received At</th>
+                            <th>Cache Synced</th>
+                        </tr>
+                        </thead>
+                        <tbody id="receiveVerifyRows"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script
     src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
 ></script>
@@ -2911,6 +3027,156 @@ if (sidebarBackdrop && sidebar) {
         sidebarBackdrop.classList.remove('show');
     });
 }
+
+const receiveVerifyModalEl = document.getElementById('receiveVerifyModal');
+const receiveVerifyModal = receiveVerifyModalEl
+    ? bootstrap.Modal.getOrCreateInstance(receiveVerifyModalEl)
+    : null;
+
+function verifyEscape(value) {
+    return String(value ?? '').replace(/[&<>"']/g, function (char) {
+        return {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        }[char];
+    });
+}
+
+function verifyNumber(value) {
+    const number = Number(value || 0);
+
+    if (!Number.isFinite(number)) {
+        return '';
+    }
+
+    return String(parseFloat(number.toFixed(3)));
+}
+
+function verifyStatusClass(status) {
+    return String(status || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+}
+
+function verifySetLoading(requestNo) {
+    document.getElementById('receiveVerifyTitle').textContent =
+        'Receive Verification';
+    document.getElementById('receiveVerifySubtitle').textContent =
+        requestNo + ' | checking local ScanPlus cache...';
+    document.getElementById('receiveVerifyStatus').className =
+        'alert alert-light border';
+    document.getElementById('receiveVerifyStatus').textContent =
+        'Loading receive verification from local cache...';
+    document.getElementById('receiveVerifySummary').innerHTML = '';
+    document.getElementById('receiveVerifyRows').innerHTML = '';
+    document.getElementById('receiveVerifyTableWrap')
+        .classList.add('d-none');
+}
+
+function verifyRenderSummary(summary) {
+    const labels = {
+        received: 'Received',
+        partial_received: 'Partial',
+        not_confirmed: 'Not Confirmed',
+        cache_missing: 'Cache Missing',
+        not_received_in_sap_cache: 'Not Received'
+    };
+
+    return Object.keys(labels).map(function (key) {
+        const count = Number(summary?.[key] || 0);
+        const cls = verifyStatusClass(key);
+
+        return '<span class="status-pill status-' + cls + '">' +
+            verifyEscape(labels[key] + ': ' + count) +
+            '</span>';
+    }).join('');
+}
+
+function verifyRenderRows(lines) {
+    if (!Array.isArray(lines) || lines.length === 0) {
+        return '<tr><td colspan="11" class="empty-row">No lines found.</td></tr>';
+    }
+
+    return lines.map(function (line) {
+        const status = line.verification_status || '';
+        const statusClass = verifyStatusClass(status);
+        const sapLot = line.cache_received_lot_no || line.cache_lot_no || '';
+
+        return '<tr>' +
+            '<td><span class="status-pill status-' + statusClass + '">' +
+                verifyEscape(status) +
+            '</span></td>' +
+            '<td>' + verifyEscape(line.item_code) + '</td>' +
+            '<td>' + verifyEscape(line.part_name) + '</td>' +
+            '<td class="text-end">' + verifyEscape(verifyNumber(line.issued_qty)) + '</td>' +
+            '<td class="text-end">' + verifyEscape(verifyNumber(line.cache_received_qty)) + '</td>' +
+            '<td>' + verifyEscape(line.lot_no) + '</td>' +
+            '<td>' + verifyEscape(line.warehouse_lot_no) + '</td>' +
+            '<td>' + verifyEscape(sapLot) + '</td>' +
+            '<td>' + verifyEscape(line.cache_received_by) + '</td>' +
+            '<td>' + verifyEscape(line.cache_received_at) + '</td>' +
+            '<td>' + verifyEscape(line.cache_last_synced_at) + '</td>' +
+        '</tr>';
+    }).join('');
+}
+
+async function openReceiveVerification(requestNo) {
+    if (!receiveVerifyModal || !requestNo) {
+        return;
+    }
+
+    verifySetLoading(requestNo);
+    receiveVerifyModal.show();
+
+    try {
+        const response = await fetch(
+            'api/requestor/verify_receive.php?request_no=' +
+            encodeURIComponent(requestNo),
+            { cache: 'no-store' }
+        );
+        const data = await response.json();
+
+        if (!data.ok) {
+            document.getElementById('receiveVerifyStatus').className =
+                'alert alert-warning';
+            document.getElementById('receiveVerifyStatus').textContent =
+                data.message || 'Unable to verify receive status.';
+            return;
+        }
+
+        document.getElementById('receiveVerifyTitle').textContent =
+            'Receive Verification';
+        document.getElementById('receiveVerifySubtitle').textContent =
+            data.request_no + ' | ITR ' + (data.itr_number || '-') +
+            ' | ScanPlus cache ' + (data.latest_scanplus_cache_sync || 'not synced');
+        document.getElementById('receiveVerifyStatus').className =
+            'alert alert-info';
+        document.getElementById('receiveVerifyStatus').textContent =
+            data.source || 'Checked local ScanPlus cache only.';
+        document.getElementById('receiveVerifySummary').innerHTML =
+            verifyRenderSummary(data.summary || {});
+        document.getElementById('receiveVerifyRows').innerHTML =
+            verifyRenderRows(data.lines || []);
+        document.getElementById('receiveVerifyTableWrap')
+            .classList.remove('d-none');
+    } catch (error) {
+        document.getElementById('receiveVerifyStatus').className =
+            'alert alert-danger';
+        document.getElementById('receiveVerifyStatus').textContent =
+            'Unable to load receive verification.';
+        console.error(error);
+    }
+}
+
+document.querySelectorAll('.request-verify-link').forEach(function (button) {
+    button.addEventListener('click', function () {
+        openReceiveVerification(button.dataset.requestNo || '');
+    });
+});
 </script>
 
 </body>
