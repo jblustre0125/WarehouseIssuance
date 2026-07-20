@@ -306,7 +306,24 @@ function sync_ref_allocation_sort_key(array $ref): string
         . sync_normalize_lot(($ref['local_warehouse_lot_no'] ?? '') !== '' ? $ref['local_warehouse_lot_no'] : ($ref['lot_no'] ?? ''));
 }
 
-function sync_allocate_request_line_scan(array $ref, ?array $scan, string $allocationKey, array &$remainingByScanKey): ?array
+function sync_scan_allocation_key(array $ref, ?array $scan, string $fallbackKey): string
+{
+    if (!is_array($scan)) {
+        return $fallbackKey;
+    }
+
+    $receivedLotNo = trim((string)($scan['received_lot_no'] ?? $scan['lot_no'] ?? ''));
+    $scanKey = scanplus_lot_key(
+        $ref['doc_entry'] ?? 0,
+        $ref['line_num'] ?? null,
+        $ref['item_code'] ?? '',
+        $receivedLotNo
+    );
+
+    return $scanKey !== '' ? $scanKey : $fallbackKey;
+}
+
+function sync_allocate_request_line_scan(array $ref, ?array $scan, string $allocationKey, array &$allocationByScanKey): ?array
 {
     if ((int)($ref['local_request_line_id'] ?? 0) <= 0 || !is_array($scan)) {
         return $scan;
@@ -320,15 +337,26 @@ function sync_allocate_request_line_scan(array $ref, ?array $scan, string $alloc
         return $scan;
     }
 
-    if (!array_key_exists($allocationKey, $remainingByScanKey)) {
-        $remainingByScanKey[$allocationKey] = $rawQty;
+    if (!isset($allocationByScanKey[$allocationKey])) {
+        $allocationByScanKey[$allocationKey] = [
+            'total' => $rawQty,
+            'used' => 0.0,
+        ];
+    } elseif ($rawQty > (float)$allocationByScanKey[$allocationKey]['total']) {
+        $allocationByScanKey[$allocationKey]['total'] = $rawQty;
     }
 
     $requestedQty = is_numeric($ref['local_issued_qty'] ?? null)
         ? max(0.0, (float)$ref['local_issued_qty'])
         : $rawQty;
-    $allocatedQty = min($requestedQty > 0 ? $requestedQty : $rawQty, max(0.0, $remainingByScanKey[$allocationKey]));
-    $remainingByScanKey[$allocationKey] = max(0.0, $remainingByScanKey[$allocationKey] - $allocatedQty);
+    $remainingQty = max(
+        0.0,
+        (float)$allocationByScanKey[$allocationKey]['total'] -
+        (float)$allocationByScanKey[$allocationKey]['used']
+    );
+    $allocatedQty = min($requestedQty > 0 ? $requestedQty : $rawQty, $remainingQty);
+    $allocationByScanKey[$allocationKey]['used'] =
+        (float)$allocationByScanKey[$allocationKey]['used'] + $allocatedQty;
 
     $lineScan = $scan;
     $lineScan['received_qty'] = $allocatedQty;
@@ -699,7 +727,7 @@ try {
         throw new RuntimeException('Unable to connect to the SAP/ERP database from the scheduled task account.');
     }
 
-    $remainingByScanKey = [];
+    $allocationByScanKey = [];
 
     foreach (array_chunk($refs, $chunkSize) as $chunkIndex => $chunk) {
         $started = microtime(true);
@@ -746,8 +774,8 @@ try {
             $lineScan = sync_allocate_request_line_scan(
                 $ref,
                 is_array($scan) ? $scan : null,
-                $selectedScanKey,
-                $remainingByScanKey
+                sync_scan_allocation_key($ref, is_array($scan) ? $scan : null, $selectedScanKey),
+                $allocationByScanKey
             );
             sync_upsert_request_line_receive_cache($whp, $ref, $lineScan);
             $updated++;
