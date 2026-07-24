@@ -236,7 +236,7 @@ $tasks = [
     ['route' => 'api/get_open_issue_requests.php', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_FAST_REFRESH_SECONDS],
     ['route' => 'api/stocks/list.php?scope=issuer', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
     ['route' => 'api/stocks/list.php?scope=requestor', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
-    ['route' => 'api/picker/open_purchase_orders.php', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
+    ['route' => 'api/picker/open_purchase_orders.php', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_MEDIUM_REFRESH_SECONDS],
     // Preload the first five small page-cache payloads for the picker report.
     ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=1', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
     ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=2', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
