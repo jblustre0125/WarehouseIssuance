@@ -5,6 +5,10 @@ require_role([ROLE_REQUESTOR, ROLE_ADMIN]);
 
 header('Content-Type: application/json; charset=utf-8');
 
+const SAP_IT_CACHE_TTL_SECONDS = 1800;
+const SAP_IT_CACHE_MAX_STALE_SECONDS = 86400;
+const SAP_IT_MAX_CACHED_PAGES = 2;
+
 function sap_it_json_out($payload)
 {
     echo json_encode($payload);
@@ -41,6 +45,10 @@ function sap_it_dt($value)
 function sap_it_int_param($name, $default, $min, $max)
 {
     $value = filter_input(INPUT_GET, $name, FILTER_VALIDATE_INT);
+
+    if (($value === false || $value === null) && isset($_GET[$name])) {
+        $value = filter_var($_GET[$name], FILTER_VALIDATE_INT);
+    }
 
     if ($value === false || $value === null) {
         $value = $default;
@@ -109,6 +117,25 @@ function sap_it_filter_cached_payload(array $payload, $maxDocuments, $searchText
     return $payload;
 }
 
+function sap_it_cache_parts($role, $section, array $warehouses, $maxDocuments, $searchText, $page)
+{
+    $parts = [
+        'role' => $role,
+        'section' => $section,
+        'warehouses' => implode(',', $warehouses),
+        'max' => $maxDocuments,
+        'search' => $searchText,
+        'month' => date('Y-m'),
+        'version' => 'stock-per-line-v1'
+    ];
+
+    if ((int)$page > 1) {
+        $parts['page'] = (int)$page;
+    }
+
+    return $parts;
+}
+
 $sectionWarehouseMap = [
     'backend' => ['HM', 'CSW', 'MR'],
     'back end' => ['HM', 'CSW', 'MR'],
@@ -124,7 +151,8 @@ $sectionWarehouseMap = [
 $whp = get_whpokayoke_connection();
 $currentUser = current_user();
 $currentRole = strtolower($currentUser['role'] ?? $currentUser['RoleName'] ?? '');
-$maxDocuments = sap_it_int_param('max', 20, 10, 50);
+$maxDocuments = sap_it_int_param('max', 50, 10, 50);
+$page = sap_it_int_param('page', 1, 1, 20);
 $searchText = trim((string)($_GET['q'] ?? ''));
 
 $currentSection = '';
@@ -164,37 +192,40 @@ if ($currentRole === ROLE_REQUESTOR) {
     $sectionFilterText = $currentSection . ' / To Warehouse: ' . implode(', ', $allowedWarehouses);
 }
 
-$cacheKey = sap_cache_make_key('sap.requestor.inventory_transfers', [
-    'role' => $currentRole,
-    'section' => $currentSection,
-    'warehouses' => implode(',', $allowedWarehouses),
-    'max' => $maxDocuments,
-    'search' => $searchText,
-    'month' => date('Y-m'),
-    'version' => 'stock-per-line-v1'
-]);
+$cacheKey = sap_cache_make_key(
+    'sap.requestor.inventory_transfers',
+    sap_it_cache_parts($currentRole, $currentSection, $allowedWarehouses, $maxDocuments, $searchText, $page)
+);
 
-$cached = sap_cache_get_preferred($whp, $cacheKey);
+$cached = sap_cache_get_preferred($whp, $cacheKey, SAP_IT_CACHE_MAX_STALE_SECONDS);
 
 if ($cached !== null) {
     sap_it_json_out($cached);
 }
 
-$baseCacheKey = sap_cache_make_key('sap.requestor.inventory_transfers', [
-    'role' => $currentRole,
-    'section' => $currentSection,
-    'warehouses' => implode(',', $allowedWarehouses),
-    'max' => 50,
-    'search' => '',
-    'month' => date('Y-m'),
-    'version' => 'stock-per-line-v1'
-]);
+$baseCacheKey = sap_cache_make_key(
+    'sap.requestor.inventory_transfers',
+    sap_it_cache_parts($currentRole, $currentSection, $allowedWarehouses, 50, '', $page)
+);
 
 if ($baseCacheKey !== $cacheKey) {
-    $baseCached = sap_cache_get_preferred($whp, $baseCacheKey);
+    $baseCached = sap_cache_get_preferred($whp, $baseCacheKey, SAP_IT_CACHE_MAX_STALE_SECONDS);
 
     if ($baseCached !== null) {
         sap_it_json_out(sap_it_filter_cached_payload($baseCached, $maxDocuments, $searchText));
+    }
+}
+
+$legacyBaseCacheKey = sap_cache_make_key(
+    'sap.requestor.inventory_transfers',
+    sap_it_cache_parts($currentRole, $currentSection, $allowedWarehouses, 20, '', 1)
+);
+
+if ($page === 1 && $legacyBaseCacheKey !== $cacheKey && $legacyBaseCacheKey !== $baseCacheKey) {
+    $legacyBaseCached = sap_cache_get_preferred($whp, $legacyBaseCacheKey, SAP_IT_CACHE_MAX_STALE_SECONDS);
+
+    if ($legacyBaseCached !== null) {
+        sap_it_json_out(sap_it_filter_cached_payload($legacyBaseCached, $maxDocuments, $searchText));
     }
 }
 
@@ -371,21 +402,38 @@ if ($searchText !== '') {
     array_push($docParams, $like, $like, $like, $like);
 }
 
+$offset = ($page - 1) * $maxDocuments;
+$fetchThrough = $offset + $maxDocuments + 1;
 $docRows = fetch_all(
     $erp,
-    "SELECT TOP ({$maxDocuments})
-        T.DocEntry,
-        MAX(T.DocDate) AS SortDocDate,
-        MAX(T.DocNum) AS SortDocNum
-     FROM OWTR T
-     INNER JOIN WTR1 L ON T.DocEntry = L.DocEntry
-     INNER JOIN OWTQ Q ON Q.DocEntry = L.BaseEntry
-     {$docItemJoin}
-     WHERE " . implode(' AND ', $docWhere) . "
-     GROUP BY T.DocEntry
-     ORDER BY MAX(T.DocDate) DESC, MAX(T.DocNum) DESC",
-    $docParams
+    "WITH Documents AS (
+        SELECT
+            T.DocEntry,
+            MAX(T.DocDate) AS SortDocDate,
+            MAX(T.DocNum) AS SortDocNum
+        FROM OWTR T
+        INNER JOIN WTR1 L ON T.DocEntry = L.DocEntry
+        INNER JOIN OWTQ Q ON Q.DocEntry = L.BaseEntry
+        {$docItemJoin}
+        WHERE " . implode(' AND ', $docWhere) . "
+        GROUP BY T.DocEntry
+     ),
+     Numbered AS (
+        SELECT
+            DocEntry,
+            ROW_NUMBER() OVER (ORDER BY SortDocDate DESC, SortDocNum DESC) AS RowNum
+        FROM Documents
+     )
+     SELECT DocEntry
+     FROM Numbered
+     WHERE RowNum > ?
+       AND RowNum <= ?
+     ORDER BY RowNum",
+    array_merge($docParams, [$offset, $fetchThrough])
 );
+
+$hasMore = count($docRows) > $maxDocuments;
+$docRows = array_slice($docRows, 0, $maxDocuments);
 
 $docEntries = [];
 
@@ -405,10 +453,13 @@ if (empty($docEntries)) {
         'month_start' => $monthStart,
         'month_end' => date('Y-m-d', strtotime($nextMonthStart . ' -1 day')),
         'limit' => $maxDocuments,
+        'page' => $page,
+        'page_size' => $maxDocuments,
+        'has_more' => false,
         'documents' => []
     ];
 
-    sap_cache_put($whp, 'sap.requestor.inventory_transfers', $cacheKey, $payload, 300);
+    sap_cache_put($whp, 'sap.requestor.inventory_transfers', $cacheKey, $payload, SAP_IT_CACHE_TTL_SECONDS);
     sap_it_json_out($payload);
 }
 
@@ -504,9 +555,12 @@ $payload = [
     'month_start' => $monthStart,
     'month_end' => date('Y-m-d', strtotime($nextMonthStart . ' -1 day')),
     'limit' => $maxDocuments,
+    'page' => $page,
+    'page_size' => $maxDocuments,
+    'has_more' => $hasMore && $page < SAP_IT_MAX_CACHED_PAGES,
     'documents' => array_values($documents)
 ];
 
-sap_cache_put($whp, 'sap.requestor.inventory_transfers', $cacheKey, $payload, 300);
+sap_cache_put($whp, 'sap.requestor.inventory_transfers', $cacheKey, $payload, SAP_IT_CACHE_TTL_SECONDS);
 sap_it_json_out($payload);
 ?>

@@ -1201,6 +1201,8 @@ let stockRows = [];
 let sapInventoryTransfers = [];
 let selectedSapIt = null;
 let sapItLoading = false;
+let sapItPage = 0;
+let sapItHasMore = false;
 
 function fmtQty(v) {
     const n = Number(v || 0);
@@ -1428,8 +1430,30 @@ async function refreshSideTabs() {
     ]);
 }
 
-async function loadSapInventoryTransfers() {
+function appendSapInventoryTransfers(documents) {
+    const seen = new Set(sapInventoryTransfers.map(doc => String(doc.it_doc_entry || doc.it_number || '')));
+
+    documents.forEach(doc => {
+        const key = String(doc.it_doc_entry || doc.it_number || '');
+
+        if (key !== '' && seen.has(key)) {
+            return;
+        }
+
+        if (key !== '') {
+            seen.add(key);
+        }
+
+        sapInventoryTransfers.push(doc);
+    });
+}
+
+async function loadSapInventoryTransfers(append = false) {
     if (sapItLoading) {
+        return;
+    }
+
+    if (append && !sapItHasMore) {
         return;
     }
 
@@ -1438,17 +1462,18 @@ async function loadSapInventoryTransfers() {
     const status = document.getElementById('sapItStatus');
 
     if (status) {
-        status.textContent = 'Refreshing SAP ITs...';
+        status.textContent = append ? 'Loading more SAP ITs...' : 'Refreshing SAP ITs...';
     }
 
     try {
-        const search = (document.getElementById('sapItSearchInput')?.value || '').trim();
-        let url = 'api/requestor/list_sap_inventory_transfers.php?max=50';
+        const nextPage = append ? sapItPage + 1 : 1;
 
-        if (search !== '') {
-            url += '&q=' + encodeURIComponent(search);
+        if (!append) {
+            sapItPage = 0;
+            sapItHasMore = false;
         }
 
+        let url = 'api/requestor/list_sap_inventory_transfers.php?max=50&page=' + encodeURIComponent(nextPage);
         const res = await fetch(url, { cache: 'no-store' });
         const text = await res.text();
         let data = null;
@@ -1456,8 +1481,11 @@ async function loadSapInventoryTransfers() {
         try {
             data = JSON.parse(text);
         } catch (e) {
-            sapInventoryTransfers = [];
-            document.getElementById('sapItCount').textContent = '0';
+            if (!append) {
+                sapInventoryTransfers = [];
+            }
+
+            document.getElementById('sapItCount').textContent = sapInventoryTransfers.length;
             renderSapInventoryTransfers();
 
             if (status) {
@@ -1469,18 +1497,32 @@ async function loadSapInventoryTransfers() {
         }
 
         if (!data.ok) {
-            sapInventoryTransfers = [];
-            document.getElementById('sapItCount').textContent = '0';
+            if (!append) {
+                sapInventoryTransfers = [];
+            } else {
+                sapItHasMore = false;
+            }
+
+            document.getElementById('sapItCount').textContent = sapInventoryTransfers.length;
             renderSapInventoryTransfers();
 
             if (status) {
-                status.textContent = data.message || 'Unable to load SAP ITs.';
+                status.textContent = append
+                    ? 'No more cached SAP IT pages are ready yet.'
+                    : (data.message || 'Unable to load SAP ITs.');
             }
 
             return;
         }
 
-        sapInventoryTransfers = data.documents || [];
+        if (append) {
+            appendSapInventoryTransfers(data.documents || []);
+        } else {
+            sapInventoryTransfers = data.documents || [];
+        }
+
+        sapItPage = Number(data.page || nextPage);
+        sapItHasMore = Boolean(data.has_more);
         document.getElementById('sapItCount').textContent = sapInventoryTransfers.length;
         renderSapInventoryTransfers();
 
@@ -1492,22 +1534,27 @@ async function loadSapInventoryTransfers() {
             }
 
             if (data.limit) {
-                msg += ' | latest ' + data.limit;
+                msg += ' | page size ' + data.limit;
             }
 
-            if (data.limited) {
-                msg += ' (limited)';
+            if (sapItHasMore) {
+                msg += ' | scroll for more';
             }
 
             status.textContent = msg;
         }
     } catch (e) {
-        sapInventoryTransfers = [];
-        document.getElementById('sapItCount').textContent = '0';
+        if (!append) {
+            sapInventoryTransfers = [];
+            document.getElementById('sapItCount').textContent = '0';
+        }
+
         renderSapInventoryTransfers();
 
         if (status) {
-            status.textContent = 'Unable to load SAP ITs. Check SAP connection, API file, or login session.';
+            status.textContent = append
+                ? 'Unable to load more SAP ITs right now.'
+                : 'Unable to load SAP ITs. Check SAP connection, API file, or login session.';
         }
 
         console.error(e);
@@ -1604,6 +1651,16 @@ function renderSapInventoryTransfers() {
             </div>
         `);
     });
+
+    if (sapItHasMore) {
+        list.insertAdjacentHTML('beforeend', `
+            <div class="d-grid mt-2">
+                <button type="button" class="btn btn-outline-primary" onclick="loadSapInventoryTransfers(true)" ${sapItLoading ? 'disabled' : ''}>
+                    ${sapItLoading ? 'Loading...' : 'Load More SAP IT'}
+                </button>
+            </div>
+        `);
+    }
 }
 
 function loadSapInventoryTransfer(idx) {
@@ -2364,6 +2421,16 @@ if (sidebarBackdrop && sidebar) {
         sidebarBackdrop.classList.remove('show');
     });
 }
+
+const sapItListEl = document.getElementById('sapItList');
+
+sapItListEl?.addEventListener('scroll', function () {
+    const remaining = this.scrollHeight - this.scrollTop - this.clientHeight;
+
+    if (remaining < 160 && sapItHasMore && !sapItLoading) {
+        loadSapInventoryTransfers(true);
+    }
+});
 
 const requestorRefresh = window.createRefreshController([
     { name: 'requestorItrs', fn: loadOpenItrs, intervalMs: 60000 },

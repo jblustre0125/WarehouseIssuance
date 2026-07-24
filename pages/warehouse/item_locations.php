@@ -214,7 +214,7 @@ $currentUser = current_user();
             <div>
                 <h1 class="page-title">Item Locations</h1>
                 <div class="page-subtitle">
-                    Maintained by Michael Banaban / 2111-002. These locations appear on the issuer table.
+                    Maintained by Michael Banaban / 2111-002 and Edwin Sanchez. These locations appear on the issuer table.
                 </div>
             </div>
 

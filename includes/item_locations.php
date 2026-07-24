@@ -67,7 +67,9 @@ function item_locations_can_maintain($user = null)
 
     return $role === ROLE_ADMIN ||
         $username === '2111-002' ||
-        $fullName === 'michael banaban';
+        $fullName === 'michael banaban' ||
+        $fullName === 'edwin sanchez' ||
+        (strpos($fullName, 'edwin') !== false && strpos($fullName, 'sanchez') !== false);
 }
 
 function item_locations_require_maintainer()
