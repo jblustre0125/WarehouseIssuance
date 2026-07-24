@@ -1529,7 +1529,6 @@ SELECT
 
         WHEN UPPER(LTRIM(RTRIM(ISNULL(M.MatchStatus, '')))) IN
             (
-                'OLD_CACHE_RECEIVE',
                 'NOT_ALLOCATED_TO_REQUEST_LINE'
             )
             THEN M.MatchStatus
@@ -1709,14 +1708,8 @@ CROSS APPLY
             CASE
                 WHEN UPPER(LTRIM(RTRIM(ISNULL(M.MatchStatus, '')))) IN
                     (
-                        'OLD_CACHE_RECEIVE',
                         'NOT_ALLOCATED_TO_REQUEST_LINE'
                     )
-                    THEN NULL
-
-                WHEN
-                    C.ReceivedAt IS NOT NULL
-                    AND CONVERT(date, C.ReceivedAt) < CONVERT(date, B.RequestedAt)
                     THEN NULL
                 ELSE TRY_CONVERT(
                     DECIMAL(18, 3),
@@ -2700,7 +2693,7 @@ $showingTo = min(
                     <strong>Timeline:</strong> Request Created At &rarr; Issued At &rarr; Received At.
                     <strong>PARTIAL</strong> under Issue Status means only part of the requested quantity was issued;
                     it does not mean the issued quantity was only partially received.
-                    <strong>OLD_CACHE_RECEIVE</strong> under Receive Status means the ScanPlus receive is older than this request date and is not counted for this request.
+                    ScanPlus receives matched by SAP IT document, line, item, and lot are counted even when the local request was entered later.
                 </div>
 
                 <div class="report-table-wrap">

@@ -50,40 +50,12 @@ function verify_receive_qty($value)
     return is_numeric($value) ? (float)$value : 0.0;
 }
 
-function verify_receive_date_key($value)
-{
-    $text = verify_receive_cell($value);
-
-    if (trim($text) === '') {
-        return '';
-    }
-
-    $timestamp = strtotime($text);
-
-    return $timestamp === false ? '' : date('Y-m-d', $timestamp);
-}
-
 function verify_receive_status(array $line)
 {
     $issuedQty = verify_receive_qty($line['IssuedQty'] ?? 0);
     $receivedQty = verify_receive_qty($line['CacheReceivedQty'] ?? 0);
     $cacheStatus = strtoupper(trim((string)($line['CacheStatus'] ?? '')));
     $hasCacheRow = (int)($line['HasCacheRow'] ?? 0) === 1;
-    $requestedDate = verify_receive_date_key($line['RequestedAt'] ?? '');
-    $receivedDate = verify_receive_date_key($line['CacheReceivedAt'] ?? '');
-
-    if ($cacheStatus === 'OLD_CACHE_RECEIVE') {
-        return 'OLD_CACHE_RECEIVE';
-    }
-
-    if (
-        $receivedQty > 0 &&
-        $requestedDate !== '' &&
-        $receivedDate !== '' &&
-        $receivedDate < $requestedDate
-    ) {
-        return 'OLD_CACHE_RECEIVE';
-    }
 
     if ($receivedQty > 0 && ($issuedQty <= 0 || $receivedQty + 0.0005 >= $issuedQty)) {
         return 'RECEIVED';
@@ -99,6 +71,10 @@ function verify_receive_status(array $line)
 
     if ($cacheStatus === 'NOT RECEIVED IN SAP') {
         return 'NOT_RECEIVED_IN_SAP_CACHE';
+    }
+
+    if ($cacheStatus === 'OLD_CACHE_RECEIVE') {
+        return 'NOT_CONFIRMED';
     }
 
     return 'NOT_CONFIRMED';

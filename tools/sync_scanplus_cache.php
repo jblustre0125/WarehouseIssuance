@@ -272,23 +272,6 @@ function sync_ensure_request_line_receive_cache($conn): bool
     return sync_has_table($conn, 'WarehouseIssueRequestLineReceiveCache');
 }
 
-function sync_date_key($value): string
-{
-    if ($value instanceof DateTimeInterface) {
-        return $value->format('Y-m-d');
-    }
-
-    $text = trim((string)$value);
-
-    if ($text === '') {
-        return '';
-    }
-
-    $timestamp = strtotime($text);
-
-    return $timestamp === false ? '' : date('Y-m-d', $timestamp);
-}
-
 function sync_datetime_sort_key($value): string
 {
     if ($value instanceof DateTimeInterface) {
@@ -380,20 +363,11 @@ function sync_upsert_request_line_receive_cache($conn, array $ref, ?array $scan)
         ? (float)$scan['received_qty']
         : null;
     $receivedAt = is_array($scan) ? ($scan['received_at'] ?? null) : null;
-    $requestedDate = sync_date_key($ref['local_requested_at'] ?? '');
-    $receivedDate = sync_date_key($receivedAt);
-    $isOldReceive = $rawReceivedQty !== null
-        && $rawReceivedQty > 0
-        && $requestedDate !== ''
-        && $receivedDate !== ''
-        && $receivedDate < $requestedDate;
-    $isCurrentMatch = $rawReceivedQty !== null && $rawReceivedQty > 0 && !$isOldReceive;
+    $isCurrentMatch = $rawReceivedQty !== null && $rawReceivedQty > 0;
 
     $matchStatus = 'NOT_CONFIRMED';
 
-    if ($isOldReceive) {
-        $matchStatus = 'OLD_CACHE_RECEIVE';
-    } elseif ($isCurrentMatch) {
+    if ($isCurrentMatch) {
         $matchStatus = (string)($scan['scan_status'] ?? 'RECEIVED');
     } elseif (is_array($scan)) {
         $matchStatus = (string)($scan['scan_status'] ?? 'NOT_RECEIVED_IN_SAP_CACHE');
