@@ -96,6 +96,19 @@ function zebra_pick_printer_port()
     return defined('PICK_TAG_PRINTER_PORT') ? (int)PICK_TAG_PRINTER_PORT : zebra_printer_port();
 }
 
+function zebra_left_margin_dots()
+{
+    /*
+        Horizontal correction for Zebra QLn320.
+        16 dots at 203 DPI is about 2 mm.
+        Override in config.php when needed:
+            define('ZEBRA_LEFT_MARGIN_DOTS', 16);
+    */
+    return defined('ZEBRA_LEFT_MARGIN_DOTS')
+        ? max(0, min(20, (int)ZEBRA_LEFT_MARGIN_DOTS))
+        : 16;
+}
+
 function zebra_label_end_zpl()
 {
     $mode = defined('ZEBRA_LABEL_END_MODE') ? strtolower(trim((string)ZEBRA_LABEL_END_MODE)) : 'tear_off';
@@ -343,7 +356,7 @@ function zebra_receive_label_zpl($traceNo, array $item)
         . "^CI28\r\n"
         . "^PW576\r\n"
         . "^LL700\r\n"
-        . "^LH0,0\r\n"
+        . "^LH" . zebra_left_margin_dots() . ",0\r\n"
         . "^LS0\r\n"
         . zebra_label_end_zpl()
         . "^PR2\r\n"
@@ -480,7 +493,7 @@ function zebra_pick_label_zpl(array $item)
         . "^CI28\r\n"
         . "^PW576\r\n"
         . "^LL700\r\n"
-        . "^LH0,0\r\n"
+        . "^LH" . zebra_left_margin_dots() . ",0\r\n"
         . "^LS0\r\n"
         . zebra_label_end_zpl()
         . "^PR2\r\n"
@@ -1453,7 +1466,7 @@ function zebra_test_label_zpl()
         . "^CI28\r\n"
         . "^PW600\r\n"
         . "^LL400\r\n"
-        . "^LH0,0\r\n"
+        . "^LH" . zebra_left_margin_dots() . ",0\r\n"
         . "^LS0\r\n"
         . "^PR2\r\n"
         . "^MD6\r\n"
