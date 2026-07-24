@@ -244,9 +244,17 @@ $tasks = [
     ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=4', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
     ['route' => 'api/picker/open_grpo_receipts.php?date_from=' . date('Y-m-d') . '&date_to=' . date('Y-m-d') . '&page=5', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
     ['route' => 'api/get_open_itr_requests.php', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_FAST_REFRESH_SECONDS],
-    ['route' => 'api/requestor/list_sap_inventory_transfers.php?max=50', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS],
     ['route' => 'api/requestor/list_requests.php', 'role' => 'admin', 'username' => 'cache_sync', 'interval' => SAP_CACHE_FAST_REFRESH_SECONDS],
 ];
+
+for ($sapItPage = 1; $sapItPage <= 2; $sapItPage++) {
+    $tasks[] = [
+        'route' => 'api/requestor/list_sap_inventory_transfers.php?max=50&page=' . $sapItPage,
+        'role' => 'admin',
+        'username' => 'cache_sync',
+        'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS
+    ];
+}
 
 $requestors = fetch_all(
     $whp,
@@ -274,7 +282,15 @@ foreach ($requestors as $requestor) {
 
     $tasks[] = ['route' => 'api/get_open_itr_requests.php', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId, 'interval' => SAP_CACHE_FAST_REFRESH_SECONDS];
     $tasks[] = ['route' => 'api/stocks/list.php?scope=requestor', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId, 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS];
-    $tasks[] = ['route' => 'api/requestor/list_sap_inventory_transfers.php?max=50', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId, 'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS];
+    for ($sapItPage = 1; $sapItPage <= 2; $sapItPage++) {
+        $tasks[] = [
+            'route' => 'api/requestor/list_sap_inventory_transfers.php?max=50&page=' . $sapItPage,
+            'role' => 'requestor',
+            'username' => $username,
+            'user_id' => $userId,
+            'interval' => SAP_CACHE_HEAVY_REFRESH_SECONDS
+        ];
+    }
     $tasks[] = ['route' => 'api/requestor/list_requests.php', 'role' => 'requestor', 'username' => $username, 'user_id' => $userId, 'interval' => SAP_CACHE_FAST_REFRESH_SECONDS];
 }
 
