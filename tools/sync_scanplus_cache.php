@@ -807,6 +807,542 @@ function sync_scan_is_received(?array $scan): bool
     return in_array($status, ['SAP_RECEIVED', 'SAP PARTIAL', 'RECEIVED', 'CLOSED', 'COMPLETED', 'MATCHED'], true);
 }
 
+function sync_monthly_itr_group_key($docEntry, $lineNum, $itemCode, $lotNo): string
+{
+    $baseKey = scanplus_key($docEntry, $lineNum, $itemCode);
+
+    if ($baseKey === '') {
+        return '';
+    }
+
+    $normalizedLot = sync_normalize_lot($lotNo);
+
+    return $normalizedLot !== ''
+        ? $baseKey . '|LOT|' . $normalizedLot
+        : $baseKey . '|NOLOT';
+}
+
+function sync_datetime_timestamp($value): int
+{
+    if ($value instanceof DateTimeInterface) {
+        return $value->getTimestamp();
+    }
+
+    $text = trim((string)$value);
+
+    if ($text === '') {
+        return 0;
+    }
+
+    $timestamp = strtotime($text);
+
+    return $timestamp === false ? 0 : $timestamp;
+}
+
+/**
+ * Read individual SAP Inventory Transfer rows instead of the old aggregated
+ * ITR/item/lot total. This lets the synchronization match several SAP
+ * postings to one local RequestLineID while keeping the monthly ITR as the
+ * validation boundary.
+ */
+function sync_lookup_transfer_rows_by_itr_lines($erp, array $refs): array
+{
+    $tuples = [];
+
+    foreach ($refs as $ref) {
+        $key = scanplus_key(
+            $ref['doc_entry'] ?? 0,
+            $ref['line_num'] ?? null,
+            $ref['item_code'] ?? ''
+        );
+
+        if ($key === '') {
+            continue;
+        }
+
+        $tuples[$key] = [
+            (int)$ref['doc_entry'],
+            (int)$ref['line_num'],
+            trim((string)$ref['item_code']),
+        ];
+    }
+
+    if (empty($tuples)
+        || !scanplus_has_table($erp, 'OWTR')
+        || !scanplus_has_table($erp, 'WTR1')
+        || !scanplus_has_table($erp, 'WTQ1')
+        || !scanplus_has_column($erp, 'WTR1', 'BaseType')
+        || !scanplus_has_column($erp, 'WTR1', 'BaseEntry')
+        || !scanplus_has_column($erp, 'WTR1', 'BaseLine')) {
+        return [];
+    }
+
+    $hasCanceled = scanplus_has_column($erp, 'OWTR', 'CANCELED');
+    $hasUserSign = scanplus_has_column($erp, 'OWTR', 'UserSign');
+    $hasBarcodeUser = scanplus_has_column($erp, 'OWTR', 'U_BarcodeUser');
+    $hasScanDateTime = scanplus_has_column($erp, 'OWTR', 'U_ScanDateTime');
+    $hasScanTime = scanplus_has_column($erp, 'OWTR', 'U_ScanTime');
+    $hasCreateDate = scanplus_has_column($erp, 'OWTR', 'CreateDate');
+    $hasCreateTS = scanplus_has_column($erp, 'OWTR', 'CreateTS');
+    $hasDocDate = scanplus_has_column($erp, 'OWTR', 'DocDate');
+    $hasWtrWarehouse = scanplus_has_column($erp, 'WTR1', 'WhsCode');
+    $hasItrQty = scanplus_has_column($erp, 'WTQ1', 'Quantity');
+    $hasItrOpenQty = scanplus_has_column($erp, 'WTQ1', 'OpenQty');
+
+    $hasInventoryLogBatchJoin =
+        $hasWtrWarehouse
+        && scanplus_has_table($erp, 'OITL')
+        && scanplus_has_table($erp, 'ITL1')
+        && scanplus_has_table($erp, 'OBTN')
+        && scanplus_has_column($erp, 'OITL', 'LogEntry')
+        && scanplus_has_column($erp, 'OITL', 'DocType')
+        && scanplus_has_column($erp, 'OITL', 'DocEntry')
+        && scanplus_has_column($erp, 'OITL', 'DocLine')
+        && scanplus_has_column($erp, 'OITL', 'LocCode')
+        && scanplus_has_column($erp, 'ITL1', 'LogEntry')
+        && scanplus_has_column($erp, 'ITL1', 'ItemCode')
+        && scanplus_has_column($erp, 'ITL1', 'SysNumber')
+        && scanplus_has_column($erp, 'ITL1', 'Quantity')
+        && scanplus_has_column($erp, 'OBTN', 'ItemCode')
+        && scanplus_has_column($erp, 'OBTN', 'SysNumber')
+        && scanplus_has_column($erp, 'OBTN', 'DistNumber');
+
+    $hasBatchJoin =
+        !$hasInventoryLogBatchJoin
+        && $hasWtrWarehouse
+        && scanplus_has_base_table($erp, 'IBT1')
+        && scanplus_has_column($erp, 'IBT1', 'BaseType')
+        && scanplus_has_column($erp, 'IBT1', 'BaseEntry')
+        && scanplus_has_column($erp, 'IBT1', 'BaseLinNum')
+        && scanplus_has_column($erp, 'IBT1', 'ItemCode')
+        && scanplus_has_column($erp, 'IBT1', 'BatchNum')
+        && scanplus_has_column($erp, 'IBT1', 'Quantity')
+        && scanplus_has_column($erp, 'IBT1', 'WhsCode');
+
+    $scanDateExpr = $hasScanDateTime
+        ? 'T.U_ScanDateTime'
+        : ($hasCreateDate ? 'T.CreateDate' : ($hasDocDate ? 'T.DocDate' : 'CAST(NULL AS DATETIME)'));
+    $scanTimeExpr = $hasScanTime
+        ? 'T.U_ScanTime'
+        : ($hasCreateTS ? 'T.CreateTS' : 'CAST(NULL AS INT)');
+    $itrQtyExpr = $hasItrQty ? 'R.Quantity' : 'CAST(NULL AS DECIMAL(18,3))';
+    $itrOpenQtyExpr = $hasItrOpenQty ? 'R.OpenQty' : 'CAST(NULL AS DECIMAL(18,3))';
+
+    $userJoin = '';
+    $scannedByParts = [];
+
+    if ($hasBarcodeUser) {
+        $scannedByParts[] = "NULLIF(CAST(T.U_BarcodeUser AS NVARCHAR(120)), '')";
+    }
+
+    if ($hasUserSign) {
+        $hasOusr = scanplus_has_table($erp, 'OUSR')
+            && scanplus_has_column($erp, 'OUSR', 'USERID');
+
+        if ($hasOusr) {
+            $nameParts = [];
+
+            if (scanplus_has_column($erp, 'OUSR', 'USER_CODE')) {
+                $nameParts[] = "NULLIF(CAST(U1.USER_CODE AS NVARCHAR(120)), '')";
+            }
+
+            if (scanplus_has_column($erp, 'OUSR', 'U_NAME')) {
+                $nameParts[] = "NULLIF(CAST(U1.U_NAME AS NVARCHAR(120)), '')";
+            }
+
+            $nameParts[] = 'CAST(T.UserSign AS NVARCHAR(120))';
+            $userJoin = 'LEFT JOIN OUSR U1 ON U1.USERID = T.UserSign';
+            $scannedByParts[] = 'COALESCE(' . implode(', ', $nameParts) . ')';
+        } else {
+            $scannedByParts[] = 'CAST(T.UserSign AS NVARCHAR(120))';
+        }
+    }
+
+    $scannedByExpr = !empty($scannedByParts)
+        ? 'COALESCE(' . implode(', ', $scannedByParts) . ')'
+        : "CAST('' AS NVARCHAR(120))";
+
+    if ($hasInventoryLogBatchJoin) {
+        $lotSelect = "COALESCE(BT.DistNumber, '') AS ReceivedLotNo,
+            ABS(ISNULL(BL.Quantity, 0)) AS ReceivedQty";
+        $lotJoin = "LEFT JOIN OITL IL
+            ON IL.DocType = 67
+           AND IL.DocEntry = T.DocEntry
+           AND IL.DocLine = L.LineNum
+           AND IL.LocCode = L.WhsCode
+        LEFT JOIN ITL1 BL
+            ON BL.LogEntry = IL.LogEntry
+           AND BL.ItemCode = L.ItemCode
+        LEFT JOIN OBTN BT
+            ON BT.ItemCode = BL.ItemCode
+           AND BT.SysNumber = BL.SysNumber";
+    } elseif ($hasBatchJoin) {
+        $lotSelect = "COALESCE(B.BatchNum, '') AS ReceivedLotNo,
+            ABS(ISNULL(B.Quantity, 0)) AS ReceivedQty";
+        $lotJoin = "LEFT JOIN IBT1 B
+            ON B.BaseType = 67
+           AND B.BaseEntry = T.DocEntry
+           AND B.BaseLinNum = L.LineNum
+           AND B.ItemCode = L.ItemCode
+           AND B.WhsCode = L.WhsCode";
+    } else {
+        $lotSelect = "CAST('' AS NVARCHAR(80)) AS ReceivedLotNo,
+            ABS(ISNULL(L.Quantity, 0)) AS ReceivedQty";
+        $lotJoin = '';
+    }
+
+    $cancelCondition = $hasCanceled ? "AND ISNULL(T.CANCELED, 'N') = 'N'" : '';
+    $rawRows = [];
+
+    foreach (array_chunk(array_values($tuples), 5) as $tupleChunk) {
+        $refRows = [];
+        $params = [];
+
+        foreach ($tupleChunk as $tuple) {
+            $refRows[] = 'SELECT ? AS DocEntry, ? AS LineNum, ? AS ItemCode';
+            array_push($params, $tuple[0], $tuple[1], $tuple[2]);
+        }
+
+        $rows = sync_fetch_all(
+            $erp,
+            "WITH Ref AS (
+                " . implode("\nUNION ALL\n", $refRows) . "
+             )
+             SELECT
+                R.DocEntry AS ITRDocEntry,
+                R.LineNum AS ITRLineNum,
+                R.ItemCode,
+                {$itrQtyExpr} AS ITRRequestedQty,
+                {$itrOpenQtyExpr} AS ITROpenQty,
+                T.DocEntry AS TransferDocEntry,
+                T.DocNum AS TransferDocNum,
+                L.LineNum AS TransferLineNum,
+                {$scanDateExpr} AS ScanDate,
+                {$scanTimeExpr} AS ScanTime,
+                {$scannedByExpr} AS BarcodeUser,
+                {$lotSelect}
+             FROM Ref
+             INNER JOIN WTQ1 R
+                ON R.DocEntry = Ref.DocEntry
+               AND R.LineNum = Ref.LineNum
+               AND R.ItemCode = Ref.ItemCode
+             INNER JOIN WTR1 L
+                ON L.BaseType = 1250000001
+               AND L.BaseEntry = R.DocEntry
+               AND L.BaseLine = R.LineNum
+               AND L.ItemCode = R.ItemCode
+             INNER JOIN OWTR T
+                ON T.DocEntry = L.DocEntry
+               {$cancelCondition}
+             {$lotJoin}
+             {$userJoin}
+             OPTION (MAXDOP 1, RECOMPILE)",
+            $params
+        );
+
+        foreach ($rows as $row) {
+            $rawRows[] = $row;
+        }
+    }
+
+    $result = [];
+
+    foreach ($rawRows as $row) {
+        $transferDocEntry = (int)($row['TransferDocEntry'] ?? 0);
+        $transferLineNum = (int)($row['TransferLineNum'] ?? 0);
+        $itemCode = trim((string)($row['ItemCode'] ?? ''));
+        $lotNo = trim((string)($row['ReceivedLotNo'] ?? ''));
+        $qty = is_numeric($row['ReceivedQty'] ?? null)
+            ? abs((float)$row['ReceivedQty'])
+            : 0.0;
+
+        if ($transferDocEntry <= 0 || $itemCode === '' || $qty <= 0) {
+            continue;
+        }
+
+        $key = $transferDocEntry . '|'
+            . $transferLineNum . '|'
+            . strtoupper($itemCode) . '|'
+            . sync_normalize_lot($lotNo);
+        $receivedAt = scanplus_datetime_text(
+            $row['ScanDate'] ?? '',
+            $row['ScanTime'] ?? null
+        );
+
+        if (!isset($result[$key])) {
+            $result[$key] = [
+                'transfer_doc_entry' => $transferDocEntry,
+                'transfer_doc_num' => isset($row['TransferDocNum']) ? (int)$row['TransferDocNum'] : null,
+                'transfer_line_num' => $transferLineNum,
+                'doc_entry' => (int)($row['ITRDocEntry'] ?? 0),
+                'line_num' => (int)($row['ITRLineNum'] ?? 0),
+                'item_code' => $itemCode,
+                'received_lot_no' => $lotNo,
+                'received_qty' => 0.0,
+                'barcode_user' => trim((string)($row['BarcodeUser'] ?? '')),
+                'received_at' => $receivedAt,
+                'itr_requested_qty' => is_numeric($row['ITRRequestedQty'] ?? null)
+                    ? (float)$row['ITRRequestedQty']
+                    : null,
+                'itr_open_qty' => is_numeric($row['ITROpenQty'] ?? null)
+                    ? (float)$row['ITROpenQty']
+                    : null,
+            ];
+        }
+
+        $result[$key]['received_qty'] += $qty;
+
+        if ($receivedAt !== ''
+            && strcmp($receivedAt, (string)$result[$key]['received_at']) > 0) {
+            $result[$key]['received_at'] = $receivedAt;
+            $result[$key]['barcode_user'] = trim((string)($row['BarcodeUser'] ?? ''));
+        }
+    }
+
+    return array_values($result);
+}
+
+/**
+ * Allocate individual SAP transfer quantities to separate local request lines.
+ *
+ * Boundary: monthly SAP ITR DocEntry + line + item + normalized SAP/GRPO lot.
+ * Selection: the nearest actual local issuance at or before the SAP transfer.
+ * Several SAP transfers may accumulate into the same RequestLineID. The amount
+ * assigned to a request line never exceeds its IssuedQty; the unfilled balance
+ * remains pending for the next SAP scan.
+ */
+function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): array
+{
+    $refsByGroup = [];
+    $baseGroupsWithBlankLot = [];
+
+    foreach ($refs as $ref) {
+        $requestLineId = (int)($ref['local_request_line_id'] ?? 0);
+
+        if ($requestLineId <= 0) {
+            continue;
+        }
+
+        $groupKey = sync_monthly_itr_group_key(
+            $ref['doc_entry'] ?? 0,
+            $ref['line_num'] ?? null,
+            $ref['item_code'] ?? '',
+            $ref['lot_no'] ?? ''
+        );
+
+        if ($groupKey === '') {
+            continue;
+        }
+
+        $refsByGroup[$groupKey][] = $ref;
+
+        if (sync_normalize_lot($ref['lot_no'] ?? '') === '') {
+            $baseKey = scanplus_key(
+                $ref['doc_entry'] ?? 0,
+                $ref['line_num'] ?? null,
+                $ref['item_code'] ?? ''
+            );
+            $baseGroupsWithBlankLot[$baseKey][] = $groupKey;
+        }
+    }
+
+    $transfersByGroup = [];
+    $groupScans = [];
+
+    foreach ($transferRows as $transfer) {
+        $groupKey = sync_monthly_itr_group_key(
+            $transfer['doc_entry'] ?? 0,
+            $transfer['line_num'] ?? null,
+            $transfer['item_code'] ?? '',
+            $transfer['received_lot_no'] ?? ''
+        );
+
+        if ($groupKey === '') {
+            continue;
+        }
+
+        if (!isset($refsByGroup[$groupKey])) {
+            $baseKey = scanplus_key(
+                $transfer['doc_entry'] ?? 0,
+                $transfer['line_num'] ?? null,
+                $transfer['item_code'] ?? ''
+            );
+            $blankGroups = array_values(array_unique($baseGroupsWithBlankLot[$baseKey] ?? []));
+
+            if (count($blankGroups) === 1) {
+                $groupKey = $blankGroups[0];
+            }
+        }
+
+        $transfersByGroup[$groupKey][] = $transfer;
+
+        if (!isset($groupScans[$groupKey])) {
+            $groupScans[$groupKey] = [
+                'received_qty' => 0.0,
+                'received_lot_no' => trim((string)($transfer['received_lot_no'] ?? '')),
+                'barcode_user' => trim((string)($transfer['barcode_user'] ?? '')),
+                'received_at' => trim((string)($transfer['received_at'] ?? '')),
+                'scan_status' => 'SAP_RECEIVED',
+                'itr_requested_qty' => $transfer['itr_requested_qty'] ?? null,
+                'itr_open_qty' => $transfer['itr_open_qty'] ?? null,
+                'transfer_count' => 0,
+            ];
+        }
+
+        $groupScans[$groupKey]['received_qty'] += max(
+            0.0,
+            (float)($transfer['received_qty'] ?? 0)
+        );
+        $groupScans[$groupKey]['transfer_count']++;
+
+        $receivedAt = trim((string)($transfer['received_at'] ?? ''));
+
+        if ($receivedAt !== ''
+            && strcmp($receivedAt, (string)$groupScans[$groupKey]['received_at']) >= 0) {
+            $groupScans[$groupKey]['received_at'] = $receivedAt;
+            $groupScans[$groupKey]['barcode_user'] = trim((string)($transfer['barcode_user'] ?? ''));
+        }
+    }
+
+    $lineAllocations = [];
+    $unallocatedByGroup = [];
+
+    foreach ($refsByGroup as $groupKey => $groupRefs) {
+        $groupTransfers = $transfersByGroup[$groupKey] ?? [];
+
+        usort($groupTransfers, static function (array $a, array $b): int {
+            $timeCompare = sync_datetime_timestamp($a['received_at'] ?? '')
+                <=> sync_datetime_timestamp($b['received_at'] ?? '');
+
+            if ($timeCompare !== 0) {
+                return $timeCompare;
+            }
+
+            $docCompare = (int)($a['transfer_doc_entry'] ?? 0)
+                <=> (int)($b['transfer_doc_entry'] ?? 0);
+
+            if ($docCompare !== 0) {
+                return $docCompare;
+            }
+
+            return (int)($a['transfer_line_num'] ?? 0)
+                <=> (int)($b['transfer_line_num'] ?? 0);
+        });
+
+        foreach ($groupRefs as $ref) {
+            $requestLineId = (int)($ref['local_request_line_id'] ?? 0);
+            $lineAllocations[$requestLineId] = [
+                'qty' => 0.0,
+                'received_at' => '',
+                'barcode_user' => '',
+                'received_lot_no' => '',
+                'transfer_doc_entries' => [],
+            ];
+        }
+
+        foreach ($groupTransfers as $transfer) {
+            $remainingTransferQty = max(0.0, (float)($transfer['received_qty'] ?? 0));
+            $transferTimestamp = sync_datetime_timestamp($transfer['received_at'] ?? '');
+
+            while ($remainingTransferQty > 0.0005) {
+                $candidates = [];
+
+                foreach ($groupRefs as $ref) {
+                    $requestLineId = (int)($ref['local_request_line_id'] ?? 0);
+                    $issuedQty = is_numeric($ref['local_issued_qty'] ?? null)
+                        ? max(0.0, (float)$ref['local_issued_qty'])
+                        : 0.0;
+                    $alreadyAllocated = (float)($lineAllocations[$requestLineId]['qty'] ?? 0);
+                    $requestRemaining = max(0.0, $issuedQty - $alreadyAllocated);
+
+                    if ($requestLineId <= 0 || $requestRemaining <= 0.0005) {
+                        continue;
+                    }
+
+                    $eventAt = $ref['local_issued_at']
+                        ?? $ref['local_requested_at']
+                        ?? '';
+                    $eventTimestamp = sync_datetime_timestamp($eventAt);
+
+                    if ($transferTimestamp > 0
+                        && $eventTimestamp > 0
+                        && $eventTimestamp > $transferTimestamp) {
+                        continue;
+                    }
+
+                    $candidates[] = [
+                        'ref' => $ref,
+                        'event_timestamp' => $eventTimestamp,
+                        'remaining' => $requestRemaining,
+                    ];
+                }
+
+                if (empty($candidates)) {
+                    break;
+                }
+
+                usort($candidates, static function (array $a, array $b) use ($remainingTransferQty): int {
+                    $timeCompare = (int)$b['event_timestamp'] <=> (int)$a['event_timestamp'];
+
+                    if ($timeCompare !== 0) {
+                        return $timeCompare;
+                    }
+
+                    $aExact = abs((float)$a['remaining'] - $remainingTransferQty) <= 0.0005 ? 1 : 0;
+                    $bExact = abs((float)$b['remaining'] - $remainingTransferQty) <= 0.0005 ? 1 : 0;
+
+                    if ($aExact !== $bExact) {
+                        return $bExact <=> $aExact;
+                    }
+
+                    return (int)($b['ref']['local_request_line_id'] ?? 0)
+                        <=> (int)($a['ref']['local_request_line_id'] ?? 0);
+                });
+
+                $selected = $candidates[0];
+                $selectedRef = $selected['ref'];
+                $requestLineId = (int)$selectedRef['local_request_line_id'];
+                $allocatedQty = min(
+                    $remainingTransferQty,
+                    (float)$selected['remaining']
+                );
+
+                $lineAllocations[$requestLineId]['qty'] += $allocatedQty;
+                $lineAllocations[$requestLineId]['received_lot_no'] = trim(
+                    (string)($transfer['received_lot_no'] ?? '')
+                );
+                $lineAllocations[$requestLineId]['transfer_doc_entries'][
+                    (int)($transfer['transfer_doc_entry'] ?? 0)
+                ] = true;
+
+                $receivedAt = trim((string)($transfer['received_at'] ?? ''));
+
+                if ($receivedAt !== ''
+                    && strcmp($receivedAt, (string)$lineAllocations[$requestLineId]['received_at']) >= 0) {
+                    $lineAllocations[$requestLineId]['received_at'] = $receivedAt;
+                    $lineAllocations[$requestLineId]['barcode_user'] = trim(
+                        (string)($transfer['barcode_user'] ?? '')
+                    );
+                }
+
+                $remainingTransferQty -= $allocatedQty;
+            }
+
+            if ($remainingTransferQty > 0.0005) {
+                $unallocatedByGroup[$groupKey] =
+                    (float)($unallocatedByGroup[$groupKey] ?? 0) + $remainingTransferQty;
+            }
+        }
+    }
+
+    return [
+        'line_allocations' => $lineAllocations,
+        'group_scans' => $groupScans,
+        'unallocated_by_group' => $unallocatedByGroup,
+    ];
+}
+
+
 $whp = null;
 $syncId = null;
 $updated = 0;
@@ -1030,204 +1566,183 @@ try {
         throw new RuntimeException('Unable to connect to the SAP/ERP database from the scheduled task account.');
     }
 
-    $allocationByScanKey = [];
-    $issuedRequestCountByBaseKey = [];
+    /*
+     * Read every SAP Inventory Transfer separately. The monthly ITR line/item/
+     * GRPO lot is the validation boundary, while RequestLineID remains the
+     * local allocation target. Multiple SAP transfers can therefore accumulate
+     * into one request line without being merged into a different request.
+     */
+    $transferLookupStarted = microtime(true);
+    $transferRows = sync_lookup_transfer_rows_by_itr_lines($erp, $refs);
+    sync_log('Individual SAP transfer rows found: ' . count($transferRows)
+        . ', lookup=' . round(microtime(true) - $transferLookupStarted, 3) . ' sec');
+
+    $allocationResult = sync_allocate_monthly_itr_transfers($refs, $transferRows);
+    $lineAllocations = $allocationResult['line_allocations'] ?? [];
+    $groupScans = $allocationResult['group_scans'] ?? [];
+    $unallocatedByGroup = $allocationResult['unallocated_by_group'] ?? [];
 
     foreach ($refs as $ref) {
-        if ((int)($ref['local_request_line_id'] ?? 0) <= 0) {
+        $requestLineId = (int)($ref['local_request_line_id'] ?? 0);
+        $groupKey = sync_monthly_itr_group_key(
+            $ref['doc_entry'] ?? 0,
+            $ref['line_num'] ?? null,
+            $ref['item_code'] ?? '',
+            $ref['lot_no'] ?? ''
+        );
+        $groupScan = $groupScans[$groupKey] ?? null;
+
+        /* Keep the raw aggregate cache for diagnostics and existing reports. */
+        sync_upsert_cache($whp, $ref, is_array($groupScan) ? $groupScan : null);
+
+        if ($requestLineId <= 0) {
+            $updated++;
+            is_array($groupScan) ? $matched++ : $missing++;
             continue;
         }
 
         $issuedQty = is_numeric($ref['local_issued_qty'] ?? null)
-            ? (float)$ref['local_issued_qty']
+            ? max(0.0, (float)$ref['local_issued_qty'])
             : 0.0;
+        $allocation = $lineAllocations[$requestLineId] ?? [
+            'qty' => 0.0,
+            'received_at' => '',
+            'barcode_user' => '',
+            'received_lot_no' => '',
+            'transfer_doc_entries' => [],
+        ];
+        $allocatedQty = max(0.0, (float)($allocation['qty'] ?? 0));
+        $lineScan = null;
 
         if ($issuedQty <= 0) {
-            continue;
+            $lineScan = [
+                'raw_received_qty' => is_array($groupScan)
+                    ? (float)($groupScan['received_qty'] ?? 0)
+                    : 0.0,
+                'received_qty' => 0.0,
+                'received_lot_no' => is_array($groupScan)
+                    ? (string)($groupScan['received_lot_no'] ?? '')
+                    : '',
+                'barcode_user' => '',
+                'received_at' => is_array($groupScan)
+                    ? (string)($groupScan['received_at'] ?? '')
+                    : '',
+                'scan_status' => 'NOT_ISSUED_REQUEST_LINE',
+            ];
+        } elseif (!is_array($groupScan)) {
+            $lineScan = [
+                'raw_received_qty' => 0.0,
+                'received_qty' => 0.0,
+                'received_lot_no' => '',
+                'barcode_user' => '',
+                'received_at' => '',
+                'scan_status' => 'NOT_RECEIVED_IN_SAP_CACHE',
+            ];
+        } elseif ($allocatedQty <= 0.0005) {
+            $lineScan = [
+                'raw_received_qty' => (float)($groupScan['received_qty'] ?? 0),
+                'received_qty' => 0.0,
+                'received_lot_no' => (string)($groupScan['received_lot_no'] ?? ''),
+                'barcode_user' => '',
+                'received_at' => (string)($groupScan['received_at'] ?? ''),
+                'scan_status' => 'NOT_ALLOCATED_TO_REQUEST_LINE',
+            ];
+        } else {
+            $lineScan = [
+                'raw_received_qty' => (float)($groupScan['received_qty'] ?? 0),
+                'received_qty' => min($allocatedQty, $issuedQty),
+                'received_lot_no' => (string)(
+                    $allocation['received_lot_no']
+                    ?? $groupScan['received_lot_no']
+                    ?? ''
+                ),
+                'barcode_user' => (string)($allocation['barcode_user'] ?? ''),
+                'received_at' => (string)($allocation['received_at'] ?? ''),
+                'scan_status' => $allocatedQty + 0.0005 >= $issuedQty
+                    ? 'SAP_RECEIVED'
+                    : 'SAP_PARTIAL',
+            ];
         }
 
-        $baseKey = scanplus_key(
-            $ref['doc_entry'] ?? 0,
-            $ref['line_num'] ?? null,
-            $ref['item_code'] ?? ''
-        );
+        sync_upsert_request_line_receive_cache($whp, $ref, $lineScan);
+        $updated++;
+        is_array($groupScan) ? $matched++ : $missing++;
 
-        if ($baseKey !== '') {
-            $issuedRequestCountByBaseKey[$baseKey] =
-                (int)($issuedRequestCountByBaseKey[$baseKey] ?? 0) + 1;
+        if ($issuedQty > 0) {
+            $verifyChecked++;
+
+            if (!is_array($groupScan)) {
+                $verifyMissingInSap++;
+
+                if (count($verifyIssues) < 200) {
+                    $verifyIssues[] = sprintf(
+                        'MISSING_IN_SAP doc=%d line=%s item=%s requestLine=%d issuedQty=%.3f',
+                        $ref['doc_entry'],
+                        $ref['line_num'] ?? '-',
+                        $ref['item_code'],
+                        $requestLineId,
+                        $issuedQty
+                    );
+                }
+            } elseif ($allocatedQty > 0 && abs($allocatedQty - $issuedQty) > 0.001) {
+                $verifyQtyMismatch++;
+
+                if (count($verifyIssues) < 200) {
+                    $verifyIssues[] = sprintf(
+                        'PARTIAL_REQUEST_ALLOCATION doc=%d line=%s item=%s requestLine=%d issuedQty=%.3f allocatedQty=%.3f remainingQty=%.3f',
+                        $ref['doc_entry'],
+                        $ref['line_num'] ?? '-',
+                        $ref['item_code'],
+                        $requestLineId,
+                        $issuedQty,
+                        $allocatedQty,
+                        max(0.0, $issuedQty - $allocatedQty)
+                    );
+                }
+            }
+
+            $localLot = trim((string)($ref['lot_no'] ?? ''));
+            $sapLot = is_array($groupScan)
+                ? trim((string)($groupScan['received_lot_no'] ?? ''))
+                : '';
+
+            if ($localLot !== ''
+                && $sapLot !== ''
+                && sync_normalize_lot($localLot) !== sync_normalize_lot($sapLot)) {
+                $verifyLotMismatch++;
+
+                if (count($verifyIssues) < 200) {
+                    $verifyIssues[] = sprintf(
+                        'LOT_MISMATCH doc=%d line=%s item=%s requestLine=%d localLot=%s sapLot=%s',
+                        $ref['doc_entry'],
+                        $ref['line_num'] ?? '-',
+                        $ref['item_code'],
+                        $requestLineId,
+                        $localLot,
+                        $sapLot
+                    );
+                }
+            }
         }
     }
 
-    foreach (array_chunk($refs, $chunkSize) as $chunkIndex => $chunk) {
-        $started = microtime(true);
-        $scanRows = scanplus_lookup_by_itr_lines($erp, $chunk);
-        if (!is_array($scanRows)) {
-            $scanRows = [];
-        }
+    foreach ($groupScans as $groupKey => $groupScan) {
+        $unallocatedQty = (float)($unallocatedByGroup[$groupKey] ?? 0);
+        $itrRequestedQty = $groupScan['itr_requested_qty'] ?? null;
+        $monthlyRemaining = is_numeric($itrRequestedQty)
+            ? max(0.0, (float)$itrRequestedQty - (float)($groupScan['received_qty'] ?? 0))
+            : null;
 
-        /* Secondary index handles leading-zero and punctuation differences. */
-        $normalizedLotScanRows = [];
-
-        foreach ($scanRows as $scanRowKey => $scanRow) {
-            if (!is_array($scanRow) || substr_count((string)$scanRowKey, '|') < 3) {
-                continue;
-            }
-
-            $receivedLot = trim((string)($scanRow['received_lot_no'] ?? ''));
-            $normalizedLot = sync_normalize_lot($receivedLot);
-            $lastPipe = strrpos((string)$scanRowKey, '|');
-
-            if ($normalizedLot === '' || $lastPipe === false) {
-                continue;
-            }
-
-            $scanBaseKey = substr((string)$scanRowKey, 0, $lastPipe);
-            $normalizedLotScanRows[$scanBaseKey . '|NLOT|' . $normalizedLot] = $scanRow;
-        }
-
-        foreach ($chunk as $ref) {
-            $baseKey = scanplus_key($ref['doc_entry'], $ref['line_num'], $ref['item_code']);
-            $lotCandidates = [];
-            $selectedScanKey = '';
-
-            foreach ([$ref['lot_no'] ?? ''] as $candidateLot) {
-                $candidateLot = trim((string)$candidateLot);
-
-                if ($candidateLot === '') {
-                    continue;
-                }
-
-                $normalizedCandidate = sync_normalize_lot($candidateLot);
-                $lotCandidates[$normalizedCandidate !== '' ? $normalizedCandidate : $candidateLot] = $candidateLot;
-            }
-
-            /* Never use an all-lot aggregate when the local row has a specific lot. */
-            if (!empty($lotCandidates)) {
-                $scan = null;
-
-                foreach ($lotCandidates as $candidateLot) {
-                    $lotKey = scanplus_lot_key(
-                        $ref['doc_entry'],
-                        $ref['line_num'],
-                        $ref['item_code'],
-                        $candidateLot
-                    );
-
-                    if ($lotKey !== '' && isset($scanRows[$lotKey])) {
-                        $scan = $scanRows[$lotKey];
-                        $selectedScanKey = $lotKey;
-                        break;
-                    }
-
-                    $normalizedLot = sync_normalize_lot($candidateLot);
-                    $normalizedKey = $baseKey . '|NLOT|' . $normalizedLot;
-
-                    if ($normalizedLot !== '' && isset($normalizedLotScanRows[$normalizedKey])) {
-                        $scan = $normalizedLotScanRows[$normalizedKey];
-                        $selectedScanKey = $normalizedKey;
-                        break;
-                    }
-                }
-            } else {
-                $scan = $scanRows[$baseKey] ?? null;
-                $selectedScanKey = $baseKey;
-            }
-
-            /* Keep the raw SAP cache for diagnostics. */
-            sync_upsert_cache($whp, $ref, is_array($scan) ? $scan : null);
-
-            $allocationScan = is_array($scan) ? $scan : null;
-
-            /*
-             * A batch receipt with a GRPO/SAP lot cannot safely be assigned to
-             * one of several request lines when the local line has no lot. The
-             * sync leaves it unallocated instead of guessing by date.
-             */
-            if (is_array($allocationScan)
-                && empty($lotCandidates)
-                && trim((string)($allocationScan['received_lot_no'] ?? '')) !== ''
-                && (int)($issuedRequestCountByBaseKey[$baseKey] ?? 0) > 1) {
-                $allocationScan['raw_received_qty'] = $allocationScan['received_qty'] ?? 0;
-                $allocationScan['received_qty'] = 0.0;
-                $allocationScan['scan_status'] = 'LOT_REQUIRED_FOR_ALLOCATION';
-            }
-
-            $lineScan = sync_allocate_request_line_scan(
-                $ref,
-                $allocationScan,
-                sync_scan_allocation_key($ref, $allocationScan, $selectedScanKey),
-                $allocationByScanKey
-            );
-            sync_upsert_request_line_receive_cache($whp, $ref, $lineScan);
-            $updated++;
-            if (is_array($scan)) {
-                $matched++;
-            } else {
-                $missing++;
-            }
-
-            /*
-             * Verify against the local "ground truth": if this ref actually has
-             * an IssuedQty from WarehouseIssueRequestLines, cross-check the SAP
-             * cache result instead of trusting it blindly.
-             */
-            $localIssuedQty = $ref['local_issued_qty'] ?? null;
-
-            if ($localIssuedQty !== null && $localIssuedQty > 0) {
-                $verifyChecked++;
-
-                if (!sync_scan_is_received($scan)) {
-                    $verifyMissingInSap++;
-                    if (count($verifyIssues) < 200) {
-                        $verifyIssues[] = sprintf(
-                            'MISSING_IN_SAP doc=%d line=%s item=%s localIssuedQty=%.3f',
-                            $ref['doc_entry'],
-                            $ref['line_num'] ?? '-',
-                            $ref['item_code'],
-                            $localIssuedQty
-                        );
-                    }
-                } else {
-                    $scanQty = (float)($scan['received_qty'] ?? 0);
-                    if (abs($scanQty - $localIssuedQty) > 0.001) {
-                        $verifyQtyMismatch++;
-                        if (count($verifyIssues) < 200) {
-                            $verifyIssues[] = sprintf(
-                                'QTY_MISMATCH doc=%d line=%s item=%s localIssuedQty=%.3f sapReceivedQty=%.3f',
-                                $ref['doc_entry'],
-                                $ref['line_num'] ?? '-',
-                                $ref['item_code'],
-                                $localIssuedQty,
-                                $scanQty
-                            );
-                        }
-                    }
-
-                    $localLot = (string)($ref['lot_no'] ?? '');
-                    $sapLot = (string)($scan['received_lot_no'] ?? '');
-
-                    if (trim((string)$localLot) !== ''
-                        && trim($sapLot) !== ''
-                        && sync_normalize_lot($localLot) !== sync_normalize_lot($sapLot)
-                    ) {
-                        $verifyLotMismatch++;
-                        if (count($verifyIssues) < 200) {
-                            $verifyIssues[] = sprintf(
-                                'LOT_MISMATCH doc=%d line=%s item=%s localLot=%s sapLot=%s',
-                                $ref['doc_entry'],
-                                $ref['line_num'] ?? '-',
-                                $ref['item_code'],
-                                $localLot,
-                                $sapLot
-                            );
-                        }
-                    }
-                }
-            }
-        }
-
-        sync_log('Chunk ' . ($chunkIndex + 1) . ': rows=' . count($chunk)
-            . ', lookup=' . round(microtime(true) - $started, 3) . ' sec');
+        sync_log(sprintf(
+            'Monthly ITR group %s: transfers=%d, sap_received=%.3f, unallocated=%.3f%s',
+            $groupKey,
+            (int)($groupScan['transfer_count'] ?? 0),
+            (float)($groupScan['received_qty'] ?? 0),
+            $unallocatedQty,
+            $monthlyRemaining !== null
+                ? ', monthly_itr_remaining=' . number_format($monthlyRemaining, 3, '.', '')
+                : ''
+        ));
     }
 
     sync_log("Verification against issued lines: checked={$verifyChecked}, missing_in_sap={$verifyMissingInSap}, "
