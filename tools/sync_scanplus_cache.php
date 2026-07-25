@@ -154,7 +154,9 @@ function sync_add_refs(array &$refs, array &$seen, array $rows): void
         if (array_key_exists('RequestedAt', $row)) {
             $ref['local_requested_at'] = $row['RequestedAt'];
         }
-        if (array_key_exists('IssuedAt', $row)) {
+        if (array_key_exists('LatestIssuedAt', $row)) {
+            $ref['local_issued_at'] = $row['LatestIssuedAt'];
+        } elseif (array_key_exists('IssuedAt', $row)) {
             $ref['local_issued_at'] = $row['IssuedAt'];
         }
         if (array_key_exists('WarehouseLotNo', $row)) {
@@ -315,10 +317,15 @@ function sync_datetime_sort_key($value): string
 
 function sync_ref_allocation_sort_key(array $ref): string
 {
+    /*
+     * Allocation is based on the SAP/GRPO lot stored in the request line.
+     * WarehouseLotNo is an internal warehouse tracking lot and must not split
+     * or redirect a SAP receipt allocation.
+     */
     return (int)$ref['doc_entry'] . '|'
         . (($ref['line_num'] === null || $ref['line_num'] === '') ? '-1' : (int)$ref['line_num']) . '|'
         . strtoupper(trim((string)$ref['item_code'])) . '|'
-        . sync_normalize_lot(($ref['local_warehouse_lot_no'] ?? '') !== '' ? $ref['local_warehouse_lot_no'] : ($ref['lot_no'] ?? ''));
+        . sync_normalize_lot($ref['lot_no'] ?? '');
 }
 
 function sync_scan_allocation_key(array $ref, ?array $scan, string $fallbackKey): string
@@ -340,11 +347,7 @@ function sync_scan_allocation_key(array $ref, ?array $scan, string $fallbackKey)
     }
 
     if ($lotNo === '') {
-        $lotNo = trim((string)(
-            ($ref['local_warehouse_lot_no'] ?? '') !== ''
-                ? $ref['local_warehouse_lot_no']
-                : ($ref['lot_no'] ?? '')
-        ));
+        $lotNo = trim((string)($ref['lot_no'] ?? ''));
     }
 
     $normalizedLot = sync_normalize_lot($lotNo);
@@ -383,6 +386,21 @@ function sync_allocate_request_line_scan(array $ref, ?array $scan, string $alloc
     if ($hasKnownIssuedQty && $issuedQty <= 0) {
         $lineScan['received_qty'] = 0.0;
         $lineScan['scan_status'] = 'NOT_ISSUED_REQUEST_LINE';
+        return $lineScan;
+    }
+
+    /*
+     * A delayed SAP scan may happen long after issuance, but it must never be
+     * assigned to a request line issued after the SAP receipt timestamp.
+     */
+    $localIssuedAtText = sync_datetime_sort_key($ref['local_issued_at'] ?? '');
+    $receivedAtText = sync_datetime_sort_key($scan['received_at'] ?? '');
+
+    if ($localIssuedAtText !== ''
+        && $receivedAtText !== ''
+        && strcmp($localIssuedAtText, $receivedAtText) > 0) {
+        $lineScan['received_qty'] = 0.0;
+        $lineScan['scan_status'] = 'ISSUED_AFTER_SAP_RECEIPT';
         return $lineScan;
     }
 
@@ -740,20 +758,20 @@ try {
             $requestIssueItemCondition = sync_has_column($whp, 'IssuanceTransactions', 'ItemCode')
                 ? 'AND (ITX.ItemCode = L.ItemCode OR ITX.ItemCode IS NULL)'
                 : '';
-            $requestIssueTieBreak = sync_has_column($whp, 'IssuanceTransactions', 'TransactionID')
-                ? ', ITX.TransactionID ASC'
+            $requestIssueQtyCondition = sync_has_column($whp, 'IssuanceTransactions', 'Quantity')
+                ? 'AND ISNULL(TRY_CONVERT(DECIMAL(18,3), ITX.Quantity), 0) > 0'
                 : '';
             $requestIssueApply = "
              OUTER APPLY
              (
-                SELECT TOP (1)
-                    ITX.IssuedAt
+                SELECT
+                    MAX(ITX.IssuedAt) AS LatestIssuedAt
                 FROM dbo.IssuanceTransactions ITX
                 WHERE ITX.IssueRequestLineID = L.RequestLineID
                   {$requestIssueItemCondition}
-                ORDER BY ITX.IssuedAt ASC{$requestIssueTieBreak}
+                  {$requestIssueQtyCondition}
              ) IX";
-            $requestIssuedAtExpr = 'IX.IssuedAt';
+            $requestIssuedAtExpr = 'IX.LatestIssuedAt';
         }
 
         sync_add_refs($refs, $seen, sync_fetch_all(
@@ -767,7 +785,7 @@ try {
                 L.ItemCode,
                 L.LotNo,
                 {$reqLineIssuedQtyExpr} AS IssuedQty,
-                {$requestIssuedAtExpr} AS IssuedAt,
+                {$requestIssuedAtExpr} AS LatestIssuedAt,
                 {$reqLineWarehouseLotExpr} AS WarehouseLotNo,
                 {$reqLineStatusExpr} AS Status
              FROM dbo.WarehouseIssueRequestHeader H
@@ -810,22 +828,35 @@ try {
     }
 
     usort($refs, static function (array $a, array $b): int {
-        $keyCompare = strcmp(sync_ref_allocation_sort_key($a), sync_ref_allocation_sort_key($b));
+        $keyCompare = strcmp(
+            sync_ref_allocation_sort_key($a),
+            sync_ref_allocation_sort_key($b)
+        );
 
         if ($keyCompare !== 0) {
             return $keyCompare;
         }
 
-        $aEventAt = $a['local_issued_at'] ?? $a['local_requested_at'] ?? '';
-        $bEventAt = $b['local_issued_at'] ?? $b['local_requested_at'] ?? '';
+        /*
+         * For a delayed receipt, allocate to the request line with the latest
+         * actual issuance event first. RequestedAt is only a fallback when the
+         * line has no linked IssuanceTransactions record.
+         */
+        $aEventAt = sync_datetime_sort_key(
+            $a['local_issued_at'] ?? $a['local_requested_at'] ?? ''
+        );
+        $bEventAt = sync_datetime_sort_key(
+            $b['local_issued_at'] ?? $b['local_requested_at'] ?? ''
+        );
 
-        $timeCompare = strcmp(sync_datetime_sort_key($aEventAt), sync_datetime_sort_key($bEventAt));
+        $timeCompare = strcmp($bEventAt, $aEventAt);
 
         if ($timeCompare !== 0) {
             return $timeCompare;
         }
 
-        return (int)($a['local_request_line_id'] ?? 0) <=> (int)($b['local_request_line_id'] ?? 0);
+        return (int)($b['local_request_line_id'] ?? 0)
+            <=> (int)($a['local_request_line_id'] ?? 0);
     });
 
     sync_log('Unique local references found: ' . count($refs));
@@ -894,7 +925,7 @@ try {
             $lotCandidates = [];
             $selectedScanKey = '';
 
-            foreach ([$ref['lot_no'] ?? '', $ref['local_warehouse_lot_no'] ?? ''] as $candidateLot) {
+            foreach ([$ref['lot_no'] ?? ''] as $candidateLot) {
                 $candidateLot = trim((string)$candidateLot);
 
                 if ($candidateLot === '') {
@@ -1007,9 +1038,7 @@ try {
                         }
                     }
 
-                    $localLot = trim((string)($ref['local_warehouse_lot_no'] ?? '')) !== ''
-                        ? $ref['local_warehouse_lot_no']
-                        : ($ref['lot_no'] ?? '');
+                    $localLot = (string)($ref['lot_no'] ?? '');
                     $sapLot = (string)($scan['received_lot_no'] ?? '');
 
                     if (trim((string)$localLot) !== ''

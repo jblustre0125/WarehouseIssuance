@@ -66,7 +66,8 @@ function verify_receive_status(array $line)
         'NOT_ISSUED_REQUEST_LINE',
         'NOT_ALLOCATED_TO_REQUEST_LINE',
         'LOT_REQUIRED_FOR_ALLOCATION',
-        'AMBIGUOUS_REQUEST_MATCH'
+        'AMBIGUOUS_REQUEST_MATCH',
+        'ISSUED_AFTER_SAP_RECEIPT'
     ], true)) {
         return $cacheStatus;
     }

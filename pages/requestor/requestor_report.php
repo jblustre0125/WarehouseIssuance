@@ -1502,7 +1502,8 @@ SELECT
                 'NOT_ISSUED_REQUEST_LINE',
                 'NOT_ALLOCATED_TO_REQUEST_LINE',
                 'LOT_REQUIRED_FOR_ALLOCATION',
-                'AMBIGUOUS_REQUEST_MATCH'
+                'AMBIGUOUS_REQUEST_MATCH',
+                'ISSUED_AFTER_SAP_RECEIPT'
             )
             THEN M.MatchStatus
 
@@ -2402,7 +2403,8 @@ $showingTo = min(
         .status-rejected,
         .status-lot_mismatch,
         .status-qty_variance,
-        .status-lot_and_qty_variance {
+        .status-lot_and_qty_variance,
+        .status-issued_after_sap_receipt {
             background: #fee2e2;
             color: #991b1b;
         }
