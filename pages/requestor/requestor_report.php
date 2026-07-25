@@ -1009,172 +1009,67 @@ if ($hasCache) {
                 C0.SAP_IT_DocEntry,
                 C0.SAP_IT_LineNum,
                 C0.ItemCode,
-
-                NULLIF(
-                    LTRIM(RTRIM(C0.LotNo)),
-                    ''
-                ) AS LotNo,
-
-                {$cacheReceivedLotExpression}
-                    AS ReceivedLotNo,
-
-                {$cacheStatusExpression}
-                    AS ScanStatus,
-
-                {$cacheQuantityExpression}
-                    AS ReceivedQty,
-
-                {$cacheBarcodeUserExpression}
-                    AS BarcodeUser,
-
-                {$cacheReceivedAtExpression}
-                    AS ReceivedAt,
-
-                {$cacheLastSyncedExpression}
-                    AS LastSyncedAt
-
+                NULLIF(LTRIM(RTRIM(C0.LotNo)), '') AS LotNo,
+                {$cacheReceivedLotExpression} AS ReceivedLotNo,
+                {$cacheStatusExpression} AS ScanStatus,
+                {$cacheQuantityExpression} AS ReceivedQty,
+                {$cacheBarcodeUserExpression} AS BarcodeUser,
+                {$cacheReceivedAtExpression} AS ReceivedAt,
+                {$cacheLastSyncedExpression} AS LastSyncedAt
             FROM dbo.RawmatTraceScanPlusCache C0
-
-            WHERE
-                C0.SAP_IT_DocEntry = COALESCE(
+            WHERE C0.SAP_IT_DocEntry = COALESCE(
                     B.LineSAPDocEntry,
                     B.HeaderSAPDocEntry
                 )
-
-                AND ISNULL(
-                    C0.SAP_IT_LineNum,
-                    -1
-                ) = ISNULL(
-                    B.SAP_IT_LineNum,
-                    -1
-                )
-
-                AND C0.ItemCode = B.ItemCode
-
-                AND
-                (
-                    /* No issued lot: allow the base ITR-line cache row. */
-                    (
-                        NULLIF(LTRIM(RTRIM(R.LocalLotNo)), '') IS NULL
-                        AND NULLIF(LTRIM(RTRIM(R.WarehouseLotNo)), '') IS NULL
-                    )
-
-                    /* Exact/normalized requested-lot match. */
+              AND ISNULL(C0.SAP_IT_LineNum, -1) = ISNULL(B.SAP_IT_LineNum, -1)
+              AND C0.ItemCode = B.ItemCode
+              AND NULLIF(LTRIM(RTRIM(R.LocalLotNo)), '') IS NOT NULL
+              AND
+              (
+                    LTRIM(RTRIM(C0.LotNo)) = LTRIM(RTRIM(R.LocalLotNo))
                     OR
                     (
-                        NULLIF(
-                            LTRIM(RTRIM(C0.LotNo)),
-                            ''
-                        ) IS NOT NULL
-
-                        AND
-                        (
-                            LTRIM(RTRIM(C0.LotNo))
-                                = LTRIM(RTRIM(R.LocalLotNo))
-
-                            OR LTRIM(RTRIM(C0.LotNo))
-                                = LTRIM(RTRIM(R.WarehouseLotNo))
-
-                            OR
-                            (
-                                TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
-                                AND TRY_CONVERT(BIGINT, R.LocalLotNo) IS NOT NULL
-                                AND TRY_CONVERT(BIGINT, C0.LotNo)
-                                    = TRY_CONVERT(BIGINT, R.LocalLotNo)
-                            )
-
-                            OR
-                            (
-                                TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
-                                AND TRY_CONVERT(BIGINT, R.WarehouseLotNo) IS NOT NULL
-                                AND TRY_CONVERT(BIGINT, C0.LotNo)
-                                    = TRY_CONVERT(BIGINT, R.WarehouseLotNo)
-                            )
-                        )
+                        TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
+                        AND TRY_CONVERT(BIGINT, R.LocalLotNo) IS NOT NULL
+                        AND TRY_CONVERT(BIGINT, C0.LotNo)
+                            = TRY_CONVERT(BIGINT, R.LocalLotNo)
                     )
-
-                    /* Some historical cache rows store the actual SAP lot
-                       in ReceivedLotNo instead of LotNo. */
                     OR
                     (
-                        NULLIF(
-                            LTRIM(RTRIM(C0.ReceivedLotNo)),
-                            ''
-                        ) IS NOT NULL
-
+                        NULLIF(LTRIM(RTRIM(C0.ReceivedLotNo)), '') IS NOT NULL
                         AND
                         (
                             LTRIM(RTRIM(C0.ReceivedLotNo))
                                 = LTRIM(RTRIM(R.LocalLotNo))
-
-                            OR LTRIM(RTRIM(C0.ReceivedLotNo))
-                                = LTRIM(RTRIM(R.WarehouseLotNo))
-
                             OR
                             (
                                 TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
                                 AND TRY_CONVERT(BIGINT, R.LocalLotNo) IS NOT NULL
                                 AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo)
                                     = TRY_CONVERT(BIGINT, R.LocalLotNo)
-                            )
-
-                            OR
-                            (
-                                TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
-                                AND TRY_CONVERT(BIGINT, R.WarehouseLotNo) IS NOT NULL
-                                AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo)
-                                    = TRY_CONVERT(BIGINT, R.WarehouseLotNo)
                             )
                         )
                     )
-
-                    /* Keep the blank-lot aggregate only as the last fallback. */
-                    OR
-                    NULLIF(
-                        LTRIM(RTRIM(C0.LotNo)),
-                        ''
-                    ) IS NULL
-                )
-
-                {$cacheDateCondition}
-
+              )
+              {$cacheDateCondition}
             ORDER BY
                 CASE
-                    /* First choice: the cache request lot itself matches. */
                     WHEN
-                        NULLIF(LTRIM(RTRIM(C0.LotNo)), '') IS NOT NULL
-                        AND
+                        LTRIM(RTRIM(C0.LotNo)) = LTRIM(RTRIM(R.LocalLotNo))
+                        OR
                         (
-                            LTRIM(RTRIM(C0.LotNo))
-                                = LTRIM(RTRIM(R.LocalLotNo))
-                            OR LTRIM(RTRIM(C0.LotNo))
-                                = LTRIM(RTRIM(R.WarehouseLotNo))
-                            OR
-                            (
-                                TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
-                                AND TRY_CONVERT(BIGINT, R.LocalLotNo) IS NOT NULL
-                                AND TRY_CONVERT(BIGINT, C0.LotNo)
-                                    = TRY_CONVERT(BIGINT, R.LocalLotNo)
-                            )
-                            OR
-                            (
-                                TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
-                                AND TRY_CONVERT(BIGINT, R.WarehouseLotNo) IS NOT NULL
-                                AND TRY_CONVERT(BIGINT, C0.LotNo)
-                                    = TRY_CONVERT(BIGINT, R.WarehouseLotNo)
-                            )
+                            TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
+                            AND TRY_CONVERT(BIGINT, R.LocalLotNo) IS NOT NULL
+                            AND TRY_CONVERT(BIGINT, C0.LotNo)
+                                = TRY_CONVERT(BIGINT, R.LocalLotNo)
                         )
                         THEN 0
-
-                    /* Second choice: SAP's returned lot matches. */
                     WHEN
                         NULLIF(LTRIM(RTRIM(C0.ReceivedLotNo)), '') IS NOT NULL
                         AND
                         (
                             LTRIM(RTRIM(C0.ReceivedLotNo))
                                 = LTRIM(RTRIM(R.LocalLotNo))
-                            OR LTRIM(RTRIM(C0.ReceivedLotNo))
-                                = LTRIM(RTRIM(R.WarehouseLotNo))
                             OR
                             (
                                 TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
@@ -1182,35 +1077,18 @@ if ($hasCache) {
                                 AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo)
                                     = TRY_CONVERT(BIGINT, R.LocalLotNo)
                             )
-                            OR
-                            (
-                                TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
-                                AND TRY_CONVERT(BIGINT, R.WarehouseLotNo) IS NOT NULL
-                                AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo)
-                                    = TRY_CONVERT(BIGINT, R.WarehouseLotNo)
-                            )
                         )
                         THEN 1
-
-                    /* Last safe fallback: a base-key/blank-lot cache row. */
-                    WHEN NULLIF(LTRIM(RTRIM(C0.LotNo)), '') IS NULL
-                        THEN 2
-
-                    ELSE 3
+                    ELSE 2
                 END,
-
                 CASE
                     WHEN ISNULL(
-                        TRY_CONVERT(
-                            DECIMAL(18, 3),
-                            C0.ReceivedQty
-                        ),
+                        TRY_CONVERT(DECIMAL(18, 3), C0.ReceivedQty),
                         0
                     ) > 0
                         THEN 0
                     ELSE 1
                 END,
-
                 {$cacheReceivedAtOrder}
                 {$cacheLastSyncedOrder}
         ) C
@@ -2468,6 +2346,13 @@ $showingTo = min(
             white-space: nowrap;
         }
 
+        .verify-table .source-transfer-cell {
+            min-width: 280px;
+            max-width: 420px;
+            white-space: normal;
+            line-height: 1.35;
+        }
+
         @media (max-width: 900px) {
             .main-content {
                 width: 100%;
@@ -3100,6 +2985,7 @@ $showingTo = min(
                             <th>GRPO Lot</th>
                             <th>WH Lot</th>
                             <th>SAP Lot</th>
+                            <th>SAP Source Transfer</th>
                             <th>Received By</th>
                             <th>Received At</th>
                             <th>Cache Synced</th>
@@ -3177,11 +3063,11 @@ function verifySetLoading(requestNo) {
     document.getElementById('receiveVerifyTitle').textContent =
         'Receive Verification';
     document.getElementById('receiveVerifySubtitle').textContent =
-        requestNo + ' | checking local ScanPlus cache...';
+        requestNo + ' | validating exact GRPO lot and SAP transfer source...';
     document.getElementById('receiveVerifyStatus').className =
         'alert alert-light border';
     document.getElementById('receiveVerifyStatus').textContent =
-        'Loading receive verification from local cache...';
+        'Loading request status and SAP transfer source from local cache...';
     document.getElementById('receiveVerifySummary').innerHTML = '';
     document.getElementById('receiveVerifyRows').innerHTML = '';
     document.getElementById('receiveVerifyTableWrap')
@@ -3207,13 +3093,19 @@ function verifyRenderSummary(summary) {
 
 function verifyRenderRows(lines) {
     if (!Array.isArray(lines) || lines.length === 0) {
-        return '<tr><td colspan="11" class="empty-row">No lines found.</td></tr>';
+        return '<tr><td colspan="12" class="empty-row">No lines found.</td></tr>';
     }
 
     return lines.map(function (line) {
         const status = line.verification_status || '';
         const statusClass = verifyStatusClass(status);
-        const sapLot = line.cache_received_lot_no || line.cache_lot_no || '';
+        const isReceived = status === 'RECEIVED' || status === 'PARTIAL_RECEIVED';
+        const sapLot = isReceived
+            ? (line.cache_received_lot_no || line.cache_lot_no || '')
+            : '';
+        const sourceTransfer = isReceived
+            ? (line.source_transfer_details || '')
+            : '';
 
         return '<tr>' +
             '<td><span class="status-pill status-' + statusClass + '">' +
@@ -3226,6 +3118,7 @@ function verifyRenderRows(lines) {
             '<td>' + verifyEscape(line.lot_no) + '</td>' +
             '<td>' + verifyEscape(line.warehouse_lot_no) + '</td>' +
             '<td>' + verifyEscape(sapLot) + '</td>' +
+            '<td class="source-transfer-cell">' + verifyEscape(sourceTransfer) + '</td>' +
             '<td>' + verifyEscape(line.cache_received_by) + '</td>' +
             '<td>' + verifyEscape(line.cache_received_at) + '</td>' +
             '<td>' + verifyEscape(line.cache_last_synced_at) + '</td>' +

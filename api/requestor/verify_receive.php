@@ -109,16 +109,10 @@ $cacheReceivedLotExpr = $cacheHasReceivedLot
 $cacheReceivedLotMatchSql = $cacheHasReceivedLot
     ? "
                 OR LTRIM(RTRIM(C0.ReceivedLotNo)) = LTRIM(RTRIM(B.LotNo))
-                OR LTRIM(RTRIM(C0.ReceivedLotNo)) = LTRIM(RTRIM(B.WarehouseLotNo))
                 OR (
                     TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
                     AND TRY_CONVERT(BIGINT, B.LotNo) IS NOT NULL
                     AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo) = TRY_CONVERT(BIGINT, B.LotNo)
-                )
-                OR (
-                    TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
-                    AND TRY_CONVERT(BIGINT, B.WarehouseLotNo) IS NOT NULL
-                    AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo) = TRY_CONVERT(BIGINT, B.WarehouseLotNo)
                 )"
     : '';
 
@@ -126,16 +120,11 @@ $cacheReceivedLotOrderSql = $cacheHasReceivedLot
     ? "
                 WHEN NULLIF(LTRIM(RTRIM(C0.ReceivedLotNo)), '') IS NOT NULL
                      AND (
-                        LTRIM(RTRIM(C0.ReceivedLotNo)) IN (LTRIM(RTRIM(B.LotNo)), LTRIM(RTRIM(B.WarehouseLotNo)))
+                        LTRIM(RTRIM(C0.ReceivedLotNo)) = LTRIM(RTRIM(B.LotNo))
                         OR (
                             TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
                             AND TRY_CONVERT(BIGINT, B.LotNo) IS NOT NULL
                             AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo) = TRY_CONVERT(BIGINT, B.LotNo)
-                        )
-                        OR (
-                            TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
-                            AND TRY_CONVERT(BIGINT, B.WarehouseLotNo) IS NOT NULL
-                            AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo) = TRY_CONVERT(BIGINT, B.WarehouseLotNo)
                         )
                      )
                     THEN 1"
@@ -210,6 +199,105 @@ if ($hasLineReceiveCache) {
     ";
 }
 
+
+$hasReceiveAllocationSource = verify_receive_has_table(
+    $conn,
+    'WarehouseIssueRequestLineReceiveAllocation'
+) && verify_receive_has_column(
+    $conn,
+    'WarehouseIssueRequestLineReceiveAllocation',
+    'RequestLineID'
+) && verify_receive_has_column(
+    $conn,
+    'WarehouseIssueRequestLineReceiveAllocation',
+    'SAPTransferDocEntry'
+) && verify_receive_has_column(
+    $conn,
+    'WarehouseIssueRequestLineReceiveAllocation',
+    'GRPOLotNo'
+);
+
+$receiveSourceApply = "
+    OUTER APPLY
+    (
+        SELECT
+            CAST(0 AS INT) AS SourceTransferCount,
+            CAST(NULL AS DECIMAL(18,3)) AS SourceAllocatedQty,
+            CAST(NULL AS NVARCHAR(MAX)) AS SourceTransferDetails,
+            CAST(NULL AS NVARCHAR(80)) AS SourceMatchMethod,
+            CAST(NULL AS DATETIME) AS SourceLatestReceivedAt
+    ) S
+";
+
+if ($hasReceiveAllocationSource) {
+    $receiveSourceApply = "
+        OUTER APPLY
+        (
+            SELECT
+                COUNT(*) AS SourceTransferCount,
+                SUM(TRY_CONVERT(DECIMAL(18,3), A.AllocatedQty)) AS SourceAllocatedQty,
+                MAX(A.MatchMethod) AS SourceMatchMethod,
+                MAX(A.ReceivedAt) AS SourceLatestReceivedAt,
+                STUFF
+                (
+                    (
+                        SELECT
+                            '; IT ' + COALESCE(
+                                CONVERT(NVARCHAR(30), A2.SAPTransferDocNum),
+                                CONVERT(NVARCHAR(30), A2.SAPTransferDocEntry)
+                            )
+                            + ' | Qty ' + CONVERT(
+                                NVARCHAR(40),
+                                CAST(A2.AllocatedQty AS DECIMAL(18,3))
+                            )
+                            + ' | GRPO Lot ' + ISNULL(A2.GRPOLotNo, '')
+                            + CASE
+                                WHEN NULLIF(LTRIM(RTRIM(A2.ReceivedLotNo)), '') IS NOT NULL
+                                    THEN ' | SAP Lot ' + A2.ReceivedLotNo
+                                ELSE ''
+                              END
+                            + CASE
+                                WHEN A2.ReceivedAt IS NOT NULL
+                                    THEN ' | ' + CONVERT(NVARCHAR(19), A2.ReceivedAt, 120)
+                                ELSE ''
+                              END
+                        FROM dbo.WarehouseIssueRequestLineReceiveAllocation A2
+                        WHERE A2.RequestLineID = B.RequestLineID
+                          AND
+                          (
+                              LTRIM(RTRIM(A2.GRPOLotNo)) = LTRIM(RTRIM(B.LotNo))
+                              OR
+                              (
+                                  TRY_CONVERT(BIGINT, A2.GRPOLotNo) IS NOT NULL
+                                  AND TRY_CONVERT(BIGINT, B.LotNo) IS NOT NULL
+                                  AND TRY_CONVERT(BIGINT, A2.GRPOLotNo)
+                                      = TRY_CONVERT(BIGINT, B.LotNo)
+                              )
+                          )
+                        ORDER BY A2.ReceivedAt, A2.SAPTransferDocEntry, A2.SAPTransferLineNum
+                        FOR XML PATH(''), TYPE
+                    ).value('.', 'NVARCHAR(MAX)'),
+                    1,
+                    2,
+                    ''
+                ) AS SourceTransferDetails
+            FROM dbo.WarehouseIssueRequestLineReceiveAllocation A
+            WHERE A.RequestLineID = B.RequestLineID
+              AND
+              (
+                  LTRIM(RTRIM(A.GRPOLotNo)) = LTRIM(RTRIM(B.LotNo))
+                  OR
+                  (
+                      TRY_CONVERT(BIGINT, A.GRPOLotNo) IS NOT NULL
+                      AND TRY_CONVERT(BIGINT, B.LotNo) IS NOT NULL
+                      AND TRY_CONVERT(BIGINT, A.GRPOLotNo)
+                          = TRY_CONVERT(BIGINT, B.LotNo)
+                  )
+              )
+        ) S
+    ";
+}
+
 $user = current_user();
 $role = strtolower(trim((string)($user['role'] ?? $user['RoleName'] ?? '')));
 $where = ['H.RequestNo = ?'];
@@ -280,7 +368,12 @@ $rows = fetch_all(
             WHEN ISNULL(M.IsCurrentMatch, 0) = 1 THEN M.ReceivedAt
             ELSE NULL
         END AS CacheReceivedAt,
-        COALESCE(M.LastSyncedAt, C.LastSyncedAt) AS CacheLastSyncedAt
+        COALESCE(M.LastSyncedAt, C.LastSyncedAt) AS CacheLastSyncedAt,
+        ISNULL(S.SourceTransferCount, 0) AS SourceTransferCount,
+        S.SourceAllocatedQty,
+        S.SourceTransferDetails,
+        S.SourceMatchMethod,
+        S.SourceLatestReceivedAt
     FROM RequestLines B
     OUTER APPLY
     (
@@ -297,24 +390,14 @@ $rows = fetch_all(
         WHERE C0.SAP_IT_DocEntry = B.SAP_IT_DocEntry
           AND ISNULL(C0.SAP_IT_LineNum, -1) = ISNULL(B.SAP_IT_LineNum, -1)
           AND C0.ItemCode = B.ItemCode
+          AND NULLIF(LTRIM(RTRIM(B.LotNo)), '') IS NOT NULL
           AND
           (
-                (
-                    NULLIF(LTRIM(RTRIM(B.LotNo)), '') IS NULL
-                    AND NULLIF(LTRIM(RTRIM(B.WarehouseLotNo)), '') IS NULL
-                )
-                OR NULLIF(LTRIM(RTRIM(C0.LotNo)), '') IS NULL
-                OR LTRIM(RTRIM(C0.LotNo)) = LTRIM(RTRIM(B.LotNo))
-                OR LTRIM(RTRIM(C0.LotNo)) = LTRIM(RTRIM(B.WarehouseLotNo))
+                LTRIM(RTRIM(C0.LotNo)) = LTRIM(RTRIM(B.LotNo))
                 OR (
                     TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
                     AND TRY_CONVERT(BIGINT, B.LotNo) IS NOT NULL
                     AND TRY_CONVERT(BIGINT, C0.LotNo) = TRY_CONVERT(BIGINT, B.LotNo)
-                )
-                OR (
-                    TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
-                    AND TRY_CONVERT(BIGINT, B.WarehouseLotNo) IS NOT NULL
-                    AND TRY_CONVERT(BIGINT, C0.LotNo) = TRY_CONVERT(BIGINT, B.WarehouseLotNo)
                 )
                 {$cacheReceivedLotMatchSql}
           )
@@ -322,28 +405,22 @@ $rows = fetch_all(
             CASE
                 WHEN NULLIF(LTRIM(RTRIM(C0.LotNo)), '') IS NOT NULL
                      AND (
-                        LTRIM(RTRIM(C0.LotNo)) IN (LTRIM(RTRIM(B.LotNo)), LTRIM(RTRIM(B.WarehouseLotNo)))
+                        LTRIM(RTRIM(C0.LotNo)) = LTRIM(RTRIM(B.LotNo))
                         OR (
                             TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
                             AND TRY_CONVERT(BIGINT, B.LotNo) IS NOT NULL
                             AND TRY_CONVERT(BIGINT, C0.LotNo) = TRY_CONVERT(BIGINT, B.LotNo)
                         )
-                        OR (
-                            TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
-                            AND TRY_CONVERT(BIGINT, B.WarehouseLotNo) IS NOT NULL
-                            AND TRY_CONVERT(BIGINT, C0.LotNo) = TRY_CONVERT(BIGINT, B.WarehouseLotNo)
-                        )
                      )
                     THEN 0
                 {$cacheReceivedLotOrderSql}
-                WHEN NULLIF(LTRIM(RTRIM(C0.LotNo)), '') IS NULL
-                    THEN 2
                 ELSE 3
             END,
             CASE WHEN ISNULL(TRY_CONVERT(DECIMAL(18, 3), C0.ReceivedQty), 0) > 0 THEN 0 ELSE 1 END,
             {$cacheLastSyncedOrderExpr} DESC
     ) C
     {$lineReceiveApply}
+    {$receiveSourceApply}
     ORDER BY B.RequestLineID ASC
     ",
     $params
@@ -399,6 +476,11 @@ foreach ($rows as $row) {
         'cache_received_by' => (string)($row['CacheReceivedBy'] ?? ''),
         'cache_received_at' => verify_receive_cell($row['CacheReceivedAt'] ?? ''),
         'cache_last_synced_at' => verify_receive_cell($row['CacheLastSyncedAt'] ?? ''),
+        'source_transfer_count' => (int)($row['SourceTransferCount'] ?? 0),
+        'source_allocated_qty' => verify_receive_qty($row['SourceAllocatedQty'] ?? 0),
+        'source_transfer_details' => (string)($row['SourceTransferDetails'] ?? ''),
+        'source_match_method' => (string)($row['SourceMatchMethod'] ?? ''),
+        'source_latest_received_at' => verify_receive_cell($row['SourceLatestReceivedAt'] ?? ''),
         'verification_status' => $status
     ];
 }
@@ -412,6 +494,6 @@ verify_receive_json([
     'latest_scanplus_cache_sync' => verify_receive_cell($latestCacheSync['LatestSync'] ?? ''),
     'summary' => $summary,
     'lines' => $lines,
-    'source' => 'WHPOKAYOKE request-line receive cache and dbo.RawmatTraceScanPlusCache only; no browser SAP query was executed.'
+    'source' => 'Validated by exact monthly ITR line, item, and GRPO lot. Assigned SAP Inventory Transfer source is shown for received lines; no browser SAP query was executed.'
 ]);
 ?>
