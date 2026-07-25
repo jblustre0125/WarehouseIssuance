@@ -54,25 +54,14 @@ function verify_receive_status(array $line)
 {
     $issuedQty = verify_receive_qty($line['IssuedQty'] ?? 0);
     $receivedQty = verify_receive_qty($line['CacheReceivedQty'] ?? 0);
-    $cacheStatus = strtoupper(trim((string)($line['CacheStatus'] ?? '')));
-    $hasCacheRow = (int)($line['HasCacheRow'] ?? 0) === 1;
 
-    /* A request line that was never issued must never borrow a SAP receipt. */
-    if ($issuedQty <= 0) {
-        return 'NOT_ISSUED_REQUEST_LINE';
-    }
-
-    if (in_array($cacheStatus, [
-        'NOT_ISSUED_REQUEST_LINE',
-        'NOT_ALLOCATED_TO_REQUEST_LINE',
-        'LOT_REQUIRED_FOR_ALLOCATION',
-        'AMBIGUOUS_REQUEST_MATCH',
-        'ISSUED_AFTER_SAP_RECEIPT'
-    ], true)) {
-        return $cacheStatus;
-    }
-
-    if ($receivedQty > 0 && $receivedQty + 0.0005 >= $issuedQty) {
+    /*
+     * User-facing report status is intentionally limited to three values:
+     * RECEIVED, PARTIAL_RECEIVED, or ISSUED.
+     * Internal allocation/debug statuses remain stored in the cache but are
+     * not exposed in the Requestor report.
+     */
+    if ($receivedQty > 0 && $issuedQty > 0 && $receivedQty + 0.0005 >= $issuedQty) {
         return 'RECEIVED';
     }
 
@@ -80,19 +69,7 @@ function verify_receive_status(array $line)
         return 'PARTIAL_RECEIVED';
     }
 
-    if (!$hasCacheRow) {
-        return 'CACHE_MISSING';
-    }
-
-    if ($cacheStatus === 'NOT RECEIVED IN SAP') {
-        return 'NOT_RECEIVED_IN_SAP_CACHE';
-    }
-
-    if ($cacheStatus === 'OLD_CACHE_RECEIVE') {
-        return 'NOT_CONFIRMED';
-    }
-
-    return 'NOT_CONFIRMED';
+    return 'ISSUED';
 }
 
 $requestNo = trim((string)($_GET['request_no'] ?? $_GET['request'] ?? ''));
@@ -392,14 +369,7 @@ $lines = [];
 $summary = [
     'received' => 0,
     'partial_received' => 0,
-    'not_confirmed' => 0,
-    'cache_missing' => 0,
-    'not_received_in_sap_cache' => 0,
-    'old_cache_receive' => 0,
-    'not_issued_request_line' => 0,
-    'not_allocated_to_request_line' => 0,
-    'lot_required_for_allocation' => 0,
-    'ambiguous_request_match' => 0,
+    'issued' => 0,
 ];
 
 foreach ($rows as $row) {

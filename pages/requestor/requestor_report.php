@@ -1497,15 +1497,21 @@ SELECT
                 'RECEIVED'
             )
 
+        /*
+         * Allocation/debug states are internal. For the user-facing report,
+         * a line with no allocated received quantity remains ISSUED.
+         */
         WHEN UPPER(LTRIM(RTRIM(ISNULL(M.MatchStatus, '')))) IN
             (
                 'NOT_ISSUED_REQUEST_LINE',
                 'NOT_ALLOCATED_TO_REQUEST_LINE',
                 'LOT_REQUIRED_FOR_ALLOCATION',
                 'AMBIGUOUS_REQUEST_MATCH',
-                'ISSUED_AFTER_SAP_RECEIPT'
+                'ISSUED_AFTER_SAP_RECEIPT',
+                'NOT_CONFIRMED',
+                'NOT_RECEIVED_IN_SAP_CACHE'
             )
-            THEN M.MatchStatus
+            THEN 'ISSUED'
 
         WHEN Q.CacheReceivedQty > 0
             THEN
@@ -1533,11 +1539,8 @@ SELECT
                     ELSE 'SAP_RECEIVED'
                 END
 
-        WHEN UPPER(LTRIM(RTRIM(ISNULL(COALESCE(M.MatchStatus, M.ScanStatus), ''))))
-                = 'NOT RECEIVED IN SAP'
-            THEN 'NOT RECEIVED IN SAP'
-
-        ELSE 'NOT CONFIRMED'
+        /* No request-specific received quantity yet: still ISSUED. */
+        ELSE 'ISSUED'
     END AS ReceiveStatus,
 
     CASE
@@ -3186,17 +3189,10 @@ function verifySetLoading(requestNo) {
 }
 
 function verifyRenderSummary(summary) {
-        const labels = {
+    const labels = {
         received: 'Received',
         partial_received: 'Partial',
-        not_confirmed: 'Not Confirmed',
-        cache_missing: 'Cache Missing',
-        not_received_in_sap_cache: 'Not Received',
-        old_cache_receive: 'Old Cache',
-        not_issued_request_line: 'Not Issued',
-        not_allocated_to_request_line: 'Not Allocated',
-        lot_required_for_allocation: 'Lot Required',
-        ambiguous_request_match: 'Ambiguous'
+        issued: 'Issued'
     };
 
     return Object.keys(labels).map(function (key) {
