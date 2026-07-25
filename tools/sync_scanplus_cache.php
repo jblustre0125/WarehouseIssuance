@@ -215,6 +215,163 @@ function sync_add_refs(array &$refs, array &$seen, array $rows): void
     }
 }
 
+/**
+ * Rebuild one authoritative reference per local RequestLineID.
+ *
+ * IssuanceTransactions may contain many rows for one request line. Building
+ * refs from those rows first can leave duplicate or incomplete in-memory
+ * references. This pass reloads the canonical request-line fields and the
+ * latest actual issuance time directly from WHPOKAYOKE, then collapses every
+ * local request line to exactly one reference before allocation sorting.
+ */
+function sync_canonicalize_request_line_refs($conn, array $refs): array
+{
+    if (empty($refs)
+        || !sync_has_table($conn, 'WarehouseIssueRequestHeader')
+        || !sync_has_table($conn, 'WarehouseIssueRequestLines')) {
+        return $refs;
+    }
+
+    $requestLineIds = [];
+
+    foreach ($refs as $ref) {
+        $requestLineId = (int)($ref['local_request_line_id'] ?? 0);
+
+        if ($requestLineId > 0) {
+            $requestLineIds[$requestLineId] = true;
+        }
+    }
+
+    if (empty($requestLineIds)) {
+        return $refs;
+    }
+
+    $issuedQtyExpr = sync_has_column($conn, 'WarehouseIssueRequestLines', 'IssuedQty')
+        ? 'L.IssuedQty'
+        : 'CAST(NULL AS DECIMAL(18,3))';
+    $warehouseLotExpr = sync_has_column($conn, 'WarehouseIssueRequestLines', 'WarehouseLotNo')
+        ? 'L.WarehouseLotNo'
+        : 'CAST(NULL AS NVARCHAR(100))';
+    $statusExpr = sync_has_column($conn, 'WarehouseIssueRequestLines', 'Status')
+        ? 'L.Status'
+        : 'CAST(NULL AS NVARCHAR(50))';
+
+    $issueApply = '';
+    $latestIssuedAtExpr = 'CAST(NULL AS DATETIME)';
+
+    if (sync_has_table($conn, 'IssuanceTransactions')
+        && sync_has_column($conn, 'IssuanceTransactions', 'IssueRequestLineID')
+        && sync_has_column($conn, 'IssuanceTransactions', 'IssuedAt')) {
+        $issueItemCondition = sync_has_column($conn, 'IssuanceTransactions', 'ItemCode')
+            ? 'AND (ITX.ItemCode = L.ItemCode OR ITX.ItemCode IS NULL)'
+            : '';
+        $issueQtyCondition = sync_has_column($conn, 'IssuanceTransactions', 'Quantity')
+            ? 'AND ISNULL(TRY_CONVERT(DECIMAL(18,3), ITX.Quantity), 0) > 0'
+            : '';
+
+        $issueApply = "
+            OUTER APPLY
+            (
+                SELECT MAX(ITX.IssuedAt) AS LatestIssuedAt
+                FROM dbo.IssuanceTransactions ITX
+                WHERE ITX.IssueRequestLineID = L.RequestLineID
+                  {$issueItemCondition}
+                  {$issueQtyCondition}
+            ) IX";
+        $latestIssuedAtExpr = 'IX.LatestIssuedAt';
+    }
+
+    $metadataById = [];
+    $ids = array_keys($requestLineIds);
+
+    foreach (array_chunk($ids, 500) as $idChunk) {
+        $placeholders = implode(',', array_fill(0, count($idChunk), '?'));
+        $rows = sync_fetch_all(
+            $conn,
+            "SELECT
+                L.RequestLineID,
+                H.RequestNo,
+                H.RequestedAt,
+                COALESCE(NULLIF(L.SAP_IT_DocEntry, 0), H.SAP_IT_DocEntry) AS SAP_IT_DocEntry,
+                L.SAP_IT_LineNum,
+                L.ItemCode,
+                L.LotNo,
+                {$issuedQtyExpr} AS IssuedQty,
+                {$warehouseLotExpr} AS WarehouseLotNo,
+                {$statusExpr} AS Status,
+                {$latestIssuedAtExpr} AS LatestIssuedAt
+             FROM dbo.WarehouseIssueRequestLines L
+             INNER JOIN dbo.WarehouseIssueRequestHeader H
+                ON H.RequestID = L.RequestID
+             {$issueApply}
+             WHERE L.RequestLineID IN ({$placeholders})",
+            array_values($idChunk)
+        );
+
+        foreach ($rows as $row) {
+            $requestLineId = (int)($row['RequestLineID'] ?? 0);
+
+            if ($requestLineId <= 0) {
+                continue;
+            }
+
+            $metadataById[$requestLineId] = [
+                'doc_entry' => (int)($row['SAP_IT_DocEntry'] ?? 0),
+                'line_num' => ($row['SAP_IT_LineNum'] === null || trim((string)$row['SAP_IT_LineNum']) === '')
+                    ? null
+                    : (int)$row['SAP_IT_LineNum'],
+                'item_code' => trim((string)($row['ItemCode'] ?? '')),
+                'lot_no' => trim((string)($row['LotNo'] ?? '')),
+                'local_issued_qty' => is_numeric($row['IssuedQty'] ?? null)
+                    ? (float)$row['IssuedQty']
+                    : null,
+                'local_request_line_id' => $requestLineId,
+                'local_request_no' => trim((string)($row['RequestNo'] ?? '')),
+                'local_requested_at' => $row['RequestedAt'] ?? null,
+                'local_issued_at' => $row['LatestIssuedAt'] ?? null,
+                'local_warehouse_lot_no' => trim((string)($row['WarehouseLotNo'] ?? '')),
+                'local_status' => trim((string)($row['Status'] ?? '')),
+            ];
+        }
+    }
+
+    $result = [];
+    $addedRequestLineIds = [];
+    $seenOtherRefs = [];
+
+    foreach ($refs as $ref) {
+        $requestLineId = (int)($ref['local_request_line_id'] ?? 0);
+
+        if ($requestLineId > 0) {
+            if (isset($addedRequestLineIds[$requestLineId])) {
+                continue;
+            }
+
+            $canonical = $metadataById[$requestLineId] ?? $ref;
+
+            if ((int)($canonical['doc_entry'] ?? 0) <= 0
+                || trim((string)($canonical['item_code'] ?? '')) === '') {
+                continue;
+            }
+
+            $addedRequestLineIds[$requestLineId] = true;
+            $result[] = $canonical;
+            continue;
+        }
+
+        $otherKey = sync_ref_key($ref);
+
+        if ($otherKey === '' || isset($seenOtherRefs[$otherKey])) {
+            continue;
+        }
+
+        $seenOtherRefs[$otherKey] = true;
+        $result[] = $ref;
+    }
+
+    return $result;
+}
+
 function sync_begin_log($conn): ?int
 {
     if (!sync_has_table($conn, 'SapCacheSyncLog')) {
@@ -826,6 +983,14 @@ try {
     if (empty($refs)) {
         throw new RuntimeException('No local ITR/item references were found for the selected lookback period.');
     }
+
+    $refs = sync_canonicalize_request_line_refs($whp, $refs);
+
+    if (empty($refs)) {
+        throw new RuntimeException('No canonical local request-line references remained after enrichment.');
+    }
+
+    sync_log('Canonical references after request-line enrichment: ' . count($refs));
 
     usort($refs, static function (array $a, array $b): int {
         $keyCompare = strcmp(
