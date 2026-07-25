@@ -1454,14 +1454,14 @@ SELECT
                 ),
                 CASE
                     WHEN Q.CacheReceivedQty > 0
-                        THEN COALESCE(M.BarcodeUser, C.BarcodeUser)
+                        THEN M.BarcodeUser
                     ELSE NULL
                 END,
                 ''
             )
 
         WHEN Q.CacheReceivedQty > 0
-            THEN COALESCE(M.BarcodeUser, C.BarcodeUser)
+            THEN M.BarcodeUser
 
         ELSE ''
     END AS ScannedBy,
@@ -1480,8 +1480,8 @@ SELECT
 
         WHEN
             Q.CacheReceivedQty > 0
-            AND COALESCE(M.ReceivedAt, C.ReceivedAt) IS NOT NULL
-            THEN COALESCE(M.ReceivedAt, C.ReceivedAt)
+            AND M.ReceivedAt IS NOT NULL
+            THEN M.ReceivedAt
 
         ELSE NULL
     END AS ScannedAt,
@@ -1497,16 +1497,25 @@ SELECT
                 'RECEIVED'
             )
 
+        WHEN UPPER(LTRIM(RTRIM(ISNULL(M.MatchStatus, '')))) IN
+            (
+                'NOT_ISSUED_REQUEST_LINE',
+                'NOT_ALLOCATED_TO_REQUEST_LINE',
+                'LOT_REQUIRED_FOR_ALLOCATION',
+                'AMBIGUOUS_REQUEST_MATCH'
+            )
+            THEN M.MatchStatus
+
         WHEN Q.CacheReceivedQty > 0
             THEN
                 CASE
-                    WHEN UPPER(LTRIM(RTRIM(ISNULL(COALESCE(M.ScanStatus, C.ScanStatus), '')))) IN
+                    WHEN UPPER(LTRIM(RTRIM(ISNULL(COALESCE(M.MatchStatus, M.ScanStatus), '')))) IN
                     (
                         'CLOSED',
                         'COMPLETED',
                         'MATCHED'
                     )
-                        THEN COALESCE(M.ScanStatus, C.ScanStatus)
+                        THEN COALESCE(M.MatchStatus, M.ScanStatus)
 
                     WHEN
                         COALESCE(
@@ -1523,15 +1532,9 @@ SELECT
                     ELSE 'SAP_RECEIVED'
                 END
 
-        WHEN UPPER(LTRIM(RTRIM(ISNULL(COALESCE(M.ScanStatus, C.ScanStatus), ''))))
+        WHEN UPPER(LTRIM(RTRIM(ISNULL(COALESCE(M.MatchStatus, M.ScanStatus), ''))))
                 = 'NOT RECEIVED IN SAP'
             THEN 'NOT RECEIVED IN SAP'
-
-        WHEN UPPER(LTRIM(RTRIM(ISNULL(M.MatchStatus, '')))) IN
-            (
-                'NOT_ALLOCATED_TO_REQUEST_LINE'
-            )
-            THEN M.MatchStatus
 
         ELSE 'NOT CONFIRMED'
     END AS ReceiveStatus,
@@ -1564,7 +1567,7 @@ SELECT
             AND UPPER(
                 LTRIM(
                     RTRIM(
-                        ISNULL(C.ScanStatus, '')
+                        ISNULL(COALESCE(M.MatchStatus, M.ScanStatus), '')
                     )
                 )
             ) IN
@@ -1573,13 +1576,13 @@ SELECT
                 'COMPLETED',
                 'MATCHED'
             )
-            THEN C.ReceivedAt
+            THEN M.ReceivedAt
 
         ELSE NULL
     END AS ClosedAt,
 
     B.Remarks,
-    C.LastSyncedAt AS CacheLastSyncedAt
+    COALESCE(M.LastSyncedAt, C.LastSyncedAt) AS CacheLastSyncedAt
 
 FROM PagedRows B
 
@@ -1696,27 +1699,15 @@ CROSS APPLY
 CROSS APPLY
 (
     SELECT
-        COALESCE(
-            CASE
-                WHEN ISNULL(M.IsCurrentMatch, 0) = 1
-                    THEN TRY_CONVERT(
-                        DECIMAL(18, 3),
-                        M.ReceivedQty
-                    )
-                ELSE NULL
-            END,
-            CASE
-                WHEN UPPER(LTRIM(RTRIM(ISNULL(M.MatchStatus, '')))) IN
-                    (
-                        'NOT_ALLOCATED_TO_REQUEST_LINE'
-                    )
-                    THEN NULL
-                ELSE TRY_CONVERT(
+        CASE
+            WHEN ISNULL(M.IsCurrentMatch, 0) = 1
+                 AND ISNULL(R.BaseIssuedQty, 0) > 0
+                THEN TRY_CONVERT(
                     DECIMAL(18, 3),
-                    C.ReceivedQty
+                    M.ReceivedQty
                 )
-            END
-        ) AS SourceReceivedQty
+            ELSE NULL
+        END AS SourceReceivedQty
 ) SQ
 
 CROSS APPLY
@@ -2377,7 +2368,10 @@ $showingTo = min(
             color: #9a3412;
         }
 
-        .status-not_allocated_to_request_line {
+        .status-not_allocated_to_request_line,
+        .status-not_issued_request_line,
+        .status-lot_required_for_allocation,
+        .status-ambiguous_request_match {
             background: #f3f4f6;
             color: #4b5563;
         }
@@ -3196,7 +3190,11 @@ function verifyRenderSummary(summary) {
         not_confirmed: 'Not Confirmed',
         cache_missing: 'Cache Missing',
         not_received_in_sap_cache: 'Not Received',
-        old_cache_receive: 'Old Cache'
+        old_cache_receive: 'Old Cache',
+        not_issued_request_line: 'Not Issued',
+        not_allocated_to_request_line: 'Not Allocated',
+        lot_required_for_allocation: 'Lot Required',
+        ambiguous_request_match: 'Ambiguous'
     };
 
     return Object.keys(labels).map(function (key) {

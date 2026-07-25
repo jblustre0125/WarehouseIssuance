@@ -104,11 +104,8 @@ function sync_ref_key(array $ref): string
     $requestLineId = (int)($ref['local_request_line_id'] ?? 0);
 
     if ($requestLineId > 0) {
-        return 'request-line|' . $requestLineId . '|'
-            . (int)$ref['doc_entry'] . '|'
-            . (($ref['line_num'] === null || $ref['line_num'] === '') ? '-1' : (int)$ref['line_num']) . '|'
-            . strtoupper(trim((string)$ref['item_code'])) . '|'
-            . sync_normalize_lot($ref['lot_no'] ?? '');
+        /* RequestLineID is the local ground-truth identity. */
+        return 'request-line|' . $requestLineId;
     }
 
     return (int)$ref['doc_entry'] . '|'
@@ -157,6 +154,9 @@ function sync_add_refs(array &$refs, array &$seen, array $rows): void
         if (array_key_exists('RequestedAt', $row)) {
             $ref['local_requested_at'] = $row['RequestedAt'];
         }
+        if (array_key_exists('IssuedAt', $row)) {
+            $ref['local_issued_at'] = $row['IssuedAt'];
+        }
         if (array_key_exists('WarehouseLotNo', $row)) {
             $ref['local_warehouse_lot_no'] = trim((string)($row['WarehouseLotNo'] ?? ''));
         }
@@ -168,9 +168,41 @@ function sync_add_refs(array &$refs, array &$seen, array $rows): void
 
         if (isset($seen[$key])) {
             $existingIndex = $seen[$key];
-            foreach (['local_issued_qty', 'local_request_line_id', 'local_request_no', 'local_requested_at', 'local_warehouse_lot_no', 'local_status'] as $field) {
-                if (!array_key_exists($field, $refs[$existingIndex]) && array_key_exists($field, $ref)) {
-                    $refs[$existingIndex][$field] = $ref[$field];
+            $isCanonicalRequestLineRow = array_key_exists('RequestLineID', $row);
+
+            /*
+             * The WarehouseIssueRequestLines row is authoritative for the local
+             * request identity and GRPO/WH lot. Transaction/trace rows only fill
+             * gaps such as the earliest IssuedAt timestamp.
+             */
+            if ($isCanonicalRequestLineRow) {
+                $refs[$existingIndex]['doc_entry'] = $docEntry;
+                $refs[$existingIndex]['line_num'] = $lineNum;
+                $refs[$existingIndex]['item_code'] = $itemCode;
+
+                if ($lotNo !== '') {
+                    $refs[$existingIndex]['lot_no'] = $lotNo;
+                }
+            }
+
+            foreach (['local_issued_qty', 'local_request_line_id', 'local_request_no', 'local_requested_at', 'local_issued_at', 'local_warehouse_lot_no', 'local_status'] as $field) {
+                if (!array_key_exists($field, $ref)) {
+                    continue;
+                }
+
+                $incomingValue = $ref[$field];
+                $incomingIsBlank = $incomingValue === null
+                    || (is_string($incomingValue) && trim($incomingValue) === '');
+
+                if ($isCanonicalRequestLineRow
+                    && $incomingIsBlank
+                    && in_array($field, ['local_issued_at', 'local_warehouse_lot_no'], true)
+                    && array_key_exists($field, $refs[$existingIndex])) {
+                    continue;
+                }
+
+                if ($isCanonicalRequestLineRow || !array_key_exists($field, $refs[$existingIndex])) {
+                    $refs[$existingIndex][$field] = $incomingValue;
                 }
             }
             continue;
@@ -291,19 +323,35 @@ function sync_ref_allocation_sort_key(array $ref): string
 
 function sync_scan_allocation_key(array $ref, ?array $scan, string $fallbackKey): string
 {
-    if (!is_array($scan)) {
+    $baseKey = scanplus_key(
+        $ref['doc_entry'] ?? 0,
+        $ref['line_num'] ?? null,
+        $ref['item_code'] ?? ''
+    );
+
+    if ($baseKey === '') {
         return $fallbackKey;
     }
 
-    $receivedLotNo = trim((string)($scan['received_lot_no'] ?? $scan['lot_no'] ?? ''));
-    $scanKey = scanplus_lot_key(
-        $ref['doc_entry'] ?? 0,
-        $ref['line_num'] ?? null,
-        $ref['item_code'] ?? '',
-        $receivedLotNo
-    );
+    $lotNo = '';
 
-    return $scanKey !== '' ? $scanKey : $fallbackKey;
+    if (is_array($scan)) {
+        $lotNo = trim((string)($scan['received_lot_no'] ?? $scan['lot_no'] ?? ''));
+    }
+
+    if ($lotNo === '') {
+        $lotNo = trim((string)(
+            ($ref['local_warehouse_lot_no'] ?? '') !== ''
+                ? $ref['local_warehouse_lot_no']
+                : ($ref['lot_no'] ?? '')
+        ));
+    }
+
+    $normalizedLot = sync_normalize_lot($lotNo);
+
+    return $normalizedLot !== ''
+        ? $baseKey . '|LOT|' . $normalizedLot
+        : $baseKey . '|NOLOT';
 }
 
 function sync_allocate_request_line_scan(array $ref, ?array $scan, string $allocationKey, array &$allocationByScanKey): ?array
@@ -312,12 +360,44 @@ function sync_allocate_request_line_scan(array $ref, ?array $scan, string $alloc
         return $scan;
     }
 
+    $lineScan = $scan;
     $rawQty = is_numeric($scan['received_qty'] ?? null)
-        ? (float)$scan['received_qty']
+        ? max(0.0, (float)$scan['received_qty'])
         : 0.0;
 
+    /* Keep the unallocated SAP quantity for audit/debugging. */
+    $lineScan['raw_received_qty'] = $rawQty;
+
+    $hasKnownIssuedQty = array_key_exists('local_issued_qty', $ref)
+        && is_numeric($ref['local_issued_qty']);
+    $issuedQty = $hasKnownIssuedQty
+        ? max(0.0, (float)$ref['local_issued_qty'])
+        : null;
+
+    /*
+     * A local request line with a known IssuedQty of zero must never borrow a
+     * receipt from another request that happens to use the same ITR/item/lot.
+     * Writing this status also clears any old incorrect allocation on the next
+     * scheduled synchronization.
+     */
+    if ($hasKnownIssuedQty && $issuedQty <= 0) {
+        $lineScan['received_qty'] = 0.0;
+        $lineScan['scan_status'] = 'NOT_ISSUED_REQUEST_LINE';
+        return $lineScan;
+    }
+
+    $preStatus = strtoupper(trim((string)($scan['scan_status'] ?? '')));
+
+    if (in_array($preStatus, [
+        'LOT_REQUIRED_FOR_ALLOCATION',
+        'AMBIGUOUS_REQUEST_MATCH'
+    ], true)) {
+        $lineScan['received_qty'] = 0.0;
+        return $lineScan;
+    }
+
     if ($rawQty <= 0 || $allocationKey === '') {
-        return $scan;
+        return $lineScan;
     }
 
     if (!isset($allocationByScanKey[$allocationKey])) {
@@ -329,19 +409,19 @@ function sync_allocate_request_line_scan(array $ref, ?array $scan, string $alloc
         $allocationByScanKey[$allocationKey]['total'] = $rawQty;
     }
 
-    $requestedQty = is_numeric($ref['local_issued_qty'] ?? null)
-        ? max(0.0, (float)$ref['local_issued_qty'])
+    $allocationQty = $hasKnownIssuedQty
+        ? $issuedQty
         : $rawQty;
     $remainingQty = max(
         0.0,
         (float)$allocationByScanKey[$allocationKey]['total'] -
         (float)$allocationByScanKey[$allocationKey]['used']
     );
-    $allocatedQty = min($requestedQty > 0 ? $requestedQty : $rawQty, $remainingQty);
+    $allocatedQty = min($allocationQty, $remainingQty);
+
     $allocationByScanKey[$allocationKey]['used'] =
         (float)$allocationByScanKey[$allocationKey]['used'] + $allocatedQty;
 
-    $lineScan = $scan;
     $lineScan['received_qty'] = $allocatedQty;
 
     if ($allocatedQty <= 0) {
@@ -359,11 +439,23 @@ function sync_upsert_request_line_receive_cache($conn, array $ref, ?array $scan)
         return;
     }
 
-    $rawReceivedQty = is_array($scan) && is_numeric($scan['received_qty'] ?? null)
+    $rawReceivedQty = is_array($scan) && is_numeric($scan['raw_received_qty'] ?? $scan['received_qty'] ?? null)
+        ? (float)($scan['raw_received_qty'] ?? $scan['received_qty'])
+        : null;
+    $allocatedReceivedQty = is_array($scan) && is_numeric($scan['received_qty'] ?? null)
         ? (float)$scan['received_qty']
         : null;
     $receivedAt = is_array($scan) ? ($scan['received_at'] ?? null) : null;
-    $isCurrentMatch = $rawReceivedQty !== null && $rawReceivedQty > 0;
+    $scanStatus = strtoupper(trim((string)($scan['scan_status'] ?? '')));
+    $isBlockedStatus = in_array($scanStatus, [
+        'NOT_ISSUED_REQUEST_LINE',
+        'NOT_ALLOCATED_TO_REQUEST_LINE',
+        'LOT_REQUIRED_FOR_ALLOCATION',
+        'AMBIGUOUS_REQUEST_MATCH'
+    ], true);
+    $isCurrentMatch = !$isBlockedStatus
+        && $allocatedReceivedQty !== null
+        && $allocatedReceivedQty > 0;
 
     $matchStatus = 'NOT_CONFIRMED';
 
@@ -373,7 +465,7 @@ function sync_upsert_request_line_receive_cache($conn, array $ref, ?array $scan)
         $matchStatus = (string)($scan['scan_status'] ?? 'NOT_RECEIVED_IN_SAP_CACHE');
     }
 
-    $receivedQty = $isCurrentMatch ? $rawReceivedQty : null;
+    $receivedQty = $isCurrentMatch ? $allocatedReceivedQty : null;
     $receivedLotNo = is_array($scan) ? ($scan['received_lot_no'] ?? $scan['lot_no'] ?? null) : null;
     $barcodeUser = is_array($scan) ? ($scan['barcode_user'] ?? null) : null;
 
@@ -580,6 +672,12 @@ try {
         $warehouseLotExpr = sync_has_column($whp, 'IssuanceTransactions', 'WarehouseLotNo')
             ? 'IT.WarehouseLotNo'
             : 'CAST(NULL AS NVARCHAR(100))';
+        $txIssuedQtyExpr = sync_has_column($whp, 'IssuanceTransactions', 'Quantity')
+            ? 'IT.Quantity'
+            : 'CAST(NULL AS DECIMAL(18,3))';
+        $txIssuedAtExpr = sync_has_column($whp, 'IssuanceTransactions', 'IssuedAt')
+            ? 'IT.IssuedAt'
+            : 'CAST(NULL AS DATETIME)';
         $txHasRequestLineId = sync_has_column($whp, 'IssuanceTransactions', 'IssueRequestLineID')
             && sync_has_table($whp, 'WarehouseIssueRequestLines')
             && sync_has_table($whp, 'WarehouseIssueRequestHeader');
@@ -600,6 +698,8 @@ try {
                 IT.ItemCode,
                 {$lotExpr} AS LotNo,
                 {$warehouseLotExpr} AS WarehouseLotNo,
+                {$txIssuedQtyExpr} AS IssuedQty,
+                {$txIssuedAtExpr} AS IssuedAt,
                 {$requestLineSelect}
              FROM dbo.IssuanceTransactions IT
              {$requestLineJoin}
@@ -617,12 +717,10 @@ try {
         $remaining = $maxRefs - count($refs);
 
         /*
-         * This is the local "ground truth" table for verification, so it is
-         * intentionally NOT restricted to the recent lookback window and NOT
-         * filtered by Status — every line (issued or still open) is eligible,
-         * capped only by $maxRefs for volume control. IssuedQty/WarehouseLotNo/
-         * Status are pulled along so the sync can cross-check the SAP cache
-         * result against what was actually issued locally.
+         * Keep every local request line in the synchronization set. Issued
+         * lines can receive an allocation; zero-issued lines are deliberately
+         * written as NOT_ISSUED_REQUEST_LINE so a previously wrong allocation
+         * is cleared. No scan is assigned by request date alone.
          */
         $reqLineIssuedQtyExpr = sync_has_column($whp, 'WarehouseIssueRequestLines', 'IssuedQty')
             ? 'L.IssuedQty'
@@ -633,6 +731,30 @@ try {
         $reqLineStatusExpr = sync_has_column($whp, 'WarehouseIssueRequestLines', 'Status')
             ? 'L.Status'
             : 'CAST(NULL AS NVARCHAR(50))';
+        $requestIssueApply = '';
+        $requestIssuedAtExpr = 'CAST(NULL AS DATETIME)';
+
+        if (sync_has_table($whp, 'IssuanceTransactions')
+            && sync_has_column($whp, 'IssuanceTransactions', 'IssueRequestLineID')
+            && sync_has_column($whp, 'IssuanceTransactions', 'IssuedAt')) {
+            $requestIssueItemCondition = sync_has_column($whp, 'IssuanceTransactions', 'ItemCode')
+                ? 'AND (ITX.ItemCode = L.ItemCode OR ITX.ItemCode IS NULL)'
+                : '';
+            $requestIssueTieBreak = sync_has_column($whp, 'IssuanceTransactions', 'TransactionID')
+                ? ', ITX.TransactionID ASC'
+                : '';
+            $requestIssueApply = "
+             OUTER APPLY
+             (
+                SELECT TOP (1)
+                    ITX.IssuedAt
+                FROM dbo.IssuanceTransactions ITX
+                WHERE ITX.IssueRequestLineID = L.RequestLineID
+                  {$requestIssueItemCondition}
+                ORDER BY ITX.IssuedAt ASC{$requestIssueTieBreak}
+             ) IX";
+            $requestIssuedAtExpr = 'IX.IssuedAt';
+        }
 
         sync_add_refs($refs, $seen, sync_fetch_all(
             $whp,
@@ -645,10 +767,12 @@ try {
                 L.ItemCode,
                 L.LotNo,
                 {$reqLineIssuedQtyExpr} AS IssuedQty,
+                {$requestIssuedAtExpr} AS IssuedAt,
                 {$reqLineWarehouseLotExpr} AS WarehouseLotNo,
                 {$reqLineStatusExpr} AS Status
              FROM dbo.WarehouseIssueRequestHeader H
              INNER JOIN dbo.WarehouseIssueRequestLines L ON L.RequestID = H.RequestID
+             {$requestIssueApply}
              WHERE ISNULL(COALESCE(NULLIF(L.SAP_IT_DocEntry, 0), H.SAP_IT_DocEntry), 0) > 0
                AND NULLIF(LTRIM(RTRIM(L.ItemCode)), '') IS NOT NULL
              ORDER BY H.RequestedAt DESC, L.RequestLineID DESC",
@@ -692,7 +816,16 @@ try {
             return $keyCompare;
         }
 
-        return strcmp(sync_datetime_sort_key($a['local_requested_at'] ?? ''), sync_datetime_sort_key($b['local_requested_at'] ?? ''));
+        $aEventAt = $a['local_issued_at'] ?? $a['local_requested_at'] ?? '';
+        $bEventAt = $b['local_issued_at'] ?? $b['local_requested_at'] ?? '';
+
+        $timeCompare = strcmp(sync_datetime_sort_key($aEventAt), sync_datetime_sort_key($bEventAt));
+
+        if ($timeCompare !== 0) {
+            return $timeCompare;
+        }
+
+        return (int)($a['local_request_line_id'] ?? 0) <=> (int)($b['local_request_line_id'] ?? 0);
     });
 
     sync_log('Unique local references found: ' . count($refs));
@@ -702,12 +835,58 @@ try {
     }
 
     $allocationByScanKey = [];
+    $issuedRequestCountByBaseKey = [];
+
+    foreach ($refs as $ref) {
+        if ((int)($ref['local_request_line_id'] ?? 0) <= 0) {
+            continue;
+        }
+
+        $issuedQty = is_numeric($ref['local_issued_qty'] ?? null)
+            ? (float)$ref['local_issued_qty']
+            : 0.0;
+
+        if ($issuedQty <= 0) {
+            continue;
+        }
+
+        $baseKey = scanplus_key(
+            $ref['doc_entry'] ?? 0,
+            $ref['line_num'] ?? null,
+            $ref['item_code'] ?? ''
+        );
+
+        if ($baseKey !== '') {
+            $issuedRequestCountByBaseKey[$baseKey] =
+                (int)($issuedRequestCountByBaseKey[$baseKey] ?? 0) + 1;
+        }
+    }
 
     foreach (array_chunk($refs, $chunkSize) as $chunkIndex => $chunk) {
         $started = microtime(true);
         $scanRows = scanplus_lookup_by_itr_lines($erp, $chunk);
         if (!is_array($scanRows)) {
             $scanRows = [];
+        }
+
+        /* Secondary index handles leading-zero and punctuation differences. */
+        $normalizedLotScanRows = [];
+
+        foreach ($scanRows as $scanRowKey => $scanRow) {
+            if (!is_array($scanRow) || substr_count((string)$scanRowKey, '|') < 3) {
+                continue;
+            }
+
+            $receivedLot = trim((string)($scanRow['received_lot_no'] ?? ''));
+            $normalizedLot = sync_normalize_lot($receivedLot);
+            $lastPipe = strrpos((string)$scanRowKey, '|');
+
+            if ($normalizedLot === '' || $lastPipe === false) {
+                continue;
+            }
+
+            $scanBaseKey = substr((string)$scanRowKey, 0, $lastPipe);
+            $normalizedLotScanRows[$scanBaseKey . '|NLOT|' . $normalizedLot] = $scanRow;
         }
 
         foreach ($chunk as $ref) {
@@ -731,11 +910,25 @@ try {
                 $scan = null;
 
                 foreach ($lotCandidates as $candidateLot) {
-                    $lotKey = scanplus_lot_key($ref['doc_entry'], $ref['line_num'], $ref['item_code'], $candidateLot);
+                    $lotKey = scanplus_lot_key(
+                        $ref['doc_entry'],
+                        $ref['line_num'],
+                        $ref['item_code'],
+                        $candidateLot
+                    );
 
                     if ($lotKey !== '' && isset($scanRows[$lotKey])) {
                         $scan = $scanRows[$lotKey];
                         $selectedScanKey = $lotKey;
+                        break;
+                    }
+
+                    $normalizedLot = sync_normalize_lot($candidateLot);
+                    $normalizedKey = $baseKey . '|NLOT|' . $normalizedLot;
+
+                    if ($normalizedLot !== '' && isset($normalizedLotScanRows[$normalizedKey])) {
+                        $scan = $normalizedLotScanRows[$normalizedKey];
+                        $selectedScanKey = $normalizedKey;
                         break;
                     }
                 }
@@ -744,11 +937,29 @@ try {
                 $selectedScanKey = $baseKey;
             }
 
+            /* Keep the raw SAP cache for diagnostics. */
             sync_upsert_cache($whp, $ref, is_array($scan) ? $scan : null);
+
+            $allocationScan = is_array($scan) ? $scan : null;
+
+            /*
+             * A batch receipt with a GRPO/SAP lot cannot safely be assigned to
+             * one of several request lines when the local line has no lot. The
+             * sync leaves it unallocated instead of guessing by date.
+             */
+            if (is_array($allocationScan)
+                && empty($lotCandidates)
+                && trim((string)($allocationScan['received_lot_no'] ?? '')) !== ''
+                && (int)($issuedRequestCountByBaseKey[$baseKey] ?? 0) > 1) {
+                $allocationScan['raw_received_qty'] = $allocationScan['received_qty'] ?? 0;
+                $allocationScan['received_qty'] = 0.0;
+                $allocationScan['scan_status'] = 'LOT_REQUIRED_FOR_ALLOCATION';
+            }
+
             $lineScan = sync_allocate_request_line_scan(
                 $ref,
-                is_array($scan) ? $scan : null,
-                sync_scan_allocation_key($ref, is_array($scan) ? $scan : null, $selectedScanKey),
+                $allocationScan,
+                sync_scan_allocation_key($ref, $allocationScan, $selectedScanKey),
                 $allocationByScanKey
             );
             sync_upsert_request_line_receive_cache($whp, $ref, $lineScan);

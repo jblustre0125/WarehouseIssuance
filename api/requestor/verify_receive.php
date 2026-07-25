@@ -57,7 +57,21 @@ function verify_receive_status(array $line)
     $cacheStatus = strtoupper(trim((string)($line['CacheStatus'] ?? '')));
     $hasCacheRow = (int)($line['HasCacheRow'] ?? 0) === 1;
 
-    if ($receivedQty > 0 && ($issuedQty <= 0 || $receivedQty + 0.0005 >= $issuedQty)) {
+    /* A request line that was never issued must never borrow a SAP receipt. */
+    if ($issuedQty <= 0) {
+        return 'NOT_ISSUED_REQUEST_LINE';
+    }
+
+    if (in_array($cacheStatus, [
+        'NOT_ISSUED_REQUEST_LINE',
+        'NOT_ALLOCATED_TO_REQUEST_LINE',
+        'LOT_REQUIRED_FOR_ALLOCATION',
+        'AMBIGUOUS_REQUEST_MATCH'
+    ], true)) {
+        return $cacheStatus;
+    }
+
+    if ($receivedQty > 0 && $receivedQty + 0.0005 >= $issuedQty) {
         return 'RECEIVED';
     }
 
@@ -117,13 +131,35 @@ $cacheReceivedLotExpr = $cacheHasReceivedLot
 $cacheReceivedLotMatchSql = $cacheHasReceivedLot
     ? "
                 OR LTRIM(RTRIM(C0.ReceivedLotNo)) = LTRIM(RTRIM(B.LotNo))
-                OR LTRIM(RTRIM(C0.ReceivedLotNo)) = LTRIM(RTRIM(B.WarehouseLotNo))"
+                OR LTRIM(RTRIM(C0.ReceivedLotNo)) = LTRIM(RTRIM(B.WarehouseLotNo))
+                OR (
+                    TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
+                    AND TRY_CONVERT(BIGINT, B.LotNo) IS NOT NULL
+                    AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo) = TRY_CONVERT(BIGINT, B.LotNo)
+                )
+                OR (
+                    TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
+                    AND TRY_CONVERT(BIGINT, B.WarehouseLotNo) IS NOT NULL
+                    AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo) = TRY_CONVERT(BIGINT, B.WarehouseLotNo)
+                )"
     : '';
 
 $cacheReceivedLotOrderSql = $cacheHasReceivedLot
     ? "
                 WHEN NULLIF(LTRIM(RTRIM(C0.ReceivedLotNo)), '') IS NOT NULL
-                     AND LTRIM(RTRIM(C0.ReceivedLotNo)) IN (LTRIM(RTRIM(B.LotNo)), LTRIM(RTRIM(B.WarehouseLotNo)))
+                     AND (
+                        LTRIM(RTRIM(C0.ReceivedLotNo)) IN (LTRIM(RTRIM(B.LotNo)), LTRIM(RTRIM(B.WarehouseLotNo)))
+                        OR (
+                            TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
+                            AND TRY_CONVERT(BIGINT, B.LotNo) IS NOT NULL
+                            AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo) = TRY_CONVERT(BIGINT, B.LotNo)
+                        )
+                        OR (
+                            TRY_CONVERT(BIGINT, C0.ReceivedLotNo) IS NOT NULL
+                            AND TRY_CONVERT(BIGINT, B.WarehouseLotNo) IS NOT NULL
+                            AND TRY_CONVERT(BIGINT, C0.ReceivedLotNo) = TRY_CONVERT(BIGINT, B.WarehouseLotNo)
+                        )
+                     )
                     THEN 1"
     : '';
 
@@ -162,7 +198,9 @@ $lineReceiveApply = "
     (
         SELECT
             CAST(NULL AS INT) AS RequestLineID,
+            CAST(0 AS BIT) AS IsCurrentMatch,
             CAST(NULL AS NVARCHAR(50)) AS MatchStatus,
+            CAST(NULL AS DECIMAL(18, 3)) AS RawReceivedQty,
             CAST(NULL AS DECIMAL(18, 3)) AS ReceivedQty,
             CAST(NULL AS NVARCHAR(80)) AS ReceivedLotNo,
             CAST(NULL AS NVARCHAR(120)) AS BarcodeUser,
@@ -177,7 +215,9 @@ if ($hasLineReceiveCache) {
         (
             SELECT TOP (1)
                 M0.RequestLineID,
+                ISNULL(M0.IsCurrentMatch, 0) AS IsCurrentMatch,
                 M0.MatchStatus,
+                M0.RawReceivedQty,
                 M0.ReceivedQty,
                 M0.ReceivedLotNo,
                 M0.BarcodeUser,
@@ -232,13 +272,36 @@ $rows = fetch_all(
     )
     SELECT
         B.*,
-        CASE WHEN C.SAP_IT_DocEntry IS NULL AND M.RequestLineID IS NULL THEN 0 ELSE 1 END AS HasCacheRow,
+        CASE
+            WHEN C.SAP_IT_DocEntry IS NULL AND M.RequestLineID IS NULL THEN 0
+            ELSE 1
+        END AS HasCacheRow,
         C.LotNo AS CacheLotNo,
         COALESCE(M.ReceivedLotNo, C.ReceivedLotNo) AS CacheReceivedLotNo,
-        COALESCE(M.MatchStatus, C.ScanStatus) AS CacheStatus,
-        COALESCE(M.ReceivedQty, C.ReceivedQty) AS CacheReceivedQty,
-        COALESCE(M.BarcodeUser, C.BarcodeUser) AS CacheReceivedBy,
-        COALESCE(M.ReceivedAt, C.ReceivedAt) AS CacheReceivedAt,
+        CASE
+            WHEN ISNULL(B.IssuedQty, 0) <= 0
+                THEN 'NOT_ISSUED_REQUEST_LINE'
+            WHEN M.RequestLineID IS NULL AND C.SAP_IT_DocEntry IS NOT NULL
+                THEN 'NOT_ALLOCATED_TO_REQUEST_LINE'
+            WHEN M.RequestLineID IS NULL
+                THEN NULL
+            ELSE M.MatchStatus
+        END AS CacheStatus,
+        CASE
+            WHEN ISNULL(B.IssuedQty, 0) > 0
+                 AND ISNULL(M.IsCurrentMatch, 0) = 1
+                THEN M.ReceivedQty
+            ELSE NULL
+        END AS CacheReceivedQty,
+        COALESCE(M.RawReceivedQty, C.ReceivedQty) AS CacheRawReceivedQty,
+        CASE
+            WHEN ISNULL(M.IsCurrentMatch, 0) = 1 THEN M.BarcodeUser
+            ELSE NULL
+        END AS CacheReceivedBy,
+        CASE
+            WHEN ISNULL(M.IsCurrentMatch, 0) = 1 THEN M.ReceivedAt
+            ELSE NULL
+        END AS CacheReceivedAt,
         COALESCE(M.LastSyncedAt, C.LastSyncedAt) AS CacheLastSyncedAt
     FROM RequestLines B
     OUTER APPLY
@@ -265,12 +328,34 @@ $rows = fetch_all(
                 OR NULLIF(LTRIM(RTRIM(C0.LotNo)), '') IS NULL
                 OR LTRIM(RTRIM(C0.LotNo)) = LTRIM(RTRIM(B.LotNo))
                 OR LTRIM(RTRIM(C0.LotNo)) = LTRIM(RTRIM(B.WarehouseLotNo))
+                OR (
+                    TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
+                    AND TRY_CONVERT(BIGINT, B.LotNo) IS NOT NULL
+                    AND TRY_CONVERT(BIGINT, C0.LotNo) = TRY_CONVERT(BIGINT, B.LotNo)
+                )
+                OR (
+                    TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
+                    AND TRY_CONVERT(BIGINT, B.WarehouseLotNo) IS NOT NULL
+                    AND TRY_CONVERT(BIGINT, C0.LotNo) = TRY_CONVERT(BIGINT, B.WarehouseLotNo)
+                )
                 {$cacheReceivedLotMatchSql}
           )
         ORDER BY
             CASE
                 WHEN NULLIF(LTRIM(RTRIM(C0.LotNo)), '') IS NOT NULL
-                     AND LTRIM(RTRIM(C0.LotNo)) IN (LTRIM(RTRIM(B.LotNo)), LTRIM(RTRIM(B.WarehouseLotNo)))
+                     AND (
+                        LTRIM(RTRIM(C0.LotNo)) IN (LTRIM(RTRIM(B.LotNo)), LTRIM(RTRIM(B.WarehouseLotNo)))
+                        OR (
+                            TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
+                            AND TRY_CONVERT(BIGINT, B.LotNo) IS NOT NULL
+                            AND TRY_CONVERT(BIGINT, C0.LotNo) = TRY_CONVERT(BIGINT, B.LotNo)
+                        )
+                        OR (
+                            TRY_CONVERT(BIGINT, C0.LotNo) IS NOT NULL
+                            AND TRY_CONVERT(BIGINT, B.WarehouseLotNo) IS NOT NULL
+                            AND TRY_CONVERT(BIGINT, C0.LotNo) = TRY_CONVERT(BIGINT, B.WarehouseLotNo)
+                        )
+                     )
                     THEN 0
                 {$cacheReceivedLotOrderSql}
                 WHEN NULLIF(LTRIM(RTRIM(C0.LotNo)), '') IS NULL
@@ -310,6 +395,10 @@ $summary = [
     'cache_missing' => 0,
     'not_received_in_sap_cache' => 0,
     'old_cache_receive' => 0,
+    'not_issued_request_line' => 0,
+    'not_allocated_to_request_line' => 0,
+    'lot_required_for_allocation' => 0,
+    'ambiguous_request_match' => 0,
 ];
 
 foreach ($rows as $row) {
@@ -333,6 +422,7 @@ foreach ($rows as $row) {
         'warehouse_lot_no' => (string)($row['WarehouseLotNo'] ?? ''),
         'cache_status' => (string)($row['CacheStatus'] ?? ''),
         'cache_received_qty' => verify_receive_qty($row['CacheReceivedQty'] ?? 0),
+        'cache_raw_received_qty' => verify_receive_qty($row['CacheRawReceivedQty'] ?? 0),
         'cache_lot_no' => (string)($row['CacheLotNo'] ?? ''),
         'cache_received_lot_no' => (string)($row['CacheReceivedLotNo'] ?? ''),
         'cache_received_by' => (string)($row['CacheReceivedBy'] ?? ''),
