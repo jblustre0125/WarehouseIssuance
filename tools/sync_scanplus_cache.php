@@ -1339,7 +1339,9 @@ function sync_lookup_transfer_rows_by_itr_lines($erp, array $refs): array
  * Allocate individual SAP transfer quantities to separate local request lines.
  *
  * Boundary: exact monthly SAP ITR DocEntry + line + item + normalized GRPO lot.
- * Selection: the nearest actual local issuance at or before the SAP transfer.
+ * Selection: match the complete SAP Inventory Transfer document to one local
+ * request by its item, ITR line, GRPO lot, and quantity signature. The transfer
+ * document is never distributed to whichever request happens to be newest.
  * Every assigned SAP transfer is persisted as an auditable source record.
  * Several SAP transfers may accumulate into the same RequestLineID. The amount
  * assigned to a request line never exceeds its IssuedQty; the unfilled balance
@@ -1348,6 +1350,8 @@ function sync_lookup_transfer_rows_by_itr_lines($erp, array $refs): array
 function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): array
 {
     $refsByGroup = [];
+    $requests = [];
+    $requestKeyByLineId = [];
 
     foreach ($refs as $ref) {
         $requestLineId = (int)($ref['local_request_line_id'] ?? 0);
@@ -1367,11 +1371,29 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
             continue;
         }
 
-        $refsByGroup[$groupKey][] = $ref;
+        $requestNo = trim((string)($ref['local_request_no'] ?? ''));
+        $requestKey = $requestNo !== ''
+            ? 'REQUEST|' . strtoupper($requestNo)
+            : 'REQUEST_LINE|' . $requestLineId;
+
+        $refsByGroup[$groupKey][$requestLineId] = $ref;
+        $requestKeyByLineId[$requestLineId] = $requestKey;
+
+        if (!isset($requests[$requestKey])) {
+            $requests[$requestKey] = [
+                'request_no' => $requestNo,
+                'lines_by_group' => [],
+                'line_ids' => [],
+            ];
+        }
+
+        $requests[$requestKey]['lines_by_group'][$groupKey][$requestLineId] = $ref;
+        $requests[$requestKey]['line_ids'][$requestLineId] = true;
     }
 
     $transfersByGroup = [];
     $groupScans = [];
+    $transferDocuments = [];
 
     foreach ($transferRows as $transfer) {
         $groupKey = sync_monthly_itr_group_key(
@@ -1382,6 +1404,12 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
         );
 
         if ($groupKey === '' || !isset($refsByGroup[$groupKey])) {
+            continue;
+        }
+
+        $transferQty = max(0.0, (float)($transfer['received_qty'] ?? 0));
+
+        if ($transferQty <= 0.0005) {
             continue;
         }
 
@@ -1400,10 +1428,7 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
             ];
         }
 
-        $groupScans[$groupKey]['received_qty'] += max(
-            0.0,
-            (float)($transfer['received_qty'] ?? 0)
-        );
+        $groupScans[$groupKey]['received_qty'] += $transferQty;
         $groupScans[$groupKey]['transfer_count']++;
 
         $receivedAt = trim((string)($transfer['received_at'] ?? ''));
@@ -1413,38 +1438,50 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
             $groupScans[$groupKey]['received_at'] = $receivedAt;
             $groupScans[$groupKey]['barcode_user'] = trim((string)($transfer['barcode_user'] ?? ''));
         }
+
+        $transferDocEntry = (int)($transfer['transfer_doc_entry'] ?? 0);
+        $transferDocKey = $transferDocEntry > 0
+            ? 'DOC|' . $transferDocEntry
+            : 'FALLBACK|'
+                . (int)($transfer['transfer_doc_num'] ?? 0) . '|'
+                . $receivedAt;
+
+        if (!isset($transferDocuments[$transferDocKey])) {
+            $transferDocuments[$transferDocKey] = [
+                'transfer_doc_entry' => $transferDocEntry,
+                'transfer_doc_num' => isset($transfer['transfer_doc_num'])
+                    ? (int)$transfer['transfer_doc_num']
+                    : null,
+                'received_at' => $receivedAt,
+                'rows' => [],
+            ];
+        }
+
+        $transferDocuments[$transferDocKey]['rows'][] = $transfer;
+
+        if ($receivedAt !== ''
+            && strcmp($receivedAt, (string)$transferDocuments[$transferDocKey]['received_at']) > 0) {
+            $transferDocuments[$transferDocKey]['received_at'] = $receivedAt;
+        }
     }
 
+    uasort($transferDocuments, static function (array $a, array $b): int {
+        $timeCompare = sync_datetime_timestamp($a['received_at'] ?? '')
+            <=> sync_datetime_timestamp($b['received_at'] ?? '');
+
+        if ($timeCompare !== 0) {
+            return $timeCompare;
+        }
+
+        return (int)($a['transfer_doc_entry'] ?? 0)
+            <=> (int)($b['transfer_doc_entry'] ?? 0);
+    });
+
     $lineAllocations = [];
-    $unallocatedByGroup = [];
-    $ambiguousByGroup = [];
-    $ambiguousTransfers = [];
 
-    foreach ($refsByGroup as $groupKey => $groupRefs) {
-        $groupTransfers = $transfersByGroup[$groupKey] ?? [];
-
-        usort($groupTransfers, static function (array $a, array $b): int {
-            $timeCompare = sync_datetime_timestamp($a['received_at'] ?? '')
-                <=> sync_datetime_timestamp($b['received_at'] ?? '');
-
-            if ($timeCompare !== 0) {
-                return $timeCompare;
-            }
-
-            $docCompare = (int)($a['transfer_doc_entry'] ?? 0)
-                <=> (int)($b['transfer_doc_entry'] ?? 0);
-
-            if ($docCompare !== 0) {
-                return $docCompare;
-            }
-
-            return (int)($a['transfer_line_num'] ?? 0)
-                <=> (int)($b['transfer_line_num'] ?? 0);
-        });
-
-        foreach ($groupRefs as $ref) {
-            $requestLineId = (int)($ref['local_request_line_id'] ?? 0);
-            $lineAllocations[$requestLineId] = [
+    foreach ($refsByGroup as $groupRefs) {
+        foreach ($groupRefs as $requestLineId => $ref) {
+            $lineAllocations[(int)$requestLineId] = [
                 'qty' => 0.0,
                 'received_at' => '',
                 'barcode_user' => '',
@@ -1453,134 +1490,395 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
                 'source_transfers' => [],
             ];
         }
+    }
 
-        /*
-         * Once the first transfer is matched to a request line, continue
-         * assigning later transfers in the same exact ITR/line/item/GRPO-lot
-         * group to that request until its IssuedQty is filled. This supports
-         * one local request being posted to SAP as several transfer documents.
-         */
-        $activeRequestLineId = null;
+    $unallocatedByGroup = [];
+    $ambiguousByGroup = [];
+    $ambiguousTransfers = [];
 
-        foreach ($groupTransfers as $transfer) {
-            $transferQty = max(0.0, (float)($transfer['received_qty'] ?? 0));
-            $transferTimestamp = sync_datetime_timestamp($transfer['received_at'] ?? '');
+    foreach ($transferDocuments as $transferDocument) {
+        $documentRows = $transferDocument['rows'] ?? [];
 
-            if ($transferQty <= 0.0005) {
-                continue;
+        usort($documentRows, static function (array $a, array $b): int {
+            $lineCompare = (int)($a['transfer_line_num'] ?? 0)
+                <=> (int)($b['transfer_line_num'] ?? 0);
+
+            if ($lineCompare !== 0) {
+                return $lineCompare;
             }
 
-            $candidates = [];
+            $itemCompare = strcmp(
+                strtoupper(trim((string)($a['item_code'] ?? ''))),
+                strtoupper(trim((string)($b['item_code'] ?? '')))
+            );
 
-            foreach ($groupRefs as $ref) {
-                $requestLineId = (int)($ref['local_request_line_id'] ?? 0);
-                $issuedQty = is_numeric($ref['local_issued_qty'] ?? null)
-                    ? max(0.0, (float)$ref['local_issued_qty'])
-                    : 0.0;
-                $alreadyAllocated = (float)($lineAllocations[$requestLineId]['qty'] ?? 0);
-                $requestRemaining = max(0.0, $issuedQty - $alreadyAllocated);
-
-                if ($requestLineId <= 0 || $requestRemaining <= 0.0005) {
-                    continue;
-                }
-
-                $eventAt = $ref['local_issued_at']
-                    ?? $ref['local_requested_at']
-                    ?? '';
-                $eventTimestamp = sync_datetime_timestamp($eventAt);
-
-                if ($transferTimestamp > 0
-                    && $eventTimestamp > 0
-                    && $eventTimestamp > $transferTimestamp) {
-                    continue;
-                }
-
-                $candidates[$requestLineId] = [
-                    'ref' => $ref,
-                    'event_timestamp' => $eventTimestamp,
-                    'remaining' => $requestRemaining,
-                ];
+            if ($itemCompare !== 0) {
+                return $itemCompare;
             }
 
-            if (empty($candidates)) {
-                $unallocatedByGroup[$groupKey] =
-                    (float)($unallocatedByGroup[$groupKey] ?? 0) + $transferQty;
-                continue;
-            }
+            return strcmp(
+                sync_normalize_lot($a['received_lot_no'] ?? ''),
+                sync_normalize_lot($b['received_lot_no'] ?? '')
+            );
+        });
 
-            $selected = null;
-            $matchMethod = '';
+        if (empty($documentRows)) {
+            continue;
+        }
+
+        $linkedRequestKeys = [];
+
+        foreach ($documentRows as $transfer) {
             $linkedRequestLineId = (int)($transfer['linked_request_line_id'] ?? 0);
 
-            /* Highest priority: an exact RequestLineID written into SAP OWTR. */
-            if ($linkedRequestLineId > 0 && isset($candidates[$linkedRequestLineId])) {
-                $selected = $candidates[$linkedRequestLineId];
-                $matchMethod = 'SAP_UDF_REQUEST_LINE_ID';
+            if ($linkedRequestLineId > 0
+                && isset($requestKeyByLineId[$linkedRequestLineId])) {
+                $linkedRequestKeys[$requestKeyByLineId[$linkedRequestLineId]] = true;
             }
+        }
 
-            /*
-             * Continue a multi-transfer posting under the same request line
-             * while that request still has an unfilled issued balance.
-             */
-            if ($selected === null
-                && $activeRequestLineId !== null
-                && isset($candidates[$activeRequestLineId])) {
-                $selected = $candidates[$activeRequestLineId];
-                $matchMethod = 'CONTINUE_SAME_REQUEST_GRPO_GROUP';
-            }
-
-            if ($selected === null) {
-                $latestTimestamp = max(array_column($candidates, 'event_timestamp'));
-                $latestCandidates = array_filter(
-                    $candidates,
-                    static fn(array $candidate): bool =>
-                        (int)$candidate['event_timestamp'] === (int)$latestTimestamp
+        if (count($linkedRequestKeys) > 1) {
+            foreach ($documentRows as $transfer) {
+                $groupKey = sync_monthly_itr_group_key(
+                    $transfer['doc_entry'] ?? 0,
+                    $transfer['line_num'] ?? null,
+                    $transfer['item_code'] ?? '',
+                    $transfer['received_lot_no'] ?? ''
                 );
+                $qty = max(0.0, (float)($transfer['received_qty'] ?? 0));
+                $ambiguousByGroup[$groupKey] =
+                    (float)($ambiguousByGroup[$groupKey] ?? 0) + $qty;
+                $unallocatedByGroup[$groupKey] =
+                    (float)($unallocatedByGroup[$groupKey] ?? 0) + $qty;
+            }
 
-                if (count($latestCandidates) === 1) {
-                    $selected = array_values($latestCandidates)[0];
-                    $matchMethod = 'LATEST_ISSUANCE_BEFORE_SAP_TRANSFER';
+            $ambiguousTransfers[] = [
+                'group_key' => 'TRANSFER_DOCUMENT',
+                'transfer_doc_entry' => (int)($transferDocument['transfer_doc_entry'] ?? 0),
+                'transfer_doc_num' => $transferDocument['transfer_doc_num'] ?? null,
+                'transfer_line_num' => -1,
+                'received_qty' => array_sum(array_map(
+                    static fn(array $row): float => max(0.0, (float)($row['received_qty'] ?? 0)),
+                    $documentRows
+                )),
+                'received_at' => (string)($transferDocument['received_at'] ?? ''),
+                'candidate_request_line_ids' => [],
+                'reason' => 'SAP_DOCUMENT_LINKS_MULTIPLE_LOCAL_REQUESTS',
+            ];
+            continue;
+        }
+
+        $candidateRequestKeys = !empty($linkedRequestKeys)
+            ? array_keys($linkedRequestKeys)
+            : array_keys($requests);
+        $candidatePlans = [];
+
+        foreach ($candidateRequestKeys as $requestKey) {
+            if (!isset($requests[$requestKey])) {
+                continue;
+            }
+
+            $request = $requests[$requestKey];
+            $assignments = [];
+            $plannedQtyByLine = [];
+            $exactQtyMatches = 0;
+            $totalSlack = 0.0;
+            $matchedGroups = [];
+            $valid = true;
+
+            foreach ($documentRows as $transferIndex => $transfer) {
+                $groupKey = sync_monthly_itr_group_key(
+                    $transfer['doc_entry'] ?? 0,
+                    $transfer['line_num'] ?? null,
+                    $transfer['item_code'] ?? '',
+                    $transfer['received_lot_no'] ?? ''
+                );
+                $transferQty = max(0.0, (float)($transfer['received_qty'] ?? 0));
+                $transferTimestamp = sync_datetime_timestamp($transfer['received_at'] ?? '');
+                $linkedRequestLineId = (int)($transfer['linked_request_line_id'] ?? 0);
+                $requestLines = $request['lines_by_group'][$groupKey] ?? [];
+                $eligibleLines = [];
+
+                foreach ($requestLines as $requestLineId => $ref) {
+                    $requestLineId = (int)$requestLineId;
+
+                    if ($linkedRequestLineId > 0 && $requestLineId !== $linkedRequestLineId) {
+                        continue;
+                    }
+
+                    $issuedQty = is_numeric($ref['local_issued_qty'] ?? null)
+                        ? max(0.0, (float)$ref['local_issued_qty'])
+                        : 0.0;
+                    $alreadyAllocated = (float)($lineAllocations[$requestLineId]['qty'] ?? 0);
+                    $plannedQty = (float)($plannedQtyByLine[$requestLineId] ?? 0);
+                    $remaining = max(0.0, $issuedQty - $alreadyAllocated - $plannedQty);
+                    $eventAt = $ref['local_issued_at']
+                        ?? $ref['local_requested_at']
+                        ?? '';
+                    $eventTimestamp = sync_datetime_timestamp($eventAt);
+
+                    if ($remaining + 0.0005 < $transferQty) {
+                        continue;
+                    }
+
+                    if ($transferTimestamp > 0
+                        && $eventTimestamp > 0
+                        && $eventTimestamp > $transferTimestamp) {
+                        continue;
+                    }
+
+                    $eligibleLines[$requestLineId] = [
+                        'ref' => $ref,
+                        'remaining' => $remaining,
+                        'event_timestamp' => $eventTimestamp,
+                    ];
+                }
+
+                if (empty($eligibleLines)) {
+                    $valid = false;
+                    break;
+                }
+
+                $selectedLine = null;
+
+                if ($linkedRequestLineId > 0
+                    && isset($eligibleLines[$linkedRequestLineId])) {
+                    $selectedLine = $eligibleLines[$linkedRequestLineId];
+                } elseif (count($eligibleLines) === 1) {
+                    $selectedLine = array_values($eligibleLines)[0];
                 } else {
-                    /*
-                     * If issuance timestamps tie, an exact remaining-quantity
-                     * fit may resolve the tie. Otherwise do not guess.
-                     */
-                    $exactRemaining = array_filter(
-                        $latestCandidates,
-                        static fn(array $candidate): bool =>
-                            abs((float)$candidate['remaining'] - $transferQty) <= 0.0005
+                    $exactLines = array_filter(
+                        $eligibleLines,
+                        static fn(array $line): bool =>
+                            abs((float)$line['remaining'] - $transferQty) <= 0.0005
                     );
 
-                    if (count($exactRemaining) === 1) {
-                        $selected = array_values($exactRemaining)[0];
-                        $matchMethod = 'TIED_ISSUANCE_EXACT_REMAINING_QTY';
+                    if (count($exactLines) === 1) {
+                        $selectedLine = array_values($exactLines)[0];
+                    }
+                }
+
+                if ($selectedLine === null) {
+                    $valid = false;
+                    break;
+                }
+
+                $selectedLineId = (int)($selectedLine['ref']['local_request_line_id'] ?? 0);
+
+                if ($selectedLineId <= 0) {
+                    $valid = false;
+                    break;
+                }
+
+                $plannedQtyByLine[$selectedLineId] =
+                    (float)($plannedQtyByLine[$selectedLineId] ?? 0) + $transferQty;
+
+                $assignments[$transferIndex] = [
+                    'request_line_id' => $selectedLineId,
+                    'ref' => $selectedLine['ref'],
+                    'remaining' => (float)$selectedLine['remaining'],
+                    'group_key' => $groupKey,
+                ];
+                $matchedGroups[$groupKey] = true;
+                $totalSlack += max(0.0, (float)$selectedLine['remaining'] - $transferQty);
+
+                if (abs((float)$selectedLine['remaining'] - $transferQty) <= 0.0005) {
+                    $exactQtyMatches++;
+                }
+            }
+
+            if (!$valid || count($assignments) !== count($documentRows)) {
+                continue;
+            }
+
+            $pendingGroups = [];
+
+            foreach ($request['lines_by_group'] as $groupKey => $requestLines) {
+                foreach ($requestLines as $requestLineId => $ref) {
+                    $issuedQty = is_numeric($ref['local_issued_qty'] ?? null)
+                        ? max(0.0, (float)$ref['local_issued_qty'])
+                        : 0.0;
+                    $alreadyAllocated = (float)($lineAllocations[(int)$requestLineId]['qty'] ?? 0);
+
+                    if ($issuedQty - $alreadyAllocated > 0.0005) {
+                        $pendingGroups[$groupKey] = true;
+                        break;
                     }
                 }
             }
 
-            if ($selected === null) {
+            $documentGroups = [];
+
+            foreach ($documentRows as $transfer) {
+                $documentGroupKey = sync_monthly_itr_group_key(
+                    $transfer['doc_entry'] ?? 0,
+                    $transfer['line_num'] ?? null,
+                    $transfer['item_code'] ?? '',
+                    $transfer['received_lot_no'] ?? ''
+                );
+
+                if ($documentGroupKey !== '') {
+                    $documentGroups[$documentGroupKey] = true;
+                }
+            }
+
+            $exactDocumentSet = count($pendingGroups) === count($documentGroups)
+                && empty(array_diff_key($pendingGroups, $documentGroups))
+                && empty(array_diff_key($documentGroups, $pendingGroups));
+            $extraPendingGroups = max(0, count($pendingGroups) - count($documentGroups));
+            $linkedPriority = !empty($linkedRequestKeys) ? 1 : 0;
+
+            $candidatePlans[$requestKey] = [
+                'request_key' => $requestKey,
+                'request_no' => (string)($request['request_no'] ?? ''),
+                'assignments' => $assignments,
+                'linked_priority' => $linkedPriority,
+                'exact_document_set' => $exactDocumentSet ? 1 : 0,
+                'exact_qty_matches' => $exactQtyMatches,
+                'extra_pending_groups' => $extraPendingGroups,
+                'total_slack' => $totalSlack,
+            ];
+        }
+
+        if (empty($candidatePlans)) {
+            foreach ($documentRows as $transfer) {
+                $groupKey = sync_monthly_itr_group_key(
+                    $transfer['doc_entry'] ?? 0,
+                    $transfer['line_num'] ?? null,
+                    $transfer['item_code'] ?? '',
+                    $transfer['received_lot_no'] ?? ''
+                );
+                $qty = max(0.0, (float)($transfer['received_qty'] ?? 0));
                 $ambiguousByGroup[$groupKey] =
-                    (float)($ambiguousByGroup[$groupKey] ?? 0) + $transferQty;
-                $ambiguousTransfers[] = [
-                    'group_key' => $groupKey,
-                    'transfer_doc_entry' => (int)($transfer['transfer_doc_entry'] ?? 0),
-                    'transfer_doc_num' => $transfer['transfer_doc_num'] ?? null,
-                    'transfer_line_num' => (int)($transfer['transfer_line_num'] ?? 0),
-                    'received_qty' => $transferQty,
-                    'received_at' => trim((string)($transfer['received_at'] ?? '')),
-                    'candidate_request_line_ids' => array_keys($candidates),
-                    'reason' => 'SAME_GRPO_MULTIPLE_EQUAL_CANDIDATES',
-                ];
+                    (float)($ambiguousByGroup[$groupKey] ?? 0) + $qty;
+                $unallocatedByGroup[$groupKey] =
+                    (float)($unallocatedByGroup[$groupKey] ?? 0) + $qty;
+            }
+
+            $ambiguousTransfers[] = [
+                'group_key' => 'TRANSFER_DOCUMENT',
+                'transfer_doc_entry' => (int)($transferDocument['transfer_doc_entry'] ?? 0),
+                'transfer_doc_num' => $transferDocument['transfer_doc_num'] ?? null,
+                'transfer_line_num' => -1,
+                'received_qty' => array_sum(array_map(
+                    static fn(array $row): float => max(0.0, (float)($row['received_qty'] ?? 0)),
+                    $documentRows
+                )),
+                'received_at' => (string)($transferDocument['received_at'] ?? ''),
+                'candidate_request_line_ids' => [],
+                'reason' => 'NO_SINGLE_REQUEST_COVERS_ALL_TRANSFER_DOCUMENT_LINES',
+            ];
+            continue;
+        }
+
+        uasort($candidatePlans, static function (array $a, array $b): int {
+            foreach ([
+                ['linked_priority', true],
+                ['exact_document_set', true],
+                ['exact_qty_matches', true],
+            ] as [$field, $descending]) {
+                $comparison = (int)$a[$field] <=> (int)$b[$field];
+
+                if ($comparison !== 0) {
+                    return $descending ? -$comparison : $comparison;
+                }
+            }
+
+            $extraComparison = (int)$a['extra_pending_groups']
+                <=> (int)$b['extra_pending_groups'];
+
+            if ($extraComparison !== 0) {
+                return $extraComparison;
+            }
+
+            $slackComparison = (float)$a['total_slack']
+                <=> (float)$b['total_slack'];
+
+            if (abs($slackComparison) > 0) {
+                return $slackComparison;
+            }
+
+            return strcmp((string)$a['request_key'], (string)$b['request_key']);
+        });
+
+        $rankedPlans = array_values($candidatePlans);
+        $bestPlan = $rankedPlans[0];
+        $bestScore = [
+            (int)$bestPlan['linked_priority'],
+            (int)$bestPlan['exact_document_set'],
+            (int)$bestPlan['exact_qty_matches'],
+            (int)$bestPlan['extra_pending_groups'],
+            round((float)$bestPlan['total_slack'], 3),
+        ];
+        $equallyBestPlans = array_filter(
+            $rankedPlans,
+            static function (array $plan) use ($bestScore): bool {
+                return [
+                    (int)$plan['linked_priority'],
+                    (int)$plan['exact_document_set'],
+                    (int)$plan['exact_qty_matches'],
+                    (int)$plan['extra_pending_groups'],
+                    round((float)$plan['total_slack'], 3),
+                ] === $bestScore;
+            }
+        );
+
+        if (count($equallyBestPlans) !== 1) {
+            $candidateLineIds = [];
+
+            foreach ($equallyBestPlans as $plan) {
+                foreach ($plan['assignments'] as $assignment) {
+                    $candidateLineIds[(int)$assignment['request_line_id']] = true;
+                }
+            }
+
+            foreach ($documentRows as $transfer) {
+                $groupKey = sync_monthly_itr_group_key(
+                    $transfer['doc_entry'] ?? 0,
+                    $transfer['line_num'] ?? null,
+                    $transfer['item_code'] ?? '',
+                    $transfer['received_lot_no'] ?? ''
+                );
+                $qty = max(0.0, (float)($transfer['received_qty'] ?? 0));
+                $ambiguousByGroup[$groupKey] =
+                    (float)($ambiguousByGroup[$groupKey] ?? 0) + $qty;
+                $unallocatedByGroup[$groupKey] =
+                    (float)($unallocatedByGroup[$groupKey] ?? 0) + $qty;
+            }
+
+            $ambiguousTransfers[] = [
+                'group_key' => 'TRANSFER_DOCUMENT',
+                'transfer_doc_entry' => (int)($transferDocument['transfer_doc_entry'] ?? 0),
+                'transfer_doc_num' => $transferDocument['transfer_doc_num'] ?? null,
+                'transfer_line_num' => -1,
+                'received_qty' => array_sum(array_map(
+                    static fn(array $row): float => max(0.0, (float)($row['received_qty'] ?? 0)),
+                    $documentRows
+                )),
+                'received_at' => (string)($transferDocument['received_at'] ?? ''),
+                'candidate_request_line_ids' => array_keys($candidateLineIds),
+                'reason' => 'MULTIPLE_REQUESTS_HAVE_THE_SAME_TRANSFER_DOCUMENT_SIGNATURE',
+            ];
+            continue;
+        }
+
+        $selectedPlan = array_values($equallyBestPlans)[0];
+        $matchMethod = (int)$selectedPlan['linked_priority'] === 1
+            ? 'SAP_UDF_REQUEST_LINE_ID'
+            : ((int)$selectedPlan['exact_document_set'] === 1
+                ? 'SAP_TRANSFER_DOCUMENT_EXACT_REQUEST_SIGNATURE'
+                : 'SAP_TRANSFER_DOCUMENT_BEST_REQUEST_SIGNATURE');
+
+        foreach ($documentRows as $transferIndex => $transfer) {
+            if (!isset($selectedPlan['assignments'][$transferIndex])) {
                 continue;
             }
 
-            $selectedRef = $selected['ref'];
-            $requestLineId = (int)$selectedRef['local_request_line_id'];
-            $allocatedQty = min($transferQty, (float)$selected['remaining']);
+            $assignment = $selectedPlan['assignments'][$transferIndex];
+            $requestLineId = (int)$assignment['request_line_id'];
+            $allocatedQty = max(0.0, (float)($transfer['received_qty'] ?? 0));
 
-            if ($allocatedQty <= 0.0005) {
-                $unallocatedByGroup[$groupKey] =
-                    (float)($unallocatedByGroup[$groupKey] ?? 0) + $transferQty;
+            if ($requestLineId <= 0 || $allocatedQty <= 0.0005) {
                 continue;
             }
 
@@ -1617,32 +1915,6 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
                 $lineAllocations[$requestLineId]['barcode_user'] = trim(
                     (string)($transfer['barcode_user'] ?? '')
                 );
-            }
-
-            $requestRemainingAfter = max(
-                0.0,
-                (float)$selected['remaining'] - $allocatedQty
-            );
-            $activeRequestLineId = $requestRemainingAfter > 0.0005
-                ? $requestLineId
-                : null;
-
-            /* Never split one SAP transfer across several local requests. */
-            $unallocatedTransferQty = max(0.0, $transferQty - $allocatedQty);
-
-            if ($unallocatedTransferQty > 0.0005) {
-                $unallocatedByGroup[$groupKey] =
-                    (float)($unallocatedByGroup[$groupKey] ?? 0) + $unallocatedTransferQty;
-                $ambiguousTransfers[] = [
-                    'group_key' => $groupKey,
-                    'transfer_doc_entry' => $transferDocEntry,
-                    'transfer_doc_num' => $transfer['transfer_doc_num'] ?? null,
-                    'transfer_line_num' => $transferLineNum,
-                    'received_qty' => $unallocatedTransferQty,
-                    'received_at' => $receivedAt,
-                    'candidate_request_line_ids' => [$requestLineId],
-                    'reason' => 'TRANSFER_EXCEEDS_SELECTED_REQUEST_REMAINING',
-                ];
             }
         }
     }
