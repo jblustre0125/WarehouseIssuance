@@ -53,7 +53,7 @@ define('APP_BASE_URL', 'http://localhost/rawmat_traceability_app');
 
 define('ZEBRA_PRINT_ENABLED', true);
 define('ZEBRA_PRINT_CONNECTION', 'tcp');
-define('ZEBRA_PRINTER_HOST', '192.168.20.247');
+define('ZEBRA_PRINTER_HOST', '192.168.20.174');
 define('ZEBRA_PRINTER_PORT', 6101);
 
 /*
