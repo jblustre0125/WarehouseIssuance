@@ -99,14 +99,119 @@ function zebra_pick_printer_port()
 function zebra_left_margin_dots()
 {
     /*
-        Horizontal correction for Zebra QLn320.
-        16 dots at 203 DPI is about 2 mm.
-        Override in config.php when needed:
-            define('ZEBRA_LEFT_MARGIN_DOTS', 16);
+        Prefer the newer label-position setting. Keep the old constant as a
+        backward-compatible fallback for existing installations.
     */
-    return defined('ZEBRA_LEFT_MARGIN_DOTS')
-        ? max(0, min(20, (int)ZEBRA_LEFT_MARGIN_DOTS))
-        : 16;
+    if (defined('ZEBRA_LABEL_LEFT_DOTS')) {
+        return max(0, min(40, (int)ZEBRA_LABEL_LEFT_DOTS));
+    }
+
+    if (defined('ZEBRA_LEFT_MARGIN_DOTS')) {
+        return max(0, min(40, (int)ZEBRA_LEFT_MARGIN_DOTS));
+    }
+
+    return 8;
+}
+
+function zebra_top_margin_dots()
+{
+    return defined('ZEBRA_LABEL_TOP_DOTS')
+        ? max(0, min(80, (int)ZEBRA_LABEL_TOP_DOTS))
+        : 12;
+}
+
+function zebra_label_width_dots()
+{
+    return defined('ZEBRA_LABEL_WIDTH_DOTS') ? max(1, (int)ZEBRA_LABEL_WIDTH_DOTS) : 576;
+}
+
+function zebra_label_height_dots()
+{
+    return defined('ZEBRA_LABEL_HEIGHT_DOTS') ? max(1, (int)ZEBRA_LABEL_HEIGHT_DOTS) : 609;
+}
+
+function zebra_print_speed()
+{
+    return defined('ZEBRA_PRINT_SPEED') ? max(1, min(6, (int)ZEBRA_PRINT_SPEED)) : 3;
+}
+
+function zebra_darkness()
+{
+    return defined('ZEBRA_DARKNESS') ? max(0, min(30, (int)ZEBRA_DARKNESS)) : 15;
+}
+
+function zebra_media_tracking_zpl()
+{
+    $tracking = defined('ZEBRA_MEDIA_TRACKING') ? strtolower(trim((string)ZEBRA_MEDIA_TRACKING)) : 'web';
+
+    if ($tracking === 'mark' || $tracking === 'black_mark' || $tracking === 'black-mark') {
+        $offset = defined('ZEBRA_BLACK_MARK_OFFSET_DOTS') ? (int)ZEBRA_BLACK_MARK_OFFSET_DOTS : 0;
+        $offset = max(-120, min(283, $offset));
+
+        return "^MNM,{$offset}\r\n";
+    }
+
+    if ($tracking === 'continuous') {
+        return "^MNN\r\n";
+    }
+
+    if ($tracking === 'auto') {
+        return "^MNA\r\n";
+    }
+
+    return "^MNW\r\n";
+}
+
+function zebra_label_setup_zpl()
+{
+    $tracking = defined('ZEBRA_MEDIA_TRACKING')
+        ? strtolower(trim((string)ZEBRA_MEDIA_TRACKING))
+        : 'continuous';
+
+    $usePrinterCalibration = defined('ZEBRA_USE_PRINTER_CALIBRATION')
+        ? (bool)ZEBRA_USE_PRINTER_CALIBRATION
+        : false;
+
+    $forceLabelLength = defined('ZEBRA_FORCE_LABEL_LENGTH')
+        ? (bool)ZEBRA_FORCE_LABEL_LENGTH
+        : false;
+
+    $zpl = "^PW" . zebra_label_width_dots() . "\r\n";
+
+    /*
+        Continuous / Journal stock has no gap or registration mark, so the
+        application must send both ^MNN and the 3-inch ^LL value.
+    */
+    if ($tracking === 'continuous') {
+        $zpl .= "^MNN\r\n";
+        $zpl .= "^LL" . zebra_label_height_dots() . "\r\n";
+    } else {
+        /*
+            For gap or black-mark media, allow a calibrated printer to keep
+            its saved sensor mode. Otherwise send the configured ^MN command.
+        */
+        if (!$usePrinterCalibration) {
+            $zpl .= zebra_media_tracking_zpl();
+        }
+
+        /*
+            Do not normally force a length on calibrated gap/mark media.
+            When explicitly enabled, ,Y applies the requested length to all
+            media types.
+        */
+        if ($forceLabelLength) {
+            $zpl .= "^LL" . zebra_label_height_dots() . ",Y\r\n";
+        }
+    }
+
+    $zpl .= "^LH" . zebra_left_margin_dots() . "," . zebra_top_margin_dots() . "\r\n";
+    $zpl .= "^LS0\r\n";
+    $zpl .= "^LT0\r\n";
+    $zpl .= zebra_label_end_zpl();
+    $zpl .= "^PR" . zebra_print_speed() . "\r\n";
+    $zpl .= "^MD" . zebra_darkness() . "\r\n";
+
+    return $zpl;
 }
 
 function zebra_label_end_zpl()
@@ -337,33 +442,27 @@ function zebra_receive_label_zpl($traceNo, array $item)
     }
 
     if ($warehouseLotNo !== '') {
-        $lotBlock = "^FO238,416^A0N,18,18^FDGRPO LOT NO^FS\r\n"
-            . "^FO238,438^FB290,2,3,L^A0N,25,25^FD{$lotNo}^FS\r\n"
-            . "^FO238,492^A0N,18,18^FDWH LOT NO^FS\r\n"
-            . "^FO238,514^FB290,1,0,L^A0N,25,25^FD{$warehouseLotNo}^FS\r\n";
-        $partBlock = "^FO28,558^GB520,2,2^FS\r\n"
-            . "^FO28,574^A0N,18,18^FDPART NAME^FS\r\n"
-            . "^FO28,598^FB510,2,3,L^A0N,20,20^FD{$partName}^FS\r\n";
+        $lotBlock = "^FO238,408^A0N,18,18^FDGRPO LOT NO^FS\r\n"
+            . "^FO238,430^FB290,2,3,L^A0N,24,24^FD{$lotNo}^FS\r\n"
+            . "^FO238,470^A0N,18,18^FDWH LOT NO^FS\r\n"
+            . "^FO238,492^FB290,1,0,L^A0N,24,24^FD{$warehouseLotNo}^FS\r\n";
+        $partBlock = "^FO28,520^GB520,2,2^FS\r\n"
+            . "^FO28,532^A0N,18,18^FDPART NAME^FS\r\n"
+            . "^FO28,552^FB510,2,2,L^A0N,18,18^FD{$partName}^FS\r\n";
     } else {
         $lotBlock = "^FO238,432^A0N,18,18^FDLOT NO^FS\r\n"
             . "^FO238,456^FB290,2,3,L^A0N,28,28^FD{$lotNo}^FS\r\n";
-        $partBlock = "^FO28,506^GB520,2,2^FS\r\n"
-            . "^FO28,524^A0N,18,18^FDPART NAME^FS\r\n"
-            . "^FO28,548^FB510,2,3,L^A0N,22,22^FD{$partName}^FS\r\n";
+        $partBlock = "^FO28,500^GB520,2,2^FS\r\n"
+            . "^FO28,516^A0N,18,18^FDPART NAME^FS\r\n"
+            . "^FO28,538^FB510,2,2,L^A0N,20,20^FD{$partName}^FS\r\n";
     }
 
     return "^XA\r\n"
         . "^CI28\r\n"
-        . "^PW576\r\n"
-        . "^LL700\r\n"
-        . "^LH" . zebra_left_margin_dots() . ",0\r\n"
-        . "^LS0\r\n"
-        . zebra_label_end_zpl()
-        . "^PR2\r\n"
-        . "^MD6\r\n"
+        . zebra_label_setup_zpl()
 
         /* Outer border */
-        . "^FO20,14^GB536,660,2^FS\r\n"
+        . "^FO20,14^GB536,580,2^FS\r\n"
 
         /* Header */
         . "^FO28,28^A0N,28,28^FDNBC RAWMATS TRACEABILITY^FS\r\n"
@@ -394,7 +493,7 @@ function zebra_receive_label_zpl($traceNo, array $item)
         . $partBlock
 
         /* Small payload text */
-        . "^FO28,648^A0N,14,14^FD{$payload}^FS\r\n"
+        . "^FO28,580^A0N,12,12^FD{$payload}^FS\r\n"
         . "^PQ1\r\n"
         . "^XZ\r\n";
 }
@@ -466,19 +565,19 @@ function zebra_pick_label_zpl(array $item)
     }
 
     if ($warehouseLotNo !== '') {
-        $lotBlock = "^FO238,416^A0N,18,18^FDGRPO LOT NO^FS\r\n"
-            . "^FO238,438^FB290,2,3,L^A0N,25,25^FD{$lotNo}^FS\r\n"
-            . "^FO238,492^A0N,18,18^FDWH LOT NO^FS\r\n"
-            . "^FO238,514^FB290,1,0,L^A0N,25,25^FD{$warehouseLotNo}^FS\r\n";
-        $partBlock = "^FO28,558^GB520,2,2^FS\r\n"
-            . "^FO28,574^A0N,18,18^FDPART NAME^FS\r\n"
-            . "^FO28,598^FB510,2,3,L^A0N,20,20^FD{$partName}^FS\r\n";
+        $lotBlock = "^FO238,408^A0N,18,18^FDGRPO LOT NO^FS\r\n"
+            . "^FO238,430^FB290,2,3,L^A0N,24,24^FD{$lotNo}^FS\r\n"
+            . "^FO238,470^A0N,18,18^FDWH LOT NO^FS\r\n"
+            . "^FO238,492^FB290,1,0,L^A0N,24,24^FD{$warehouseLotNo}^FS\r\n";
+        $partBlock = "^FO28,520^GB520,2,2^FS\r\n"
+            . "^FO28,532^A0N,18,18^FDPART NAME^FS\r\n"
+            . "^FO28,552^FB510,2,2,L^A0N,18,18^FD{$partName}^FS\r\n";
     } else {
         $lotBlock = "^FO238,432^A0N,18,18^FDLOT NO^FS\r\n"
             . "^FO238,456^FB290,2,3,L^A0N,28,28^FD{$lotNo}^FS\r\n";
-        $partBlock = "^FO28,506^GB520,2,2^FS\r\n"
-            . "^FO28,524^A0N,18,18^FDPART NAME^FS\r\n"
-            . "^FO28,548^FB510,2,3,L^A0N,22,22^FD{$partName}^FS\r\n";
+        $partBlock = "^FO28,500^GB520,2,2^FS\r\n"
+            . "^FO28,516^A0N,18,18^FDPART NAME^FS\r\n"
+            . "^FO28,538^FB510,2,2,L^A0N,20,20^FD{$partName}^FS\r\n";
     }
 
     /*
@@ -491,16 +590,10 @@ function zebra_pick_label_zpl(array $item)
     */
     return "^XA\r\n"
         . "^CI28\r\n"
-        . "^PW576\r\n"
-        . "^LL700\r\n"
-        . "^LH" . zebra_left_margin_dots() . ",0\r\n"
-        . "^LS0\r\n"
-        . zebra_label_end_zpl()
-        . "^PR2\r\n"
-        . "^MD6\r\n"
+        . zebra_label_setup_zpl()
 
         /* Outer border */
-        . "^FO20,14^GB536,660,2^FS\r\n"
+        . "^FO20,14^GB536,580,2^FS\r\n"
 
         /* Header */
         . "^FO28,28^A0N,28,28^FDNBC RAWMATS TRACEABILITY^FS\r\n"
@@ -531,7 +624,7 @@ function zebra_pick_label_zpl(array $item)
         . $partBlock
 
         /* Small payload text */
-        . "^FO28,648^A0N,14,14^FD{$payload}^FS\r\n"
+        . "^FO28,580^A0N,12,12^FD{$payload}^FS\r\n"
         . "^PQ1\r\n"
         . "^XZ\r\n";
 }
@@ -1464,17 +1557,13 @@ function zebra_test_label_zpl()
 {
     return "^XA\r\n"
         . "^CI28\r\n"
-        . "^PW600\r\n"
-        . "^LL400\r\n"
-        . "^LH" . zebra_left_margin_dots() . ",0\r\n"
-        . "^LS0\r\n"
-        . "^PR2\r\n"
-        . "^MD6\r\n"
-        . "^FO40,40^GB520,320,2^FS\r\n"
-        . "^FO70,70^A0N,38,38^FDZEBRA TEST PRINT^FS\r\n"
-        . "^FO70,130^A0N,26,26^FDIf this prints, raw ZPL is working.^FS\r\n"
-        . "^FO70,180^BQN,2,6^FDLA,TEST-QR-12345^FS\r\n"
-        . "^FO270,210^A0N,30,30^FDTEST-QR-12345^FS\r\n"
+        . zebra_label_setup_zpl()
+        . "^FO20,14^GB536,580,2^FS\r\n"
+        . "^FO70,70^A0N,38,38^FDZEBRA 3 X 3 TEST^FS\r\n"
+        . "^FO70,130^A0N,26,26^FD576 X 609 DOTS^FS\r\n"
+        . "^FO70,180^A0N,24,24^FDCONTINUOUS / JOURNAL^FS\r\n"
+        . "^FO170,250^BQN,2,7^FDLA,TEST-QR-12345^FS\r\n"
+        . "^FO120,500^A0N,26,26^FDTEST-QR-12345^FS\r\n"
         . "^PQ1\r\n"
         . "^XZ\r\n";
 }
