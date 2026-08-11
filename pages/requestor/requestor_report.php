@@ -1339,7 +1339,17 @@ SELECT
             )
 
         WHEN Q.CacheReceivedQty > 0
-            THEN M.BarcodeUser
+            THEN COALESCE(
+                NULLIF(
+                    LTRIM(RTRIM(M.BarcodeUser)),
+                    ''
+                ),
+                NULLIF(
+                    LTRIM(RTRIM(C.BarcodeUser)),
+                    ''
+                ),
+                ''
+            )
 
         ELSE ''
     END AS ScannedBy,
@@ -1358,8 +1368,8 @@ SELECT
 
         WHEN
             Q.CacheReceivedQty > 0
-            AND M.ReceivedAt IS NOT NULL
-            THEN M.ReceivedAt
+            AND COALESCE(M.ReceivedAt, C.ReceivedAt) IS NOT NULL
+            THEN COALESCE(M.ReceivedAt, C.ReceivedAt)
 
         ELSE NULL
     END AS ScannedAt,
@@ -1374,6 +1384,32 @@ SELECT
                 ),
                 'RECEIVED'
             )
+
+        WHEN Q.CacheReceivedQty > 0
+            THEN
+                CASE
+                    WHEN UPPER(LTRIM(RTRIM(ISNULL(COALESCE(M.MatchStatus, M.ScanStatus, C.ScanStatus), '')))) IN
+                    (
+                        'CLOSED',
+                        'COMPLETED',
+                        'MATCHED'
+                    )
+                        THEN COALESCE(M.MatchStatus, M.ScanStatus, C.ScanStatus)
+
+                    WHEN
+                        COALESCE(
+                            R.BaseIssuedQty,
+                            TRY_CONVERT(DECIMAL(18, 3), B.RequestedQty)
+                        ) > 0
+
+                        AND Q.CacheReceivedQty < COALESCE(
+                            R.BaseIssuedQty,
+                            TRY_CONVERT(DECIMAL(18, 3), B.RequestedQty)
+                        )
+                        THEN 'SAP PARTIAL'
+
+                    ELSE 'SAP_RECEIVED'
+                END
 
         /*
          * Allocation/debug states are internal. For the user-facing report,
@@ -1390,32 +1426,6 @@ SELECT
                 'NOT_RECEIVED_IN_SAP_CACHE'
             )
             THEN 'ISSUED'
-
-        WHEN Q.CacheReceivedQty > 0
-            THEN
-                CASE
-                    WHEN UPPER(LTRIM(RTRIM(ISNULL(COALESCE(M.MatchStatus, M.ScanStatus), '')))) IN
-                    (
-                        'CLOSED',
-                        'COMPLETED',
-                        'MATCHED'
-                    )
-                        THEN COALESCE(M.MatchStatus, M.ScanStatus)
-
-                    WHEN
-                        COALESCE(
-                            R.BaseIssuedQty,
-                            TRY_CONVERT(DECIMAL(18, 3), B.RequestedQty)
-                        ) > 0
-
-                        AND Q.CacheReceivedQty < COALESCE(
-                            R.BaseIssuedQty,
-                            TRY_CONVERT(DECIMAL(18, 3), B.RequestedQty)
-                        )
-                        THEN 'SAP PARTIAL'
-
-                    ELSE 'SAP_RECEIVED'
-                END
 
         /* No request-specific received quantity yet: still ISSUED. */
         ELSE 'ISSUED'
@@ -1449,7 +1459,7 @@ SELECT
             AND UPPER(
                 LTRIM(
                     RTRIM(
-                        ISNULL(COALESCE(M.MatchStatus, M.ScanStatus), '')
+                        ISNULL(COALESCE(M.MatchStatus, M.ScanStatus, C.ScanStatus), '')
                     )
                 )
             ) IN
@@ -1458,7 +1468,7 @@ SELECT
                 'COMPLETED',
                 'MATCHED'
             )
-            THEN M.ReceivedAt
+            THEN COALESCE(M.ReceivedAt, C.ReceivedAt)
 
         ELSE NULL
     END AS ClosedAt,
@@ -1588,6 +1598,33 @@ CROSS APPLY
                     DECIMAL(18, 3),
                     M.ReceivedQty
                 )
+
+            WHEN ISNULL(
+                    TRY_CONVERT(
+                        DECIMAL(18, 3),
+                        C.ReceivedQty
+                    ),
+                    0
+                 ) > 0
+                 AND UPPER(
+                    LTRIM(
+                        RTRIM(
+                            ISNULL(C.ScanStatus, '')
+                        )
+                    )
+                 ) IN
+                 (
+                    'SAP_RECEIVED',
+                    'RECEIVED',
+                    'CLOSED',
+                    'COMPLETED',
+                    'MATCHED'
+                 )
+                THEN TRY_CONVERT(
+                    DECIMAL(18, 3),
+                    C.ReceivedQty
+                )
+
             ELSE NULL
         END AS SourceReceivedQty
 ) SQ
