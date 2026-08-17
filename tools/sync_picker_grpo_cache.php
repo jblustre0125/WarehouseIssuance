@@ -136,7 +136,8 @@ try {
               AND GL.BaseLine IS NOT NULL
               AND ISNULL(G.CANCELED, 'N') = 'N'
               AND ISNULL(PO.CANCELED, 'N') = 'N'
-            ORDER BY G.DocDate, G.DocNum, GL.LineNum, B.BatchNum";
+            ORDER BY G.DocDate, G.DocNum, GL.LineNum, B.BatchNum
+            OPTION (MAXDOP 1)";
 
     $stmt = sqlsrv_query(
         $erp,

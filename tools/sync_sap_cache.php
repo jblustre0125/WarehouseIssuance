@@ -8,9 +8,9 @@ if (PHP_SAPI !== 'cli') {
 require_once __DIR__ . '/../includes/db_connect.php';
 require_once __DIR__ . '/../includes/sap_cache.php';
 
-const SAP_CACHE_FAST_REFRESH_SECONDS = 60;
-const SAP_CACHE_MEDIUM_REFRESH_SECONDS = 120;
-const SAP_CACHE_SLOW_REFRESH_SECONDS = 300;
+const SAP_CACHE_FAST_REFRESH_SECONDS = 300;
+const SAP_CACHE_MEDIUM_REFRESH_SECONDS = 300;
+const SAP_CACHE_SLOW_REFRESH_SECONDS = 900;
 const SAP_CACHE_HEAVY_REFRESH_SECONDS = 1800;
 
 $syncMode = strtolower(trim((string)($argv[1] ?? 'light')));
