@@ -58,6 +58,7 @@ function issuer_report_has_column($conn, $table, $column)
 }
 
 $traceHasReceiveStatus = issuer_report_has_column($conn, 'RawmatTraceLines', 'VerificationStatus');
+$traceHasReceivedLot = issuer_report_has_column($conn, 'RawmatTraceLines', 'ReceivedLotNo');
 $traceHasReceivedQty = issuer_report_has_column($conn, 'RawmatTraceLines', 'ReceivedQty');
 $traceHasReceivedBy = issuer_report_has_column($conn, 'RawmatTraceLines', 'ReceivedByUsername');
 $traceHasReceivedAt = issuer_report_has_column($conn, 'RawmatTraceLines', 'ReceivedAt');
@@ -65,6 +66,7 @@ $traceHasReceivedScanAt = issuer_report_has_column($conn, 'RawmatTraceLines', 'R
 $traceHasWarehouseLotNo = issuer_report_has_column($conn, 'RawmatTraceLines', 'WarehouseLotNo');
 
 $localReceiveStatusExpr = $traceHasReceiveStatus ? 'TL.VerificationStatus' : "CAST('' AS NVARCHAR(80))";
+$localReceivedLotExpr = $traceHasReceivedLot ? 'TL.ReceivedLotNo' : "CAST('' AS NVARCHAR(80))";
 $localReceivedQtyExpr = $traceHasReceivedQty ? 'TL.ReceivedQty' : 'CAST(NULL AS DECIMAL(18,3))';
 $localScannedByExpr = $traceHasReceivedBy ? 'TL.ReceivedByUsername' : "CAST('' AS NVARCHAR(120))";
 if ($traceHasReceivedScanAt && $traceHasReceivedAt) {
@@ -92,6 +94,7 @@ $localReceiverApply = "
     OUTER APPLY (
         SELECT TOP 1
             {$localReceiveStatusExpr} AS LocalReceiveStatus,
+            {$localReceivedLotExpr} AS LocalReceivedLotNo,
             {$localReceivedQtyExpr} AS LocalReceivedQty,
             {$localScannedByExpr} AS LocalScannedBy,
             {$localReceivedAtExpr} AS LocalReceivedAt
@@ -232,6 +235,7 @@ $sql = '
         Req.RequestHeaderStatus,
         Req.RequestLineStatus,
         LocalRx.LocalReceiveStatus,
+        LocalRx.LocalReceivedLotNo,
         LocalRx.LocalReceivedQty,
         LocalRx.LocalScannedBy,
         LocalRx.LocalReceivedAt,
@@ -442,6 +446,7 @@ function enrich_issuer_scan_rows_with_scanplus(&$rows, $whpConn, $allowLiveRefre
         $scan = $findScanForRow($row);
 
         $row['ScanStatus'] = $scan['scan_status'] ?? '';
+        $row['ReceivedLotNo'] = $scan['received_lot_no'] ?? '';
         $row['ReceivedQty'] = $scan['received_qty'] ?? '';
         $row['BarcodeUser'] = $scan['barcode_user'] ?? '';
         $row['ReceivedAt'] = $scan['received_at'] ?? '';
@@ -456,6 +461,25 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
     if (empty($rows) || !issuer_report_has_column($conn, 'WarehouseIssueRequestLineReceiveCache', 'RequestLineID')) {
         return;
     }
+
+    $matchStatusSelect = issuer_report_has_column($conn, 'WarehouseIssueRequestLineReceiveCache', 'MatchStatus')
+        ? 'MatchStatus'
+        : "CAST('' AS NVARCHAR(50)) AS MatchStatus";
+    $receivedLotSelect = issuer_report_has_column($conn, 'WarehouseIssueRequestLineReceiveCache', 'ReceivedLotNo')
+        ? 'ReceivedLotNo'
+        : "CAST('' AS NVARCHAR(80)) AS ReceivedLotNo";
+    $scanStatusSelect = issuer_report_has_column($conn, 'WarehouseIssueRequestLineReceiveCache', 'ScanStatus')
+        ? 'ScanStatus'
+        : "CAST('' AS NVARCHAR(50)) AS ScanStatus";
+    $receivedQtySelect = issuer_report_has_column($conn, 'WarehouseIssueRequestLineReceiveCache', 'ReceivedQty')
+        ? 'ReceivedQty'
+        : 'CAST(NULL AS DECIMAL(18, 3)) AS ReceivedQty';
+    $barcodeUserSelect = issuer_report_has_column($conn, 'WarehouseIssueRequestLineReceiveCache', 'BarcodeUser')
+        ? 'BarcodeUser'
+        : "CAST('' AS NVARCHAR(120)) AS BarcodeUser";
+    $receivedAtSelect = issuer_report_has_column($conn, 'WarehouseIssueRequestLineReceiveCache', 'ReceivedAt')
+        ? 'ReceivedAt'
+        : 'CAST(NULL AS DATETIME) AS ReceivedAt';
 
     $ids = [];
 
@@ -479,10 +503,12 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
             $conn,
             "SELECT
                 RequestLineID,
-                ScanStatus,
-                ReceivedQty,
-                BarcodeUser,
-                ReceivedAt
+                {$matchStatusSelect},
+                {$scanStatusSelect},
+                {$receivedLotSelect},
+                {$receivedQtySelect},
+                {$barcodeUserSelect},
+                {$receivedAtSelect}
              FROM dbo.WarehouseIssueRequestLineReceiveCache
              WHERE RequestLineID IN ({$placeholders})
                AND ISNULL(IsCurrentMatch, 0) = 1",
@@ -502,7 +528,9 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
         }
 
         $mapped = $mappedByLine[$id];
+        $row['CacheMatchStatus'] = $mapped['MatchStatus'] ?? $row['CacheMatchStatus'] ?? '';
         $row['ScanStatus'] = $mapped['ScanStatus'] ?? $row['ScanStatus'] ?? '';
+        $row['ReceivedLotNo'] = $mapped['ReceivedLotNo'] ?? $row['ReceivedLotNo'] ?? '';
         $row['ReceivedQty'] = $mapped['ReceivedQty'] ?? $row['ReceivedQty'] ?? '';
         $row['BarcodeUser'] = $mapped['BarcodeUser'] ?? $row['BarcodeUser'] ?? '';
         $row['ReceivedAt'] = $mapped['ReceivedAt'] ?? $row['ReceivedAt'] ?? '';
@@ -595,6 +623,47 @@ function issuer_report_qty_variance($issuedQty, $receivedQty)
     return rtrim(rtrim(number_format($variance, 3, '.', ''), '0'), '.');
 }
 
+function issuer_report_lot_tokens($value): array
+{
+    $tokens = [];
+
+    foreach (preg_split('/\s*,\s*/', trim((string)($value ?? ''))) ?: [] as $token) {
+        $token = strtoupper(trim($token));
+
+        if ($token === '') {
+            continue;
+        }
+
+        if (preg_match('/^\d+$/', $token)) {
+            $token = ltrim($token, '0');
+            $token = $token === '' ? '0' : $token;
+        }
+
+        $tokens[] = $token;
+    }
+
+    return array_values(array_unique($tokens));
+}
+
+function issuer_report_lot_matches_any($receivedLot, array $issuedLots): bool
+{
+    $receivedTokens = issuer_report_lot_tokens($receivedLot);
+
+    if (empty($receivedTokens)) {
+        return false;
+    }
+
+    foreach ($issuedLots as $issuedLot) {
+        foreach (issuer_report_lot_tokens($issuedLot) as $issuedToken) {
+            if (in_array($issuedToken, $receivedTokens, true)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 function report_received_value($row, $field)
 {
     if (!issuer_row_is_received($row)) {
@@ -618,6 +687,16 @@ function report_received_value($row, $field)
         return issuer_report_valid_datetime($dateValue) ? report_cell($dateValue) : '';
     }
 
+    if ($field === 'ReceivedLotNo') {
+        $localLot = trim((string)($row['LocalReceivedLotNo'] ?? ''));
+
+        if ($localLot !== '') {
+            return $localLot;
+        }
+
+        return trim((string)($row[$field] ?? ''));
+    }
+
     if ($field === 'ReceivedQty') {
         $localQty = $row['LocalReceivedQty'] ?? '';
 
@@ -631,11 +710,66 @@ function report_received_value($row, $field)
     return $row[$field] ?? '';
 }
 
+function issuer_report_receive_verification(array $row): array
+{
+    if (!issuer_row_is_received($row)) {
+        return [
+            'status' => 'PENDING_RECEIVE',
+            'note' => 'No requestor receipt has been confirmed yet.'
+        ];
+    }
+
+    $issuedQty = is_numeric($row['Quantity'] ?? null) ? (float)$row['Quantity'] : null;
+    $receivedText = trim((string)($row['DisplayReceivedQty'] ?? ''));
+    $receivedQty = is_numeric($receivedText) ? (float)$receivedText : null;
+    $qtyMatches = $issuedQty !== null && $receivedQty !== null && abs($issuedQty - $receivedQty) <= 0.0005;
+
+    $receivedLot = trim((string)($row['DisplayReceivedLotNo'] ?? ''));
+    $issuedLots = array_filter([
+        trim((string)($row['LotNo'] ?? '')),
+        trim((string)($row['WarehouseLotNo'] ?? ''))
+    ], static function ($lot) {
+        return $lot !== '';
+    });
+
+    $hasComparableLot = $receivedLot !== '' && !empty($issuedLots);
+    $lotMatches = $hasComparableLot && issuer_report_lot_matches_any($receivedLot, $issuedLots);
+
+    if ($qtyMatches && $lotMatches) {
+        $status = 'MATCHED';
+    } elseif ($qtyMatches && !$hasComparableLot) {
+        $status = 'QTY_MATCH';
+    } elseif ($qtyMatches) {
+        $status = 'LOT_MISMATCH';
+    } elseif ($lotMatches) {
+        $status = 'QTY_VARIANCE';
+    } else {
+        $status = $hasComparableLot ? 'LOT_AND_QTY_VARIANCE' : 'QTY_VARIANCE';
+    }
+
+    $issuedLotText = implode(' / ', $issuedLots);
+    $noteParts = [
+        'Issued qty: ' . report_cell($row['Quantity'] ?? ''),
+        'Received qty: ' . report_cell($row['DisplayReceivedQty'] ?? '')
+    ];
+
+    if ($issuedLotText !== '' || $receivedLot !== '') {
+        $noteParts[] = 'Issued lot: ' . $issuedLotText;
+        $noteParts[] = 'Received lot: ' . $receivedLot;
+    }
+
+    return [
+        'status' => $status,
+        'note' => implode(' | ', $noteParts)
+    ];
+}
+
 // Show received values only when receiving is confirmed locally or SAP returns a real
 // receive timestamp/status. Do not show SAP_RECEIVED rows with the placeholder 1900 date.
 foreach ($rows as &$issuerReportRow) {
     if (issuer_report_scanplus_before_issue($issuerReportRow)) {
         $issuerReportRow['ScanStatus'] = '';
+        $issuerReportRow['ReceivedLotNo'] = '';
         $issuerReportRow['ReceivedQty'] = '';
         $issuerReportRow['BarcodeUser'] = '';
         $issuerReportRow['ReceivedAt'] = '';
@@ -643,7 +777,11 @@ foreach ($rows as &$issuerReportRow) {
 
     $issuerReportRow['IssueStatus'] = 'ISSUED';
     $issuerReportRow['DisplayReceivedQty'] = report_received_value($issuerReportRow, 'ReceivedQty');
+    $issuerReportRow['DisplayReceivedLotNo'] = report_received_value($issuerReportRow, 'ReceivedLotNo');
     $issuerReportRow['QtyVariance'] = issuer_report_qty_variance($issuerReportRow['Quantity'] ?? '', $issuerReportRow['DisplayReceivedQty']);
+    $verification = issuer_report_receive_verification($issuerReportRow);
+    $issuerReportRow['ReceiveVerification'] = $verification['status'];
+    $issuerReportRow['ReceiveVerificationNote'] = $verification['note'];
     $issuerReportRow['DisplayBarcodeUser'] = report_received_value($issuerReportRow, 'BarcodeUser');
     $issuerReportRow['DisplayReceivedAt'] = report_received_value($issuerReportRow, 'ReceivedAt');
 }
@@ -740,6 +878,8 @@ $columns = [
     'Iss Qty',
     'Received Qty',
     'Variance',
+    'Received Lot',
+    'Verification',
     'GRPO Lot No',
     'WH Lot No',
     'ITR/IT',
@@ -824,6 +964,8 @@ if ($export) {
                         $r['Quantity'] ?? '',
                         $r['DisplayReceivedQty'] ?? '',
                         $r['QtyVariance'] ?? '',
+                        $r['DisplayReceivedLotNo'] ?? '',
+                        $r['ReceiveVerification'] ?? '',
                         $r['LotNo'] ?? '',
                         $r['WarehouseLotNo'] ?? '',
                         $r['ITRNumber'] ?? '',
@@ -1149,7 +1291,7 @@ if ($export) {
         .report-table-wrap {
             max-height: 68vh;
             overflow-y: auto;
-            overflow-x: hidden;
+            overflow-x: auto;
             border: 1px solid var(--border-soft);
             border-radius: 14px;
             background: #ffffff;
@@ -1157,6 +1299,7 @@ if ($export) {
 
         .report-table {
             width: 100%;
+            min-width: 1720px;
             table-layout: fixed;
             font-size: 10px;
             margin-bottom: 0;
@@ -1197,10 +1340,12 @@ if ($export) {
         .col-variance { width: 5%; text-align: right; white-space: nowrap; }
         .col-stock { width: 6%; text-align: right; white-space: nowrap; }
         .col-lot { width: 7%; white-space: nowrap; }
+        .col-received-lot { width: 7%; white-space: nowrap; }
         .col-wh-lot { width: 7%; white-space: nowrap; }
         .col-itr { width: 6%; white-space: nowrap; }
         .col-user { width: 8%; white-space: nowrap; }
-        .col-status { width: 8%; white-space: nowrap; }
+        .col-status { width: 7%; white-space: nowrap; }
+        .col-verification { width: 9%; white-space: nowrap; }
         .col-host { width: 8%; white-space: nowrap; }
         .col-ip { width: 8%; white-space: nowrap; }
         .col-date { width: 10%; white-space: nowrap; }
@@ -1228,6 +1373,7 @@ if ($export) {
         .status-open,
         .status-pending,
         .status-pending_receive,
+        .status-qty_match,
         .status-returned_no_stock {
             background: #fef3c7;
             color: #92400e;
@@ -1237,7 +1383,8 @@ if ($export) {
         .status-sap_received,
         .status-closed,
         .status-completed,
-        .status-matched {
+        .status-matched,
+        .status-verified {
             background: #dcfce7;
             color: #166534;
         }
@@ -1484,6 +1631,8 @@ if ($export) {
                                 <th class="col-qty">Iss Qty</th>
                                 <th class="col-qty">Received Qty</th>
                                 <th class="col-variance">Variance</th>
+                                <th class="col-received-lot">Received Lot</th>
+                                <th class="col-verification">Verification</th>
                                 <th class="col-lot">GRPO Lot No</th>
                                 <th class="col-wh-lot">WH Lot No</th>
                                 <th class="col-itr">ITR/IT</th>
@@ -1536,6 +1685,16 @@ if ($export) {
 
                                         <td class="col-variance" title="Issued minus received: <?= h(report_cell($r['QtyVariance'] ?? '')) ?>">
                                             <?= h(report_cell($r['QtyVariance'] ?? '')) ?>
+                                        </td>
+
+                                        <td class="col-received-lot" title="<?= h(report_cell($r['DisplayReceivedLotNo'] ?? '')) ?>">
+                                            <?= h(report_cell($r['DisplayReceivedLotNo'] ?? '')) ?>
+                                        </td>
+
+                                        <td class="col-verification" title="<?= h(report_cell($r['ReceiveVerificationNote'] ?? '')) ?>">
+                                            <span class="status-pill status-<?= h(strtolower((string)($r['ReceiveVerification'] ?? 'pending_receive'))) ?>">
+                                                <?= h(report_cell($r['ReceiveVerification'] ?? 'PENDING_RECEIVE')) ?>
+                                            </span>
                                         </td>
 
                                         <td class="col-lot" title="<?= h(report_cell($r['LotNo'] ?? '')) ?>">
