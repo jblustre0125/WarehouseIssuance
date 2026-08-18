@@ -37,6 +37,19 @@ function sap_it_has_table($conn, $table)
     );
 }
 
+function sap_it_has_base_table($conn, $table)
+{
+    return (bool)fetch_one(
+        $conn,
+        "SELECT 1 AS HasBaseTable
+         FROM INFORMATION_SCHEMA.TABLES
+         WHERE TABLE_SCHEMA = 'dbo'
+           AND TABLE_NAME = ?
+           AND TABLE_TYPE = 'BASE TABLE'",
+        [$table]
+    );
+}
+
 function sap_it_dt($value)
 {
     return $value instanceof DateTimeInterface ? $value->format('Y-m-d') : (string)$value;
@@ -126,7 +139,7 @@ function sap_it_cache_parts($role, $section, array $warehouses, $maxDocuments, $
         'max' => $maxDocuments,
         'search' => $searchText,
         'month' => date('Y-m'),
-        'version' => 'stock-per-line-v1'
+        'version' => 'stock-per-line-v2-cpu-optimized'
     ];
 
     if ((int)$page > 1) {
@@ -291,18 +304,12 @@ $partNameExpr = $hasDscription
     ? "COALESCE(NULLIF(L.Dscription, ''), I.ItemName, '')"
     : "COALESCE(I.ItemName, '')";
 
-$hasBatchJoin =
-    sap_it_has_table($erp, 'IBT1') &&
-    sap_it_has_column($erp, 'IBT1', 'BaseType') &&
-    sap_it_has_column($erp, 'IBT1', 'BaseEntry') &&
-    sap_it_has_column($erp, 'IBT1', 'BaseLinNum') &&
-    sap_it_has_column($erp, 'IBT1', 'ItemCode') &&
-    sap_it_has_column($erp, 'IBT1', 'BatchNum') &&
-    sap_it_has_column($erp, 'IBT1', 'Quantity') &&
-    sap_it_has_column($erp, 'IBT1', 'WhsCode');
-
+/*
+ * Prefer SAP's physical inventory-log tables for batch/lot data. In this
+ * environment IBT1 can be a compatibility view and is expensive when joined
+ * repeatedly, so only use it when it is a real base table.
+ */
 $hasInventoryLogBatchJoin =
-    !$hasBatchJoin &&
     sap_it_has_table($erp, 'OITL') &&
     sap_it_has_table($erp, 'ITL1') &&
     sap_it_has_table($erp, 'OBTN') &&
@@ -319,16 +326,18 @@ $hasInventoryLogBatchJoin =
     sap_it_has_column($erp, 'OBTN', 'SysNumber') &&
     sap_it_has_column($erp, 'OBTN', 'DistNumber');
 
-if ($hasBatchJoin) {
-    $batchSource = 'IBT1';
-    $batchSelect = "B.BatchNum AS LotNo, ABS(ISNULL(B.Quantity, 0)) AS LotQty";
-    $batchJoin = "LEFT JOIN IBT1 B
-       ON B.BaseType = 67
-      AND B.BaseEntry = T.DocEntry
-      AND B.BaseLinNum = L.LineNum
-      AND B.ItemCode = L.ItemCode
-      AND B.WhsCode = L.WhsCode";
-} elseif ($hasInventoryLogBatchJoin) {
+$hasBatchJoin =
+    !$hasInventoryLogBatchJoin &&
+    sap_it_has_base_table($erp, 'IBT1') &&
+    sap_it_has_column($erp, 'IBT1', 'BaseType') &&
+    sap_it_has_column($erp, 'IBT1', 'BaseEntry') &&
+    sap_it_has_column($erp, 'IBT1', 'BaseLinNum') &&
+    sap_it_has_column($erp, 'IBT1', 'ItemCode') &&
+    sap_it_has_column($erp, 'IBT1', 'BatchNum') &&
+    sap_it_has_column($erp, 'IBT1', 'Quantity') &&
+    sap_it_has_column($erp, 'IBT1', 'WhsCode');
+
+if ($hasInventoryLogBatchJoin) {
     $batchSource = 'OITL/ITL1/OBTN';
     $batchSelect = "BT.DistNumber AS LotNo, ABS(ISNULL(BL.Quantity, 0)) AS LotQty";
     $batchJoin = "LEFT JOIN OITL IL
@@ -338,6 +347,15 @@ if ($hasBatchJoin) {
       AND IL.LocCode = L.WhsCode
 LEFT JOIN ITL1 BL ON BL.LogEntry = IL.LogEntry AND BL.ItemCode = L.ItemCode
 LEFT JOIN OBTN BT ON BT.ItemCode = BL.ItemCode AND BT.SysNumber = BL.SysNumber";
+} elseif ($hasBatchJoin) {
+    $batchSource = 'IBT1_BASE_TABLE';
+    $batchSelect = "B.BatchNum AS LotNo, ABS(ISNULL(B.Quantity, 0)) AS LotQty";
+    $batchJoin = "LEFT JOIN IBT1 B
+       ON B.BaseType = 67
+      AND B.BaseEntry = T.DocEntry
+      AND B.BaseLinNum = L.LineNum
+      AND B.ItemCode = L.ItemCode
+      AND B.WhsCode = L.WhsCode";
 } else {
     $batchSource = 'none';
     $batchSelect = "CAST('' AS NVARCHAR(80)) AS LotNo, CAST(0 AS DECIMAL(18,3)) AS LotQty";
@@ -428,7 +446,8 @@ $docRows = fetch_all(
      FROM Numbered
      WHERE RowNum > ?
        AND RowNum <= ?
-     ORDER BY RowNum",
+     ORDER BY RowNum
+     OPTION (MAXDOP 1, RECOMPILE)",
     array_merge($docParams, [$offset, $fetchThrough])
 );
 
@@ -464,14 +483,13 @@ if (empty($docEntries)) {
 }
 
 $docEntryPlaceholders = implode(',', array_fill(0, count($docEntries), '?'));
-$stockSelect = $hasOitw
-    ? 'ISNULL(FW.OnHand, 0) AS SourceStockQty, ISNULL(TW.OnHand, 0) AS DestinationStockQty'
-    : '0 AS SourceStockQty, 0 AS DestinationStockQty';
-$stockJoin = $hasOitw
-    ? "LEFT JOIN OITW FW ON FW.ItemCode = L.ItemCode AND FW.WhsCode = L.FromWhsCod
-LEFT JOIN OITW TW ON TW.ItemCode = L.ItemCode AND TW.WhsCode = L.WhsCode"
-    : '';
 
+/*
+ * Keep the transfer/batch query narrow. OITW stock is fetched separately below
+ * so SQL Server does not have to optimize two extra OITW joins together with
+ * the transfer and batch joins. MAXDOP 1 prevents this web/cache refresh from
+ * consuming several CPU workers at once on the ERP server.
+ */
 $sql = "
 SELECT
     Q.DocEntry AS ITRDocEntry,
@@ -487,19 +505,73 @@ SELECT
     {$uomExpr} AS UomName,
     L.FromWhsCod AS FromWhsCode,
     L.WhsCode AS ToWhsCode,
-    {$stockSelect},
     {$batchSelect}
 FROM OWTR T
 INNER JOIN WTR1 L ON T.DocEntry = L.DocEntry
 INNER JOIN OWTQ Q ON Q.DocEntry = L.BaseEntry
 LEFT JOIN OITM I ON I.ItemCode = L.ItemCode
-{$stockJoin}
 {$batchJoin}
 WHERE T.DocEntry IN ({$docEntryPlaceholders})
 ORDER BY T.DocDate DESC, T.DocNum DESC, L.LineNum ASC
+OPTION (MAXDOP 1, RECOMPILE)
 ";
 
 $rows = fetch_all($erp, $sql, $docEntries);
+
+$stockByKey = [];
+if ($hasOitw && !empty($rows)) {
+    $stockPairs = [];
+
+    foreach ($rows as $row) {
+        $itemCode = trim((string)($row['ItemCode'] ?? ''));
+        if ($itemCode === '') {
+            continue;
+        }
+
+        foreach (['FromWhsCode', 'ToWhsCode'] as $warehouseField) {
+            $warehouseCode = trim((string)($row[$warehouseField] ?? ''));
+            if ($warehouseCode === '') {
+                continue;
+            }
+
+            $stockPairs[strtoupper($itemCode) . '|' . strtoupper($warehouseCode)] = [
+                $itemCode,
+                $warehouseCode
+            ];
+        }
+    }
+
+    foreach (array_chunk(array_values($stockPairs), 100) as $pairChunk) {
+        $refRows = [];
+        $stockParams = [];
+
+        foreach ($pairChunk as $pair) {
+            $refRows[] = 'SELECT ? AS ItemCode, ? AS WhsCode';
+            array_push($stockParams, $pair[0], $pair[1]);
+        }
+
+        $stockRows = fetch_all(
+            $erp,
+            "WITH Ref AS (
+                " . implode("\nUNION ALL\n", $refRows) . "
+             )
+             SELECT W.ItemCode, W.WhsCode, ISNULL(W.OnHand, 0) AS OnHand
+             FROM Ref
+             INNER JOIN OITW W
+                ON W.ItemCode = Ref.ItemCode
+               AND W.WhsCode = Ref.WhsCode
+             OPTION (MAXDOP 1, RECOMPILE)",
+            $stockParams
+        );
+
+        foreach ($stockRows as $stockRow) {
+            $stockKey = strtoupper(trim((string)($stockRow['ItemCode'] ?? ''))) . '|' .
+                strtoupper(trim((string)($stockRow['WhsCode'] ?? '')));
+            $stockByKey[$stockKey] = (float)($stockRow['OnHand'] ?? 0);
+        }
+    }
+}
+
 $documents = [];
 
 foreach ($rows as $r) {
@@ -543,8 +615,12 @@ foreach ($rows as $r) {
         'uom' => (string)($r['UomName'] ?? ''),
         'from_whs_code' => (string)$r['FromWhsCode'],
         'to_whs_code' => (string)$r['ToWhsCode'],
-        'source_stock_qty' => (float)($r['SourceStockQty'] ?? 0),
-        'destination_stock_qty' => (float)($r['DestinationStockQty'] ?? 0)
+        'source_stock_qty' => (float)($stockByKey[
+            strtoupper(trim((string)$r['ItemCode'])) . '|' . strtoupper(trim((string)$r['FromWhsCode']))
+        ] ?? 0),
+        'destination_stock_qty' => (float)($stockByKey[
+            strtoupper(trim((string)$r['ItemCode'])) . '|' . strtoupper(trim((string)$r['ToWhsCode']))
+        ] ?? 0)
     ];
 }
 
