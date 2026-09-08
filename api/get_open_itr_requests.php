@@ -189,13 +189,6 @@ if ($cached !== null) {
     json_out($cached);
 }
 
-if (!sap_cache_live_queries_enabled()) {
-    $payload = sap_cache_live_disabled_payload('Open SAP ITRs are served from cache only. Please wait for the scheduled SAP cache refresh.');
-    $payload['requests'] = [];
-    $payload['documents'] = [];
-    json_out($payload);
-}
-
 $erp = get_erp_connection();
 
 $hasOwtq = fetch_one(
