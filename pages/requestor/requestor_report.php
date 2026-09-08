@@ -2118,6 +2118,7 @@ $exportQuery = [
     'date_from' => $dateFrom,
     'date_to' => $dateTo,
     'q' => $search,
+    'page_size' => $pageSize,
     'export' => 'excel'
 ];
 
@@ -2981,7 +2982,7 @@ $showingTo = min(
 
                 </div>
 
-                <?php if (!$export && $totalPages > 1): ?>
+                <?php if (!$export && $totalRows > 0): ?>
 
                     <div
                         class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3"

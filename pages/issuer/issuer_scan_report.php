@@ -134,6 +134,13 @@ foreach (['WarehouseLotNo', 'WHLotNo', 'WarehouseLot', 'WhLotNo'] as $candidateC
 $warehouseLotSelect = $warehouseLotColumn !== ''
     ? 'IT.[' . str_replace(']', ']]', $warehouseLotColumn) . '] AS WarehouseLotNo'
     : "CAST('' AS NVARCHAR(100)) AS WarehouseLotNo";
+$requestLineIdSelect = issuer_report_has_column(
+    $conn,
+    'IssuanceTransactions',
+    'IssueRequestLineID'
+)
+    ? 'IT.IssueRequestLineID'
+    : 'CAST(NULL AS INT) AS IssueRequestLineID';
 $warehouseLotSearchSql = $warehouseLotColumn !== ''
     ? "
         OR IT.[" . str_replace(']', ']]', $warehouseLotColumn) . "] LIKE ?"
@@ -200,6 +207,7 @@ $itSourceSelect = '
             IT.ITRNumber,
             IT.ITRDocEntry,
             IT.ITRLineNum,
+            ' . $requestLineIdSelect . ',
             IT.IssuedByUsername,
             IT.DeviceHostname,
             IT.DeviceIPAddress,
@@ -263,10 +271,19 @@ $sql = '
         INNER JOIN WarehouseIssueRequestLines L ON L.RequestID = H.RequestID
         WHERE
             (
-                H.IssuedTraceNo = IT.TraceNo
+                (
+                    IT.IssueRequestLineID IS NOT NULL
+                    AND L.RequestLineID = IT.IssueRequestLineID
+                )
                 OR (
-                    L.SAP_IT_DocEntry = IT.ITRDocEntry
-                    AND L.SAP_IT_LineNum = IT.ITRLineNum
+                    IT.IssueRequestLineID IS NULL
+                    AND (
+                        H.IssuedTraceNo = IT.TraceNo
+                        OR (
+                            L.SAP_IT_DocEntry = IT.ITRDocEntry
+                            AND L.SAP_IT_LineNum = IT.ITRLineNum
+                        )
+                    )
                 )
             )
             AND L.ItemCode = IT.ItemCode

@@ -38,6 +38,60 @@ $conn = get_whpokayoke_connection();
 $erp = get_erp_connection();
 $u = current_user();
 $preflightItemCodes = [];
+$requestLineIssueTotals = [];
+
+foreach ($items as $item) {
+    if (!is_array($item)) {
+        continue;
+    }
+
+    $requestLineId = trim((string)($item['request_line_id'] ?? ''));
+
+    if ($requestLineId === '') {
+        continue;
+    }
+
+    $quantity = trim((string)($item['quantity'] ?? ''));
+
+    if (!is_numeric($quantity) || (float)$quantity <= 0) {
+        continue;
+    }
+
+    $requestLineIssueTotals[$requestLineId] =
+        ($requestLineIssueTotals[$requestLineId] ?? 0) +
+        (float)$quantity;
+}
+
+foreach ($requestLineIssueTotals as $requestLineId => $issueQuantity) {
+    $requestLine = fetch_one(
+        $conn,
+        'SELECT RequestedQty, IssuedQty
+         FROM WarehouseIssueRequestLines
+         WHERE RequestLineID = ?',
+        [$requestLineId]
+    );
+
+    if (!$requestLine) {
+        save_issue_fail_response(
+            'Request line ' . $requestLineId . ' was not found.',
+            400
+        );
+    }
+
+    $requestedQuantity = (float)($requestLine['RequestedQty'] ?? 0);
+    $issuedQuantity = (float)($requestLine['IssuedQty'] ?? 0);
+    $remainingQuantity = max(0, $requestedQuantity - $issuedQuantity);
+
+    if ($issueQuantity > $remainingQuantity + 0.0005) {
+        save_issue_fail_response(
+            'Issue quantity for request line ' . $requestLineId .
+            ' exceeds the remaining quantity (' .
+            rtrim(rtrim(number_format($remainingQuantity, 3, '.', ''), '0'), '.') .
+            ').',
+            400
+        );
+    }
+}
 
 foreach ($items as $item) {
     if (is_array($item)) {
