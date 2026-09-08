@@ -183,10 +183,22 @@ $cacheKey = sap_cache_make_key('sap.open_itr_requests', [
     'pack_sizes' => itr_pack_sizes_cache_token()
 ]);
 
-$cached = sap_cache_get_preferred($whp, $cacheKey, 86400);
+$refreshRequested = in_array(
+    strtolower(trim((string)($_GET['refresh'] ?? ''))),
+    ['1', 'true', 'yes', 'force'],
+    true
+);
+$cached = $refreshRequested ? null : sap_cache_get_preferred($whp, $cacheKey, 86400);
 
 if ($cached !== null) {
     json_out($cached);
+}
+
+if (!$refreshRequested && !sap_cache_live_queries_enabled()) {
+    $payload = sap_cache_live_disabled_payload('Open SAP ITRs are served from cache only. Click Reload ITR to refresh from SAP.');
+    $payload['requests'] = [];
+    $payload['documents'] = [];
+    json_out($payload);
 }
 
 $erp = get_erp_connection();

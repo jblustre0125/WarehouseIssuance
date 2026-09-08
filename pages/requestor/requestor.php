@@ -1089,7 +1089,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             <div class="modal-body">
                 <div class="modal-search-row">
                     <input class="form-control form-control-lg" id="itrItemSearchInput" placeholder="Search ITR, SAP code, or part name" oninput="renderItrs()">
-                    <button class="btn btn-outline-primary" type="button" onclick="loadOpenItrs()">Reload ITR</button>
+                    <button class="btn btn-outline-primary" type="button" onclick="loadOpenItrs(true)">Reload ITR</button>
                 </div>
 
                 <div class="mb-3">
@@ -1264,7 +1264,7 @@ function openItrModal() {
     bootstrap.Modal.getOrCreateInstance(document.getElementById('itrSelectModal')).show();
 
     if (openDocuments.length === 0) {
-        loadOpenItrs();
+        loadOpenItrs(true);
     }
 }
 
@@ -1347,12 +1347,13 @@ function getItrRangeText(data) {
         : 'Current month ITRs only.';
 }
 
-async function loadOpenItrs() {
+async function loadOpenItrs(forceRefresh = false) {
     const status = document.getElementById('requestStatus');
     status.textContent = 'Refreshing ITRs...';
 
     try {
-        const res = await fetch(getItrRequestUrl(), { cache: 'no-store' });
+        const refreshSuffix = forceRefresh ? '&refresh=1' : '';
+        const res = await fetch(getItrRequestUrl() + refreshSuffix, { cache: 'no-store' });
         const data = await res.json();
 
         if (!data.ok) {
