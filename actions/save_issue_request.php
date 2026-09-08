@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/sap_item_batch.php';
 
 require_role([ROLE_REQUESTOR, ROLE_ADMIN]);
 
@@ -171,6 +172,7 @@ if (count($validItems) === 0) {
     Do not use WTQ1.OpenQty here, because in your case it caused values like 5999 / 1 behavior.
 */
 $sapQtyColumn = 'Quantity';
+$batchStatuses = sap_item_batch_statuses($erp, array_column($validItems, 'item_code'));
 
 foreach ($validItems as $line) {
     $sapLine = fetch_one(
@@ -194,6 +196,15 @@ foreach ($validItems as $line) {
         save_issue_json([
             'ok' => false,
             'message' => 'SAP ITR line was not found for item ' . $line['item_code'] . '.'
+        ], 400);
+    }
+
+    $batchStatus = $batchStatuses[$line['item_code']] ?? sap_item_batch_status($erp, $line['item_code']);
+
+    if (!$batchStatus['managed']) {
+        save_issue_json([
+            'ok' => false,
+            'message' => $batchStatus['message']
         ], 400);
     }
 

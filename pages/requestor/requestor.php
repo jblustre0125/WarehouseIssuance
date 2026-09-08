@@ -1219,6 +1219,28 @@ function esc(v) {
     }[c]));
 }
 
+function isBatchManagedLine(line) {
+    if (!line || typeof line !== 'object') {
+        return true;
+    }
+
+    if (line.is_batch_managed === false) {
+        return false;
+    }
+
+    const manBtchNum = String(line.man_btch_num || '').trim().toUpperCase();
+    return manBtchNum === '' || manBtchNum === 'Y';
+}
+
+function batchManagedMessageForLine(line) {
+    const itemCode = String(line?.item_code || '').trim();
+
+    return String(line?.batch_management_message || '').trim() ||
+        (itemCode
+            ? 'Item ' + itemCode + ' must be managed by batches in SAP before it can be requested. Please contact your SAP admin.'
+            : 'This item must be managed by batches in SAP before it can be requested. Please contact your SAP admin.');
+}
+
 function getDocWarehouseSummary(doc) {
     const fromWarehouses = [...new Set(
         (doc.lines || [])
@@ -1828,6 +1850,7 @@ function renderItrs() {
     rows.forEach(({ doc, idx }) => {
         const active = selectedDocument && selectedDocument.doc_num === doc.doc_num ? ' active' : '';
         const wh = getDocWarehouseSummary(doc);
+        const blockedCount = (doc.lines || []).filter(line => !isBatchManagedLine(line)).length;
 
         list.insertAdjacentHTML('beforeend', `
             <div class="itr-card${active}">
@@ -1836,6 +1859,7 @@ function renderItrs() {
                         <div>
                             <div class="request-title">ITR ${esc(doc.doc_num)}</div>
                             <div class="request-meta">${esc(doc.doc_date)} | ${esc(doc.line_count)} item(s)</div>
+                            ${blockedCount > 0 ? `<div class="request-meta text-danger">${blockedCount} item(s) require SAP batch setup</div>` : ''}
 
                             <div class="warehouse-route">
                                 <span class="warehouse-pill">From WH: ${esc(wh.from)}</span>
@@ -1991,6 +2015,8 @@ function loadItr(idx) {
             destination_stock_qty: line.destination_stock_qty || 0,
             from_whs_code: line.from_whs_code || '01',
             to_whs_code: line.to_whs_code || '',
+            is_batch_managed: line.is_batch_managed !== false,
+            batch_management_message: line.batch_management_message || '',
             request_qty: ''
         }));
 
@@ -2059,6 +2085,8 @@ function loadSavedRequest(idx) {
                 destination_stock_qty: line.destination_stock_qty || 0,
                 from_whs_code: line.from_whs_code || '01',
                 to_whs_code: line.to_whs_code || '',
+                is_batch_managed: line.is_batch_managed !== false,
+                batch_management_message: line.batch_management_message || '',
                 request_qty: isEditableRequest ? pendingLineQty : '',
                 readonly_remaining_request: !isEditableRequest
             };
@@ -2161,6 +2189,9 @@ function renderTable() {
             return;
         }
 
+        const batchBlocked = !isBatchManagedLine(it);
+        const batchMessage = batchManagedMessageForLine(it);
+
         tb.insertAdjacentHTML('beforeend', `
             <tr>
                 <td class="col-item" title="${esc(it.item_code)}">${esc(it.item_code)}</td>
@@ -2184,12 +2215,15 @@ function renderTable() {
                         step="0.001"
                         id="qty_${idx}"
                         value="${esc(it.readonly_remaining_request ? it.remaining_qty : it.request_qty)}"
-                        ${it.readonly_remaining_request ? 'disabled' : ''}
+                        ${it.readonly_remaining_request || batchBlocked ? 'disabled' : ''}
                         onchange="requestItems[${idx}].request_qty=this.value"
                     >
+                    ${batchBlocked ? `<div class="small text-danger mt-1">${esc(batchMessage)}</div>` : ''}
                 </td>
                 <td class="col-action">
-                    ${it.readonly_remaining_request
+                    ${batchBlocked
+                        ? '<span class="badge text-bg-danger rounded-pill">SAP batch setup required</span>'
+                        : it.readonly_remaining_request
                         ? '<span class="badge text-bg-warning rounded-pill">Pending</span>'
                         : `<button class="btn btn-sm btn-outline-danger remove-btn" onclick="removeLine(${idx})">Remove</button>`}
                 </td>
@@ -2200,6 +2234,7 @@ function renderTable() {
     document.getElementById('countBadge').textContent = itemSearch ? visibleItems.length + ' of ' + requestItems.length + ' line(s)' : requestItems.length + ' line(s)';
 
     const readonlyRemainingMode = requestItems.some(it => it.readonly_remaining_request);
+    const allBatchBlocked = requestItems.length > 0 && requestItems.every(it => !isBatchManagedLine(it));
 
     if (sapItMode) {
         document.getElementById('saveBtn').disabled = true;
@@ -2207,6 +2242,9 @@ function renderTable() {
     } else if (readonlyRemainingMode) {
         document.getElementById('saveBtn').disabled = true;
         document.getElementById('saveBtn').textContent = 'Partial Request View Only';
+    } else if (allBatchBlocked) {
+        document.getElementById('saveBtn').disabled = true;
+        document.getElementById('saveBtn').textContent = 'SAP Batch Setup Required';
     } else {
         document.getElementById('saveBtn').disabled = requestItems.length === 0;
         document.getElementById('saveBtn').textContent = editingRequest ? 'Update Issue Request' : 'Submit Issue Request';
@@ -2303,6 +2341,13 @@ async function saveRequest() {
 
     if (lines.length === 0) {
         alert('Enter quantity for at least one item.');
+        return;
+    }
+
+    const blockedLine = lines.find(line => !isBatchManagedLine(line));
+
+    if (blockedLine) {
+        alert(batchManagedMessageForLine(blockedLine));
         return;
     }
 

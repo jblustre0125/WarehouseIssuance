@@ -42,6 +42,15 @@ if ($cached !== null) {
 }
 
 $erp = get_erp_connection();
+$batchStatus = sap_item_batch_status($erp, $itemCode);
+
+if (!$batchStatus['managed']) {
+    json_out([
+        'ok' => false,
+        'message' => $batchStatus['message'],
+        'lots' => []
+    ]);
+}
 
 if (
     !issuer_lot_has_table($erp, 'OBTQ') ||

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/sap_item_batch.php';
 require_role([ROLE_ISSUER, ROLE_ADMIN]);
 
 if (!function_exists('issuer_wants_json_response')) {
@@ -14,23 +15,46 @@ if (!function_exists('issuer_wants_json_response')) {
     }
 }
 
-$items = json_decode($_POST['batch_items'] ?? '[]', true);
-if (!is_array($items) || count($items) === 0) {
+function save_issue_fail_response($message, $code = 400)
+{
     if (issuer_wants_json_response()) {
-        http_response_code(400);
+        http_response_code($code);
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
             'ok' => false,
-            'message' => 'No items to save.'
+            'message' => $message
         ]);
         exit;
     }
 
-    app_error('No items to save.', 400);
+    app_error($message, $code);
+}
+
+$items = json_decode($_POST['batch_items'] ?? '[]', true);
+if (!is_array($items) || count($items) === 0) {
+    save_issue_fail_response('No items to save.', 400);
 }
 $conn = get_whpokayoke_connection();
 $erp = get_erp_connection();
 $u = current_user();
+$preflightItemCodes = [];
+
+foreach ($items as $item) {
+    if (is_array($item)) {
+        $itemCode = trim((string)($item['item_code'] ?? ''));
+
+        if ($itemCode !== '') {
+            $preflightItemCodes[] = $itemCode;
+        }
+    }
+}
+
+foreach (sap_item_batch_statuses($erp, $preflightItemCodes) as $batchStatus) {
+    if (($batchStatus['found'] ?? false) && !($batchStatus['managed'] ?? false)) {
+        save_issue_fail_response($batchStatus['message'], 400);
+    }
+}
+
 $itrNumbers = [];
 foreach ($items as $item) {
     $lineItr = trim($item['itr_number'] ?? '');
@@ -118,23 +142,23 @@ foreach ($items as $item) {
     if (!is_numeric($qty) || (float)$qty <= 0) { $failed[] = ['item'=>$item,'reason'=>'Quantity must be greater than zero']; continue; }
     if ($method === 'MANUAL' && $reason === '') { $failed[] = ['item'=>$item,'reason'=>'Manual entry requires reason']; continue; }
     // Resolve SAP item by ItemCode, OITM.CodeBars, or OBCD.BcdCode.
-    $part = fetch_one($erp, "SELECT TOP 1 ItemCode, ItemName FROM OITM WHERE LTRIM(RTRIM(ItemCode)) = LTRIM(RTRIM(?))", [$itemCode]);
+    $part = fetch_one($erp, "SELECT TOP 1 ItemCode, ItemName, ManBtchNum FROM OITM WHERE LTRIM(RTRIM(ItemCode)) = LTRIM(RTRIM(?))", [$itemCode]);
     if (!$part) {
         $hasCodeBars = fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OITM' AND COLUMN_NAME = 'CodeBars'");
         if ($hasCodeBars) {
-            $part = fetch_one($erp, "SELECT TOP 1 ItemCode, ItemName FROM OITM WHERE LTRIM(RTRIM(CodeBars)) = LTRIM(RTRIM(?))", [$itemCode]);
+            $part = fetch_one($erp, "SELECT TOP 1 ItemCode, ItemName, ManBtchNum FROM OITM WHERE LTRIM(RTRIM(CodeBars)) = LTRIM(RTRIM(?))", [$itemCode]);
         }
     }
     if (!$part) {
         $hasOBCD = fetch_one($erp, "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'OBCD'");
         if ($hasOBCD) {
-            $part = fetch_one($erp, "SELECT TOP 1 I.ItemCode, I.ItemName FROM OBCD B INNER JOIN OITM I ON I.ItemCode = B.ItemCode WHERE LTRIM(RTRIM(B.BcdCode)) = LTRIM(RTRIM(?))", [$itemCode]);
+            $part = fetch_one($erp, "SELECT TOP 1 I.ItemCode, I.ItemName, I.ManBtchNum FROM OBCD B INNER JOIN OITM I ON I.ItemCode = B.ItemCode WHERE LTRIM(RTRIM(B.BcdCode)) = LTRIM(RTRIM(?))", [$itemCode]);
         }
     }
     if (!$part) {
         // Your current QR may contain a code that is part of OITM.ItemName/description, not the SAP ItemCode.
         $like = '%' . str_replace(['%', '_', '['], ['[%]', '[_]', '[[]'], $itemCode) . '%';
-        $stmtFind = sqlsrv_query($erp, "SELECT TOP 2 ItemCode, ItemName FROM OITM WHERE ItemName LIKE ? ORDER BY ItemCode", [$like]);
+        $stmtFind = sqlsrv_query($erp, "SELECT TOP 2 ItemCode, ItemName, ManBtchNum FROM OITM WHERE ItemName LIKE ? ORDER BY ItemCode", [$like]);
         $matches = [];
         if ($stmtFind !== false) {
             while ($m = sqlsrv_fetch_array($stmtFind, SQLSRV_FETCH_ASSOC)) $matches[] = $m;
@@ -147,6 +171,7 @@ foreach ($items as $item) {
         }
     }
     if (!$part) { $failed[] = ['item'=>$item,'reason'=>'Item not found in SAP B1 ItemCode, barcode fields, or ItemName/description.']; continue; }
+    if (strtoupper(trim((string)($part['ManBtchNum'] ?? ''))) !== 'Y') { $failed[] = ['item'=>$item,'reason'=>sap_item_batch_required_message($part['ItemCode'] ?? $itemCode)]; continue; }
     $itemCode = $part['ItemCode'];
     $partName = $part['ItemName'];
     $lineCols = ['TraceID', 'ItemCode', 'PartName', 'LotNo', 'IssuedQty', 'EntryMethod', 'ManualReason', 'IssuedByUsername'];

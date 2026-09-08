@@ -3,6 +3,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/sap_cache.php';
 require_once __DIR__ . '/../includes/itr_pack_sizes.php';
 require_once __DIR__ . '/../includes/item_locations.php';
+require_once __DIR__ . '/../includes/sap_item_batch.php';
 require_once __DIR__ . '/issuer/lot_balance_lib.php';
 require_role([ROLE_PICKER, ROLE_ISSUER, ROLE_ADMIN]);
 
@@ -46,6 +47,81 @@ function requestor_section_to_warehouse($section)
     }
 
     return trim((string)$section);
+}
+
+function open_issue_request_line_is_visible(array $line)
+{
+    if (array_key_exists('is_batch_managed', $line) && !$line['is_batch_managed']) {
+        return false;
+    }
+
+    if (array_key_exists('available_lots', $line) && is_array($line['available_lots']) && count($line['available_lots']) === 0) {
+        return false;
+    }
+
+    return true;
+}
+
+function open_issue_request_rebuild_document(array $doc, array $lines)
+{
+    $doc['lines'] = [];
+    $doc['line_count'] = 0;
+    $doc['requested_qty'] = 0.0;
+    $doc['open_qty'] = 0.0;
+    $doc['issued_qty'] = 0.0;
+    $doc['remaining_qty'] = 0.0;
+    $doc['warehouse_stock_qty'] = 0.0;
+
+    foreach ($lines as $line) {
+        $requestedQty = (float)($line['requested_qty'] ?? 0);
+        $issuedQty = (float)($line['issued_qty'] ?? 0);
+        $remainingQty = (float)($line['remaining_qty'] ?? max(0, $requestedQty - $issuedQty));
+
+        $doc['line_count']++;
+        $doc['requested_qty'] += $requestedQty;
+        $doc['open_qty'] += (float)($line['open_qty'] ?? $requestedQty);
+        $doc['issued_qty'] += $issuedQty;
+        $doc['remaining_qty'] += $remainingQty;
+        $doc['warehouse_stock_qty'] += (float)($line['warehouse_stock_qty'] ?? 0);
+        $doc['lines'][] = $line;
+    }
+
+    return $doc;
+}
+
+function open_issue_request_filter_payload(array $payload)
+{
+    $payload['requests'] = array_values(array_filter(
+        $payload['requests'] ?? [],
+        static function ($line) {
+            return is_array($line) && open_issue_request_line_is_visible($line);
+        }
+    ));
+
+    $documents = [];
+
+    foreach (($payload['documents'] ?? []) as $doc) {
+        if (!is_array($doc)) {
+            continue;
+        }
+
+        $lines = array_values(array_filter(
+            $doc['lines'] ?? [],
+            static function ($line) {
+                return is_array($line) && open_issue_request_line_is_visible($line);
+            }
+        ));
+
+        if (count($lines) === 0) {
+            continue;
+        }
+
+        $documents[] = open_issue_request_rebuild_document($doc, $lines);
+    }
+
+    $payload['documents'] = $documents;
+
+    return $payload;
 }
 
 $conn = get_whpokayoke_connection();
@@ -159,19 +235,20 @@ foreach ($rows as $sigRow) {
 $cacheKey = sap_cache_make_key('sap.open_issue_requests', [
     'signature' => hash('sha256', implode('|', $rowSignatureParts)),
     'pack_sizes' => itr_pack_sizes_cache_token(),
-    'lot_query_version' => 'fifo_initial_available_lots_requestor_section_location_v5_latest_first'
+    'lot_query_version' => 'fifo_initial_available_lots_requestor_section_location_v8_hide_no_batch_lot_balance'
 ]);
 
 $cached = sap_cache_get_preferred($conn, $cacheKey, 86400);
 
 if ($cached !== null) {
-    json_out($cached);
+    json_out(open_issue_request_filter_payload($cached));
 }
 
 $sapLiveQueriesEnabled = sap_cache_live_queries_enabled();
 $hydratedFromCache = null;
 $stockByItem = [];
 $uomByItem = [];
+$batchByItem = [];
 $lotsByItem = [];
 $itemCodes = [];
 
@@ -206,12 +283,29 @@ if (!$sapLiveQueriesEnabled) {
             if (is_array($cachedLots) && count($cachedLots) > 0 && !isset($lotsByItem[$itemCode])) {
                 $lotsByItem[$itemCode] = $cachedLots;
             }
+
+            if (array_key_exists('is_batch_managed', $cachedLine)) {
+                $batchByItem[$itemCode] = [
+                    'managed' => (bool)$cachedLine['is_batch_managed'],
+                    'message' => (string)($cachedLine['batch_management_message'] ?? '')
+                ];
+            }
         }
 
         $hydratedFromCache = $latestCached['_cache'] ?? null;
     }
 } elseif ($sapLiveQueriesEnabled) {
     $erp = get_erp_connection();
+
+    if (count($itemCodes) > 0 && fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OITM' AND COLUMN_NAME = 'ManBtchNum'")) {
+        foreach (sap_item_batch_statuses($erp, array_keys($itemCodes)) as $itemCode => $batchStatus) {
+            $batchByItem[$itemCode] = $batchStatus;
+
+            if (!($batchStatus['managed'] ?? false)) {
+                unset($itemCodes[$itemCode]);
+            }
+        }
+    }
 
     $hasOitw = fetch_one(
         $erp,
@@ -252,7 +346,6 @@ if (!$sapLiveQueriesEnabled) {
             $uomByItem[(string)$uomRow['ItemCode']] = (string)$uomRow['UomName'];
         }
     }
-
 
     /*
         FAST FIFO MODE:
@@ -445,6 +538,16 @@ foreach ($rows as $r) {
     $stockQty = $stockByItem[(string)$r['ItemCode']] ?? 0.0;
     $qtyPerPack = itr_qty_per_pack_for_item($r['ItemCode']);
     $itemLocation = $itemLocationByCode[(string)$r['ItemCode']] ?? [];
+    $batchStatus = $batchByItem[(string)$r['ItemCode']] ?? [
+        'managed' => true,
+        'message' => ''
+    ];
+    $isBatchManaged = (bool)($batchStatus['managed'] ?? true);
+    $isReturnedNoStock = strtoupper((string)($r['LineStatus'] ?? '')) === 'RETURNED_NO_STOCK';
+
+    if (!$isBatchManaged || count($lotsByItem[(string)$r['ItemCode']] ?? []) === 0) {
+        continue;
+    }
     $line = [
         'request_id' => (int)$r['RequestID'],
         'request_line_id' => (int)$r['RequestLineID'],
@@ -461,9 +564,11 @@ foreach ($rows as $r) {
         'open_qty' => $requestedQty,
         'issued_qty' => $issuedQty,
         'remaining_qty' => $remainingQty,
-        'lot_no' => (string)($r['LotNo'] ?? ''),
-        'warehouse_lot_no' => (string)($r['WarehouseLotNo'] ?? ''),
+        'lot_no' => $isReturnedNoStock ? '' : (string)($r['LotNo'] ?? ''),
+        'warehouse_lot_no' => $isReturnedNoStock ? '' : (string)($r['WarehouseLotNo'] ?? ''),
         'available_lots' => $lotsByItem[(string)$r['ItemCode']] ?? [],
+        'is_batch_managed' => true,
+        'batch_management_message' => '',
         'stock_whs_code' => '01',
         'warehouse_stock_qty' => $stockQty,
         'uom' => $uomByItem[(string)$r['ItemCode']] ?? '',

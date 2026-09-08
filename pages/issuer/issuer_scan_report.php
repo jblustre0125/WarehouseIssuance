@@ -89,7 +89,7 @@ $localWarehouseLotMatchSql = $traceHasWarehouseLotNo
     : '';
 
 // Local receiver confirmation is the safest sign that the receiver process has run.
-// SAP/ScanPlus can sometimes return transfer data before local receiving is finalized.
+// ScanPlus cache data can exist before local receiving details are finalized.
 $localReceiverApply = "
     OUTER APPLY (
         SELECT TOP 1
@@ -401,26 +401,13 @@ function enrich_issuer_scan_rows_with_scanplus(&$rows, $whpConn, $allowLiveRefre
         }
     }
 
-    if ($allowLiveRefresh && !empty($refsToRefresh) && sap_cache_live_queries_enabled()) {
-        $freshScanplusRows = scanplus_lookup_by_itr_lines(get_erp_connection(), $refsToRefresh);
-
-        foreach ($refsToRefresh as $ref) {
-            $scanKey = scanplus_key($ref['doc_entry'], $ref['line_num'], $ref['item_code']);
-            $scanLotKey = scanplus_lot_key($ref['doc_entry'], $ref['line_num'], $ref['item_code'], $ref['lot_no']);
-            $scan = $scanLotKey !== ''
-                ? ($freshScanplusRows[$scanLotKey] ?? null)
-                : ($scanKey !== '' ? ($freshScanplusRows[$scanKey] ?? null) : null);
-
-            scanplus_cache_write($whpConn, $ref, $scan);
-
-            if ($scanLotKey !== '') {
-                $scanplusRows[$scanLotKey] = $scan ?? [];
-            }
-
-            if ($scanKey !== '') {
-                $scanplusRows[$scanKey] = $scan ?? [];
-            }
-        }
+    /*
+     * Do not perform a live OWTR/WTR1 refresh here. Receiving is now sourced by
+     * the scheduled FT_INVT 01 -> CNC synchronization. This report only consumes
+     * the local caches so a missing SAP posting cannot hide a real ScanPlus scan.
+     */
+    if ($allowLiveRefresh && !empty($refsToRefresh)) {
+        // Intentionally left cache-only. Run tools/sync_scanplus_cache.php to refresh.
     }
 
     $findScanForRow = static function (array $row) use (&$scanplusRows) {
@@ -527,7 +514,22 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
     foreach ($rows as &$row) {
         $id = (int)($row['RequestLineID'] ?? 0);
 
-        if ($id <= 0 || !isset($mappedByLine[$id])) {
+        if ($id <= 0) {
+            continue;
+        }
+
+        /*
+         * A known local RequestLineID must use the request-specific receive cache.
+         * Never fall back to the aggregate ITR/item/lot cache, because a monthly
+         * ITR line can be reused and that could borrow another request's receipt.
+         */
+        if (!isset($mappedByLine[$id])) {
+            $row['CacheMatchStatus'] = 'REQUEST_LINE_CACHE_MISSING';
+            $row['ScanStatus'] = '';
+            $row['ReceivedLotNo'] = '';
+            $row['ReceivedQty'] = '';
+            $row['BarcodeUser'] = '';
+            $row['ReceivedAt'] = '';
             continue;
         }
 
@@ -585,7 +587,16 @@ function issuer_report_scanplus_before_issue(array $row): bool
 function issuer_report_received_status($status): bool
 {
     $status = strtoupper(trim((string)$status));
-    return in_array($status, ['RECEIVED', 'CLOSED', 'COMPLETED', 'MATCHED'], true);
+    return in_array($status, [
+        'SCANPLUS_RECEIVED',
+        'SCANPLUS_PARTIAL',
+        'SAP_RECEIVED',      // legacy compatibility
+        'SAP PARTIAL',       // legacy compatibility
+        'RECEIVED',
+        'CLOSED',
+        'COMPLETED',
+        'MATCHED'
+    ], true);
 }
 
 function issuer_row_is_received($row): bool
@@ -778,8 +789,8 @@ function issuer_report_receive_verification(array $row): array
     ];
 }
 
-// Show received values only when receiving is confirmed locally or SAP returns a real
-// receive timestamp/status. Do not show SAP_RECEIVED rows with the placeholder 1900 date.
+// Show received values only when receiving is confirmed locally or the request-line
+// ScanPlus cache has a valid receipt. Ignore placeholder/invalid 1900 timestamps.
 foreach ($rows as &$issuerReportRow) {
     if (issuer_report_scanplus_before_issue($issuerReportRow)) {
         $issuerReportRow['ScanStatus'] = '';
@@ -1393,8 +1404,24 @@ if ($export) {
             color: #92400e;
         }
 
-        .status-issued,
+        /* Issued but not yet received = amber/orange */
+        .status-issued {
+            background: #ffedd5;
+            color: #9a3412;
+        }
+
+        /* Partial receipt = blue */
+        .status-scanplus_partial,
+        .status-sap_partial,
+        .status-partial_received {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        /* Successfully received / completed = green */
+        .status-scanplus_received,
         .status-sap_received,
+        .status-received,
         .status-closed,
         .status-completed,
         .status-matched,
@@ -1761,7 +1788,7 @@ if ($export) {
 
                 <div class="small text-muted mt-2">
                     Showing page <?= number_format($page) ?> of <?= number_format($totalPages) ?>.
-                    Issue status shows the issuer transaction state. Receiver quantity uses local receiving first, then ScanPlus/SAP cache when available.
+                    Issue status shows the issuer transaction state. Receiver quantity uses local receiving first, then the request-specific ScanPlus cache when available.
                 </div>
 
                 <?php if (!$export && $totalPages > 1): ?>

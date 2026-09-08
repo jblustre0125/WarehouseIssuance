@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../../includes/sap_item_batch.php';
 
 function issuer_lot_has_table($conn, $table)
 {
@@ -125,6 +126,26 @@ function issuer_lot_balance($erp, $whp, $itemCode, $lotNo, $warehouseCode = '01'
             'issued_qty' => 0,
             'available_qty' => 0,
             'source' => 'none'
+        ];
+    }
+
+    $batchStatus = sap_item_batch_status($erp, $itemCode);
+
+    if (!$batchStatus['managed']) {
+        return [
+            'ok' => false,
+            'valid' => false,
+            'message' => $batchStatus['message'],
+            'item_code' => $itemCode,
+            'lot_no' => $lotNo,
+            'warehouse_code' => $warehouseCode,
+            'received_qty' => 0,
+            'on_hand_qty' => 0,
+            'committed_qty' => 0,
+            'sap_available_qty' => 0,
+            'issued_qty' => 0,
+            'available_qty' => 0,
+            'source' => 'SAP OITM'
         ];
     }
 

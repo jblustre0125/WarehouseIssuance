@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/sap_item_batch.php';
 require_once __DIR__ . '/../../includes/zebra_print.php';
 
 require_role([ROLE_ISSUER, ROLE_ADMIN]);
@@ -32,6 +33,20 @@ if (!is_array($items) || count($items) === 0) {
 $printerKey = zebra_pick_printer_key($_POST['issue_printer'] ?? ($_POST['pick_printer'] ?? null));
 $printItems = [];
 $errors = [];
+$itemCodes = [];
+$erp = get_erp_connection();
+
+foreach ($items as $item) {
+    if (is_array($item)) {
+        $itemCode = trim((string)($item['item_code'] ?? ''));
+
+        if ($itemCode !== '') {
+            $itemCodes[] = $itemCode;
+        }
+    }
+}
+
+$batchStatuses = sap_item_batch_statuses($erp, $itemCodes);
 
 foreach ($items as $idx => $item) {
     if (!is_array($item)) {
@@ -47,6 +62,13 @@ foreach ($items as $idx => $item) {
 
     if ($itemCode === '' || $quantity === '' || $quantityNumber <= 0 || $grpoLotNo === '') {
         $errors[] = 'Line ' . ($idx + 1) . ' requires item code, quantity, and GRPO lot number.';
+        continue;
+    }
+
+    $batchStatus = $batchStatuses[$itemCode] ?? sap_item_batch_status($erp, $itemCode);
+
+    if (!$batchStatus['managed']) {
+        $errors[] = 'Line ' . ($idx + 1) . ': ' . $batchStatus['message'];
         continue;
     }
 

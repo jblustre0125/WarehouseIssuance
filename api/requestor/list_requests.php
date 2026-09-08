@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/sap_cache.php';
+require_once __DIR__ . '/../../includes/sap_item_batch.php';
 require_role([ROLE_REQUESTOR, ROLE_ADMIN]);
 
 header('Content-Type: application/json; charset=utf-8');
@@ -85,18 +86,19 @@ foreach ($rows as $sigRow) {
 $cacheKey = sap_cache_make_key('sap.requestor.list_requests', [
     'role' => $role,
     'user' => $role === ROLE_ADMIN ? 'admin' : (string)($u['username'] ?? ''),
-    'pending_logic' => 'issuer_matching_remaining_lines_returned_no_stock_top_v2',
+    'pending_logic' => 'issuer_matching_remaining_lines_returned_no_stock_top_v5_hide_non_batch_managed',
     'signature' => hash('sha256', implode('|', $rowSignatureParts))
 ]);
 
-$cached = sap_cache_get_preferred($conn, $cacheKey);
+$sapLiveQueriesEnabled = true;
+$cached = $sapLiveQueriesEnabled ? null : sap_cache_get_preferred($conn, $cacheKey);
 
 if ($cached !== null) {
     requestor_json_out($cached);
 }
 
-$sapLiveQueriesEnabled = sap_cache_live_queries_enabled();
 $stockByLine = [];
+$batchByItem = [];
 $itemCodes = [];
 $docEntries = [];
 
@@ -115,6 +117,16 @@ foreach ($rows as $r) {
 
 if ($sapLiveQueriesEnabled) {
     $erp = get_erp_connection();
+
+    if (count($itemCodes) > 0 && fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OITM' AND COLUMN_NAME = 'ManBtchNum'")) {
+        foreach (sap_item_batch_statuses($erp, array_keys($itemCodes)) as $itemCode => $batchStatus) {
+            $batchByItem[$itemCode] = $batchStatus;
+
+            if (!($batchStatus['managed'] ?? false)) {
+                unset($itemCodes[$itemCode]);
+            }
+        }
+    }
 
     $hasOitw = fetch_one(
         $erp,
@@ -171,6 +183,13 @@ $documents = [];
 foreach ($rows as $r) {
     $requestId = (int)$r['RequestID'];
     $headerStatus = strtoupper((string)$r['HeaderStatus']);
+    $batchStatus = $batchByItem[(string)$r['ItemCode']] ?? [
+        'managed' => true
+    ];
+
+    if (!($batchStatus['managed'] ?? true)) {
+        continue;
+    }
 
     if (!isset($documents[$requestId])) {
         $documents[$requestId] = [

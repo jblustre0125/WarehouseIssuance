@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/sap_item_batch.php';
 require_role([ROLE_REQUESTOR, ROLE_ADMIN]);
 
 header('Content-Type: application/json; charset=utf-8');
@@ -116,6 +117,13 @@ if (count($validItems) === 0) {
 }
 
 $sapOpenQtyColumn = requestor_update_has_column($erp, 'WTQ1', 'OpenQty') ? 'OpenQty' : 'Quantity';
+$batchItemCodes = [];
+
+foreach ($validItems as $line) {
+    $batchItemCodes[] = trim((string)$line['row']['ItemCode']);
+}
+
+$batchStatuses = sap_item_batch_statuses($erp, $batchItemCodes);
 
 foreach ($validItems as $line) {
     $row = $line['row'];
@@ -136,6 +144,12 @@ foreach ($validItems as $line) {
 
     if (!$sapLine) {
         requestor_update_json(['ok' => false, 'message' => 'SAP ITR line was not found for item ' . $itemCode . '.'], 400);
+    }
+
+    $batchStatus = $batchStatuses[$itemCode] ?? sap_item_batch_status($erp, $itemCode);
+
+    if (!$batchStatus['managed']) {
+        requestor_update_json(['ok' => false, 'message' => $batchStatus['message']], 400);
     }
 
     $otherRequested = fetch_one(

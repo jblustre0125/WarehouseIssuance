@@ -12,10 +12,10 @@ require_role([ROLE_REQUESTOR, ROLE_ADMIN]);
 |
 | This page reads only the local WH PokaYoke database.
 |
-| SAP-derived information is read exclusively from:
-| dbo.RawmatTraceScanPlusCache
+| ScanPlus receiving information is read exclusively from the local cache:
+| dbo.RawmatTraceScanPlusCache / dbo.WarehouseIssueRequestLineReceiveCache
 |
-| The scheduled synchronization task is responsible for updating that table.
+| The scheduled ScanPlus synchronization task is responsible for updating them.
 |
 */
 
@@ -804,7 +804,7 @@ if ($hasIssuanceTransactions) {
 
         /*
          * Never attach an issuance transaction that happened before the
-         * current request was created. The same SAP ITR line can appear in
+         * current request was created. The same monthly ITR line can appear in
          * older local transactions, so DocEntry/LineNum alone is not enough.
          */
         $transactionDateCondition = $txHasIssuedAt
@@ -985,8 +985,8 @@ if ($hasCache) {
             : 'CAST(NULL AS DATETIME)';
 
     /*
-     * The same SAP IT/item/lot can be reused by later local request lines.
-     * Do not let an older SAP receipt satisfy a newer issued/requested row.
+     * The same monthly ITR/item/lot can be reused by later local request lines.
+     * Do not let an older ScanPlus receipt satisfy a newer issued/requested row.
      */
     $cacheDateCondition = $cacheHasReceivedAt
         ? "AND (
@@ -1104,7 +1104,7 @@ if ($hasCache) {
 |--------------------------------------------------------------------------
 |
 | This table is populated by the scheduled ScanPlus sync. It stores the
-| receive decision per local RequestLineID so repeated SAP IT/item/lot keys do
+| receive decision per local RequestLineID so repeated ITR/item/lot keys do
 | not cause one request's receive to be borrowed by another request.
 |
 */
@@ -1462,9 +1462,9 @@ SELECT
                             R.BaseIssuedQty,
                             TRY_CONVERT(DECIMAL(18, 3), B.RequestedQty)
                         )
-                        THEN 'SAP PARTIAL'
+                        THEN 'PARTIAL RECEIVED'
 
-                    ELSE 'SAP_RECEIVED'
+                    ELSE 'RECEIVED'
                 END
 
         /*
@@ -1478,8 +1478,10 @@ SELECT
                 'LOT_REQUIRED_FOR_ALLOCATION',
                 'AMBIGUOUS_REQUEST_MATCH',
                 'ISSUED_AFTER_SAP_RECEIPT',
+                'ISSUED_AFTER_SCANPLUS_RECEIPT',
                 'NOT_CONFIRMED',
-                'NOT_RECEIVED_IN_SAP_CACHE'
+                'NOT_RECEIVED_IN_SAP_CACHE',
+                'NOT_RECEIVED_IN_SCANPLUS'
             )
             THEN 'ISSUED'
 
@@ -1695,7 +1697,10 @@ CROSS APPLY
                     )
                  ) IN
                  (
+                    'SCANPLUS_RECEIVED',
+                    'SCANPLUS_PARTIAL',
                     'SAP_RECEIVED',
+                    'SAP PARTIAL',
                     'RECEIVED',
                     'CLOSED',
                     'COMPLETED',
@@ -1770,7 +1775,7 @@ CROSS APPLY
         END AS CacheReceivedQty
 ) Q
 
-/* Match issuer report behavior: local receiver quantity wins; SAP cache is fallback. */
+/* Match issuer report behavior: local receiver quantity wins; ScanPlus cache is fallback. */
 CROSS APPLY
 (
     SELECT
@@ -2398,21 +2403,32 @@ $showingTo = min(
             color: #4b5563;
         }
 
+        /* Partial receipt = blue */
+        .status-scanplus_partial,
         .status-sap_partial,
-        .status-sap_received,
         .status-partial_received {
             background: #dbeafe;
             color: #1d4ed8;
         }
 
+        /* Missing / failed receipt = red */
+        .status-not_received_in_scanplus,
         .status-not_received_in_sap,
         .status-not_received_in_sap_cache {
             background: #fee2e2;
             color: #991b1b;
         }
 
-        .status-issued,
+        /* Issued but not yet received = amber/orange */
+        .status-issued {
+            background: #ffedd5;
+            color: #9a3412;
+        }
+
+        /* Successfully received / completed = green */
         .status-received,
+        .status-scanplus_received,
+        .status-sap_received,
         .status-closed,
         .status-completed,
         .status-matched {
@@ -2565,7 +2581,7 @@ $showingTo = min(
 
                 <div class="page-subtitle">
                     Request timeline: created, issued and received.
-                    SAP receipts older than the current request are ignored.
+                    ScanPlus receipts older than the current issuance/request event are ignored.
                 </div>
 
             </div>
@@ -2717,7 +2733,7 @@ $showingTo = min(
                     <strong>Timeline:</strong> Request Created At &rarr; Issued At &rarr; Received At.
                     <strong>PARTIAL</strong> under Issue Status means only part of the requested quantity was issued;
                     it does not mean the issued quantity was only partially received.
-                    ScanPlus receives matched by SAP IT document, line, item, and lot are counted even when the local request was entered later.
+                    ScanPlus receipts are matched by ITR document, line, item, GRPO lot, quantity, and issuance timing.
                 </div>
 
                 <div class="report-table-wrap">
@@ -3121,11 +3137,11 @@ $showingTo = min(
                             <th>Item</th>
                             <th>Part Name</th>
                             <th class="text-end">Issued</th>
-                            <th class="text-end">SAP/Cache Received</th>
+                            <th class="text-end">ScanPlus Received</th>
                             <th>GRPO Lot</th>
                             <th>WH Lot</th>
-                            <th>SAP Lot</th>
-                            <th>SAP Source Transfer</th>
+                            <th>Received Lot</th>
+                            <th>ScanPlus Source</th>
                             <th>Received By</th>
                             <th>Received At</th>
                             <th>Cache Synced</th>
@@ -3203,11 +3219,11 @@ function verifySetLoading(requestNo) {
     document.getElementById('receiveVerifyTitle').textContent =
         'Receive Verification';
     document.getElementById('receiveVerifySubtitle').textContent =
-        requestNo + ' | validating exact GRPO lot and SAP transfer source...';
+        requestNo + ' | validating exact GRPO lot and ScanPlus receipt source...';
     document.getElementById('receiveVerifyStatus').className =
         'alert alert-light border';
     document.getElementById('receiveVerifyStatus').textContent =
-        'Loading request status and SAP transfer source from local cache...';
+        'Loading request status and ScanPlus receipt source from local cache...';
     document.getElementById('receiveVerifySummary').innerHTML = '';
     document.getElementById('receiveVerifyRows').innerHTML = '';
     document.getElementById('receiveVerifyTableWrap')

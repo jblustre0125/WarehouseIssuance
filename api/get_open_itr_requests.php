@@ -179,7 +179,7 @@ $cacheKey = sap_cache_make_key('sap.open_itr_requests', [
     'period_end' => $monthEnd,
     'include_last_month' => $includeLastMonth ? 'yes' : 'no',
     'last_month_grace_days' => $graceDays,
-    'version' => 'quantity-as-open-v5-returned-no-stock-pack-size',
+    'version' => 'quantity-as-open-v7-hide-non-batch-managed',
     'pack_sizes' => itr_pack_sizes_cache_token()
 ]);
 
@@ -231,6 +231,7 @@ $hasUnitMsr = has_column($erp, 'WTQ1', 'unitMsr');
 $hasUomCode = has_column($erp, 'WTQ1', 'UomCode');
 $hasNumPerMsr = has_column($erp, 'WTQ1', 'NumPerMsr');
 $hasInvntryUom = has_column($erp, 'OITM', 'InvntryUom');
+$hasManBtchNum = has_column($erp, 'OITM', 'ManBtchNum');
 
 if (!$hasFromWhs) {
     json_out([
@@ -275,6 +276,7 @@ $uomExpr = $hasUnitMsr
     : ($hasUomCode ? "COALESCE(NULLIF(L.UomCode, ''), {$itemUomExpr}, '')" : "COALESCE({$itemUomExpr}, '')");
 
 $numPerMsrExpr = $hasNumPerMsr ? 'L.NumPerMsr' : '1';
+$batchManagedExpr = $hasManBtchNum ? 'I.ManBtchNum' : "'Y'";
 
 $fromWhsExpr = 'L.FromWhsCod';
 $toWhsExpr = 'L.WhsCode';
@@ -320,6 +322,10 @@ if ($hasLineStatus) {
     $where[] = "L.LineStatus = 'O'";
 }
 
+if ($hasManBtchNum) {
+    $where[] = "ISNULL(I.ManBtchNum, 'N') = 'Y'";
+}
+
 if ($currentRole === ROLE_REQUESTOR) {
     $placeholders = implode(',', array_fill(0, count($allowedWarehouses), '?'));
     $where[] = "L.WhsCode IN ($placeholders)";
@@ -341,6 +347,7 @@ SELECT
     {$openQtyExpr} AS OpenQty,
     {$uomExpr} AS UomName,
     {$numPerMsrExpr} AS NumPerMsr,
+    {$batchManagedExpr} AS ManBtchNum,
     {$fromWhsExpr} AS FromWhsCode,
     {$toWhsExpr} AS ToWhsCode,
     {$stockSelect}
@@ -474,7 +481,6 @@ foreach ($rows as $r) {
     $openQty = (float)$r['OpenQty'];
     $remainingQty = max(0, $openQty - $appRequestedQty);
     $qtyPerPack = itr_qty_per_pack_for_item($r['ItemCode']);
-
     if ($remainingQty <= 0) {
         continue;
     }
@@ -495,6 +501,8 @@ foreach ($rows as $r) {
         'qty_per_pack' => $qtyPerPack,
         'qty_per_pack_source' => $qtyPerPack > 0 ? 'June 2026 Excel SUMMARY' : '',
         'num_per_msr' => (float)($r['NumPerMsr'] ?? 1),
+        'is_batch_managed' => true,
+        'batch_management_message' => '',
         'from_whs_code' => (string)$r['FromWhsCode'],
         'to_whs_code' => (string)$r['ToWhsCode'],
         'source_stock_qty' => (float)$r['SourceStockQty'],

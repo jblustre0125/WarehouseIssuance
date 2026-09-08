@@ -1292,6 +1292,10 @@ function setLotStatus(idx, status, message, balance = null) {
 }
 
 function lotStatusHtml(it) {
+    if (!isBatchManagedLine(it)) {
+        return `<span class="badge text-bg-danger">Blocked</span><div class="small text-muted">${esc(batchManagedMessageForLine(it))}</div>`;
+    }
+
     const status = String(it.lot_status || '').toLowerCase();
 
     if (status === 'valid') {
@@ -1706,7 +1710,9 @@ function requestLotListHtml(doc) {
         const requestedLot = String(line.lot_no || '').trim();
         let lotHtml = '';
 
-        if (lots.length > 0) {
+        if (!isBatchManagedLine(line)) {
+            lotHtml = `<span class="badge text-bg-danger">SAP batch setup required</span><div class="small text-muted">${esc(batchManagedMessageForLine(line))}</div>`;
+        } else if (lots.length > 0) {
             lotHtml = lots.slice(0, 8).map(lot => {
                 const lotNo = String(lot.lot_no || '').trim();
                 const availableQty = Number(lot.available_qty || 0);
@@ -1768,10 +1774,14 @@ function renderRequests() {
                 : '';
 
         const wh = getDocumentWarehouseText(doc);
+        const blockedLine = firstBatchBlockedLine(doc.lines || []);
+        const loadDisabled = blockedLine ? ' disabled' : '';
+        const loadBadge = blockedLine ? 'Blocked' : 'Load';
+        const blockedTitle = blockedLine ? batchManagedMessageForLine(blockedLine) : 'Load request';
 
         list.insertAdjacentHTML('beforeend', `
             <div class="itr-card${docActive}">
-                <button type="button" class="itr-header" onclick="loadDocumentItems(${docIdx})">
+                <button type="button" class="itr-header" onclick="loadDocumentItems(${docIdx})" title="${esc(blockedTitle)}"${loadDisabled}>
                     <div class="d-flex justify-content-between align-items-start gap-2">
                         <div>
                             <div class="request-title">${esc(doc.request_no || doc.doc_num)}</div>
@@ -1787,7 +1797,7 @@ function renderRequests() {
                             ${getDocumentWarehouseRouteHtml(doc)}
                         </div>
 
-                        <span class="badge text-bg-primary rounded-pill">Load</span>
+                        <span class="badge ${blockedLine ? 'text-bg-danger' : 'text-bg-primary'} rounded-pill">${esc(loadBadge)}</span>
                     </div>
 
                     <div class="qty-grid">
@@ -1831,6 +1841,13 @@ function loadDocumentItems(docIdx) {
         return;
     }
 
+    const blockedLine = firstBatchBlockedLine(doc.lines || []);
+
+    if (blockedLine) {
+        showMessage(batchManagedMessageForLine(blockedLine));
+        return;
+    }
+
     if (items.length > 0) {
         pendingLoadDocIdx = docIdx;
 
@@ -1850,6 +1867,32 @@ function roundIssueQty(value) {
 
 function itemCodeKey(value) {
     return String(value || '').trim().toUpperCase();
+}
+
+function isBatchManagedLine(line) {
+    if (!line || typeof line !== 'object') {
+        return true;
+    }
+
+    if (line.is_batch_managed === false) {
+        return false;
+    }
+
+    const manBtchNum = String(line.man_btch_num || '').trim().toUpperCase();
+    return manBtchNum === '' || manBtchNum === 'Y';
+}
+
+function batchManagedMessageForLine(line) {
+    const itemCode = String(line?.item_code || '').trim();
+
+    return String(line?.batch_management_message || '').trim() ||
+        (itemCode
+            ? 'Item ' + itemCode + ' must be managed by batches in SAP before it can be requested. Please contact your SAP admin.'
+            : 'This item must be managed by batches in SAP before it can be requested. Please contact your SAP admin.');
+}
+
+function firstBatchBlockedLine(lines) {
+    return (Array.isArray(lines) ? lines : []).find(line => !isBatchManagedLine(line)) || null;
 }
 
 function normalizeLotRow(lot) {
@@ -1977,6 +2020,8 @@ function refreshLoadedItemsFromDocument(doc) {
         row.warehouse_stock_qty = Number(freshLine.warehouse_stock_qty || 0);
         row.stock_whs_code = freshLine.stock_whs_code || row.stock_whs_code || '01';
         row.available_lots = Array.isArray(freshLine.available_lots) ? freshLine.available_lots : [];
+        row.is_batch_managed = freshLine.is_batch_managed !== false;
+        row.batch_management_message = freshLine.batch_management_message || row.batch_management_message || '';
         row.open_qty = freshLine.open_qty;
         row.remaining_qty = freshLine.remaining_qty;
         row.requested_qty = freshLine.requested_qty || row.requested_qty;
@@ -2149,6 +2194,11 @@ async function fetchLotSuggestionsForRow(idx, force = false) {
         return false;
     }
 
+    if (!isBatchManagedLine(items[idx])) {
+        refreshLotSuggestionPopupContent(idx, batchManagedMessageForLine(items[idx]));
+        return false;
+    }
+
     const itemCode = String(items[idx].item_code || '').trim();
     const whsCode = String(items[idx].stock_whs_code || '01').trim() || '01';
     const itemKey = itemCodeKey(itemCode);
@@ -2247,10 +2297,12 @@ function buildIssueItemFromRequest(req) {
         remaining_qty: req.remaining_qty,
         warehouse_stock_qty: req.warehouse_stock_qty || 0,
         stock_whs_code: req.stock_whs_code || '01',
-        requested_lot_no: req.lot_no || '',
+        requested_lot_no: '',
         available_lots: mergedLots.length > 0 ? mergedLots : (Array.isArray(req.available_lots) ? req.available_lots : []),
-        lot_no: req.lot_no || '',
-        warehouse_lot_no: req.warehouse_lot_no || '',
+        lot_no: '',
+        warehouse_lot_no: '',
+        is_batch_managed: req.is_batch_managed !== false,
+        batch_management_message: req.batch_management_message || '',
         itr_number: req.doc_num,
         itr_doc_entry: req.doc_entry,
         itr_doc_num: req.doc_num,
@@ -2629,8 +2681,10 @@ function render() {
 
     items.forEach((it, idx) => {
         const lotOptions = Array.isArray(it.available_lots) ? it.available_lots : [];
+        const batchBlocked = !isBatchManagedLine(it);
+        const batchMessage = batchManagedMessageForLine(it);
         const hasNoStock = Number(it.warehouse_stock_qty || 0) <= 0;
-        const noStockButton = hasNoStock && it.request_line_id
+        const noStockButton = !batchBlocked && hasNoStock && it.request_line_id
             ? `
                         <button
                             class="btn btn-sm btn-outline-warning remove-btn"
@@ -2677,6 +2731,7 @@ function render() {
                         step="0.001"
                         id="qty_${idx}"
                         value="${esc(it.quantity)}"
+                        ${batchBlocked ? 'disabled' : ''}
                         onchange="updateItemField(${idx}, 'quantity', this.value); validateItemLot(${idx})"
                     >
                 </td>
@@ -2687,8 +2742,9 @@ function render() {
                             class="form-control form-control-sm lot-input"
                             id="lot_${idx}"
                             value="${esc(it.lot_no)}"
-                            placeholder="GRPO lot"
+                            placeholder="${batchBlocked ? 'SAP batch setup required' : 'GRPO lot'}"
                             autocomplete="off"
+                            ${batchBlocked ? 'disabled' : ''}
                             onfocus="showLotSuggestions(${idx})"
                             onclick="showLotSuggestions(${idx})"
                             onblur="hideLotSuggestionsDelayed(${idx})"
@@ -2704,6 +2760,7 @@ function render() {
                         id="warehouse_lot_${idx}"
                         value="${esc(it.warehouse_lot_no)}"
                         placeholder="WH lot (optional)"
+                        ${batchBlocked ? 'disabled' : ''}
                         onchange="updateItemField(${idx}, 'warehouse_lot_no', this.value)"
                     >
                 </td>
@@ -2720,9 +2777,11 @@ function render() {
                             id="print_single_${idx}"
                             onclick="printSingleIssueTag(${idx}, false, true); return false;"
                             title="Print this tag and save the issuance"
+                            ${batchBlocked ? 'disabled' : ''}
                         >
                             Print & Save
                         </button>
+                        ${batchBlocked ? `<div class="small text-danger">${esc(batchMessage)}</div>` : ''}
                         <button
                             class="btn btn-sm btn-outline-danger remove-btn"
                             type="button"
@@ -2738,10 +2797,10 @@ function render() {
     });
 
     document.getElementById('countBadge').textContent = items.length + ' item(s)';
-    document.getElementById('saveBtn').disabled = items.length === 0;
+    document.getElementById('saveBtn').disabled = items.length === 0 || items.some(it => !isBatchManagedLine(it));
     const printBtn = document.getElementById('printBtn');
     if (printBtn) {
-        printBtn.disabled = items.length === 0;
+        printBtn.disabled = items.length === 0 || items.some(it => !isBatchManagedLine(it));
     }
 }
 
@@ -2975,6 +3034,18 @@ async function validateItemLotBalanceCandidate(idx, qty, lotNo, showAlert = fals
     const it = items[idx];
 
     if (!it) {
+        return false;
+    }
+
+    if (!isBatchManagedLine(it)) {
+        const msg = batchManagedMessageForLine(it);
+        setLotStatus(idx, 'invalid', msg);
+        render();
+
+        if (showAlert) {
+            showMessage(msg);
+        }
+
         return false;
     }
 
@@ -3460,6 +3531,13 @@ async function printSingleIssueTag(idx, silent = false, saveAfterPrint = true, s
         return false;
     }
 
+    if (!isBatchManagedLine(it)) {
+        if (!silent) {
+            showMessage(batchManagedMessageForLine(it));
+        }
+        return false;
+    }
+
     if (!it.quantity || Number(it.quantity) <= 0) {
         if (!silent) {
             showMessage('Line ' + (idx + 1) + ' quantity must be greater than zero.');
@@ -3564,7 +3642,7 @@ async function printSingleIssueTag(idx, silent = false, saveAfterPrint = true, s
         return false;
     } finally {
         if (printBtn) {
-            printBtn.disabled = items.length === 0;
+            printBtn.disabled = items.length === 0 || items.some(row => !isBatchManagedLine(row));
             printBtn.textContent = oldText || 'Print';
         }
     }
@@ -3582,6 +3660,13 @@ async function printAllIssueTags(silent = false, saveAfterPrint = false, skipLot
 
     for (let idx = 0; idx < items.length; idx++) {
         const it = items[idx];
+
+        if (!isBatchManagedLine(it)) {
+            if (!silent) {
+                showMessage(batchManagedMessageForLine(it));
+            }
+            return false;
+        }
 
         if (!it.quantity || Number(it.quantity) <= 0) {
             if (!silent) {
@@ -3700,7 +3785,7 @@ async function printAllIssueTags(silent = false, saveAfterPrint = false, skipLot
         return false;
     } finally {
         if (printBtn) {
-            printBtn.disabled = items.length === 0;
+            printBtn.disabled = items.length === 0 || items.some(row => !isBatchManagedLine(row));
             printBtn.textContent = oldText || 'Print All Tags & Save';
         }
     }
@@ -3711,6 +3796,11 @@ async function saveItems(skipOverQtyCheck = false) {
 
     for (let idx = 0; idx < items.length; idx++) {
         const it = items[idx];
+
+        if (!isBatchManagedLine(it)) {
+            showMessage(batchManagedMessageForLine(it));
+            return;
+        }
 
         if (!it.quantity || Number(it.quantity) <= 0) {
             showMessage('Line ' + (idx + 1) + ' quantity must be greater than zero.');
