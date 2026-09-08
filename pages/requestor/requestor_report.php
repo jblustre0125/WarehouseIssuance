@@ -985,12 +985,15 @@ if ($hasCache) {
             : 'CAST(NULL AS DATETIME)';
 
     /*
-     * The ScanPlus cache is keyed by SAP IT DocEntry + line + item + lot.
-     * Do not reject it by ReceivedAt: SAP/ScanPlus receive timestamps can be
-     * earlier than the local request row even when the SAP document key is the
-     * same confirmed transfer.
+     * The same SAP IT/item/lot can be reused by later local request lines.
+     * Do not let an older SAP receipt satisfy a newer issued/requested row.
      */
-    $cacheDateCondition = '';
+    $cacheDateCondition = $cacheHasReceivedAt
+        ? "AND (
+                C0.ReceivedAt IS NULL
+                OR C0.ReceivedAt >= R.RequestEventAt
+           )"
+        : '';
 
     $cacheReceivedAtOrder =
         $cacheHasReceivedAt
@@ -1126,6 +1129,7 @@ $lineReceiveApply = "
     OUTER APPLY
     (
         SELECT
+            CAST(NULL AS INT) AS RequestLineID,
             CAST(NULL AS BIT) AS IsCurrentMatch,
             CAST(NULL AS NVARCHAR(50)) AS MatchStatus,
             CAST(NULL AS DECIMAL(18, 3)) AS RawReceivedQty,
@@ -1143,6 +1147,7 @@ if ($hasLineReceiveCache) {
         OUTER APPLY
         (
             SELECT TOP (1)
+                M0.RequestLineID,
                 ISNULL(M0.IsCurrentMatch, 0) AS IsCurrentMatch,
                 M0.MatchStatus,
                 TRY_CONVERT(
@@ -1303,18 +1308,30 @@ SELECT
             LTRIM(RTRIM(R.LocalLotNo)),
             ''
         ),
-        NULLIF(
-            LTRIM(RTRIM(M.ReceivedLotNo)),
-            ''
-        ),
-        NULLIF(
-            LTRIM(RTRIM(C.ReceivedLotNo)),
-            ''
-        ),
-        NULLIF(
-            LTRIM(RTRIM(C.LotNo)),
-            ''
-        )
+        CASE
+            WHEN S.UseLineReceive = 1
+                THEN NULLIF(
+                    LTRIM(RTRIM(M.ReceivedLotNo)),
+                    ''
+                )
+            ELSE NULL
+        END,
+        CASE
+            WHEN S.UseScanCache = 1
+                THEN NULLIF(
+                    LTRIM(RTRIM(C.ReceivedLotNo)),
+                    ''
+                )
+            ELSE NULL
+        END,
+        CASE
+            WHEN S.UseScanCache = 1
+                THEN NULLIF(
+                    LTRIM(RTRIM(C.LotNo)),
+                    ''
+                )
+            ELSE NULL
+        END
     ) AS LotNo,
 
     R.WarehouseLotNo,
@@ -1340,14 +1357,22 @@ SELECT
 
         WHEN Q.CacheReceivedQty > 0
             THEN COALESCE(
-                NULLIF(
-                    LTRIM(RTRIM(M.BarcodeUser)),
-                    ''
-                ),
-                NULLIF(
-                    LTRIM(RTRIM(C.BarcodeUser)),
-                    ''
-                ),
+                CASE
+                    WHEN S.UseLineReceive = 1
+                        THEN NULLIF(
+                            LTRIM(RTRIM(M.BarcodeUser)),
+                            ''
+                        )
+                    ELSE NULL
+                END,
+                CASE
+                    WHEN S.UseScanCache = 1
+                        THEN NULLIF(
+                            LTRIM(RTRIM(C.BarcodeUser)),
+                            ''
+                        )
+                    ELSE NULL
+                END,
                 ''
             )
 
@@ -1368,8 +1393,14 @@ SELECT
 
         WHEN
             Q.CacheReceivedQty > 0
-            AND COALESCE(M.ReceivedAt, C.ReceivedAt) IS NOT NULL
-            THEN COALESCE(M.ReceivedAt, C.ReceivedAt)
+            AND COALESCE(
+                CASE WHEN S.UseLineReceive = 1 THEN M.ReceivedAt ELSE NULL END,
+                CASE WHEN S.UseScanCache = 1 THEN C.ReceivedAt ELSE NULL END
+            ) IS NOT NULL
+            THEN COALESCE(
+                CASE WHEN S.UseLineReceive = 1 THEN M.ReceivedAt ELSE NULL END,
+                CASE WHEN S.UseScanCache = 1 THEN C.ReceivedAt ELSE NULL END
+            )
 
         ELSE NULL
     END AS ScannedAt,
@@ -1388,13 +1419,38 @@ SELECT
         WHEN Q.CacheReceivedQty > 0
             THEN
                 CASE
-                    WHEN UPPER(LTRIM(RTRIM(ISNULL(COALESCE(M.MatchStatus, M.ScanStatus, C.ScanStatus), '')))) IN
+                    WHEN UPPER(LTRIM(RTRIM(ISNULL(
+                        COALESCE(
+                            CASE
+                                WHEN S.UseLineReceive = 1
+                                    THEN COALESCE(M.MatchStatus, M.ScanStatus)
+                                ELSE NULL
+                            END,
+                            CASE
+                                WHEN S.UseScanCache = 1
+                                    THEN C.ScanStatus
+                                ELSE NULL
+                            END
+                        ),
+                        ''
+                    )))) IN
                     (
                         'CLOSED',
                         'COMPLETED',
                         'MATCHED'
                     )
-                        THEN COALESCE(M.MatchStatus, M.ScanStatus, C.ScanStatus)
+                        THEN COALESCE(
+                            CASE
+                                WHEN S.UseLineReceive = 1
+                                    THEN COALESCE(M.MatchStatus, M.ScanStatus)
+                                ELSE NULL
+                            END,
+                            CASE
+                                WHEN S.UseScanCache = 1
+                                    THEN C.ScanStatus
+                                ELSE NULL
+                            END
+                        )
 
                     WHEN
                         COALESCE(
@@ -1459,7 +1515,21 @@ SELECT
             AND UPPER(
                 LTRIM(
                     RTRIM(
-                        ISNULL(COALESCE(M.MatchStatus, M.ScanStatus, C.ScanStatus), '')
+                        ISNULL(
+                            COALESCE(
+                                CASE
+                                    WHEN S.UseLineReceive = 1
+                                        THEN COALESCE(M.MatchStatus, M.ScanStatus)
+                                    ELSE NULL
+                                END,
+                                CASE
+                                    WHEN S.UseScanCache = 1
+                                        THEN C.ScanStatus
+                                    ELSE NULL
+                                END
+                            ),
+                            ''
+                        )
                     )
                 )
             ) IN
@@ -1468,13 +1538,19 @@ SELECT
                 'COMPLETED',
                 'MATCHED'
             )
-            THEN COALESCE(M.ReceivedAt, C.ReceivedAt)
+            THEN COALESCE(
+                CASE WHEN S.UseLineReceive = 1 THEN M.ReceivedAt ELSE NULL END,
+                CASE WHEN S.UseScanCache = 1 THEN C.ReceivedAt ELSE NULL END
+            )
 
         ELSE NULL
     END AS ClosedAt,
 
     B.Remarks,
-    COALESCE(M.LastSyncedAt, C.LastSyncedAt) AS CacheLastSyncedAt
+    COALESCE(
+        CASE WHEN S.UseLineReceive = 1 THEN M.LastSyncedAt ELSE NULL END,
+        CASE WHEN S.UseScanCache = 1 THEN C.LastSyncedAt ELSE NULL END
+    ) AS CacheLastSyncedAt
 
 FROM PagedRows B
 
@@ -1594,11 +1670,16 @@ CROSS APPLY
         CASE
             WHEN ISNULL(M.IsCurrentMatch, 0) = 1
                  AND ISNULL(R.BaseIssuedQty, 0) > 0
-                THEN TRY_CONVERT(
-                    DECIMAL(18, 3),
-                    M.ReceivedQty
-                )
+                 AND
+                 (
+                    M.ReceivedAt IS NULL
+                    OR M.ReceivedAt >= R.RequestEventAt
+                 )
+                THEN 1
+            ELSE 0
+        END AS UseLineReceive,
 
+        CASE
             WHEN ISNULL(
                     TRY_CONVERT(
                         DECIMAL(18, 3),
@@ -1620,6 +1701,28 @@ CROSS APPLY
                     'COMPLETED',
                     'MATCHED'
                  )
+                 AND
+                 (
+                    C.ReceivedAt IS NULL
+                    OR C.ReceivedAt >= R.RequestEventAt
+                 )
+                 AND ISNULL(M.RequestLineID, 0) = 0
+                THEN 1
+            ELSE 0
+        END AS UseScanCache
+) S
+
+CROSS APPLY
+(
+    SELECT
+        CASE
+            WHEN S.UseLineReceive = 1
+                THEN TRY_CONVERT(
+                    DECIMAL(18, 3),
+                    M.ReceivedQty
+                )
+
+            WHEN S.UseScanCache = 1
                 THEN TRY_CONVERT(
                     DECIMAL(18, 3),
                     C.ReceivedQty

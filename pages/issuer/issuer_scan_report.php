@@ -480,6 +480,9 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
     $receivedAtSelect = issuer_report_has_column($conn, 'WarehouseIssueRequestLineReceiveCache', 'ReceivedAt')
         ? 'ReceivedAt'
         : 'CAST(NULL AS DATETIME) AS ReceivedAt';
+    $isCurrentMatchSelect = issuer_report_has_column($conn, 'WarehouseIssueRequestLineReceiveCache', 'IsCurrentMatch')
+        ? 'IsCurrentMatch'
+        : 'CAST(0 AS BIT) AS IsCurrentMatch';
 
     $ids = [];
 
@@ -508,10 +511,11 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
                 {$receivedLotSelect},
                 {$receivedQtySelect},
                 {$barcodeUserSelect},
-                {$receivedAtSelect}
+                {$receivedAtSelect},
+                {$isCurrentMatchSelect}
              FROM dbo.WarehouseIssueRequestLineReceiveCache
              WHERE RequestLineID IN ({$placeholders})
-               AND ISNULL(IsCurrentMatch, 0) = 1",
+             ",
             $chunk
         );
 
@@ -529,6 +533,16 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
 
         $mapped = $mappedByLine[$id];
         $row['CacheMatchStatus'] = $mapped['MatchStatus'] ?? $row['CacheMatchStatus'] ?? '';
+
+        if ((int)($mapped['IsCurrentMatch'] ?? 0) !== 1) {
+            $row['ScanStatus'] = '';
+            $row['ReceivedLotNo'] = '';
+            $row['ReceivedQty'] = '';
+            $row['BarcodeUser'] = '';
+            $row['ReceivedAt'] = '';
+            continue;
+        }
+
         $row['ScanStatus'] = $mapped['ScanStatus'] ?? $row['ScanStatus'] ?? '';
         $row['ReceivedLotNo'] = $mapped['ReceivedLotNo'] ?? $row['ReceivedLotNo'] ?? '';
         $row['ReceivedQty'] = $mapped['ReceivedQty'] ?? $row['ReceivedQty'] ?? '';
@@ -565,7 +579,7 @@ function issuer_report_scanplus_before_issue(array $row): bool
         return false;
     }
 
-    return date('Y-m-d', $receivedAt) < date('Y-m-d', $issuedAt);
+    return $receivedAt < $issuedAt;
 }
 
 function issuer_report_received_status($status): bool
