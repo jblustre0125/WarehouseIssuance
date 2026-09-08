@@ -179,7 +179,7 @@ $cacheKey = sap_cache_make_key('sap.open_itr_requests', [
     'period_end' => $monthEnd,
     'include_last_month' => $includeLastMonth ? 'yes' : 'no',
     'last_month_grace_days' => $graceDays,
-    'version' => 'quantity-as-open-v7-hide-non-batch-managed',
+    'version' => 'quantity-as-open-v8-hide-non-batch-managed-mapping',
     'pack_sizes' => itr_pack_sizes_cache_token()
 ]);
 
