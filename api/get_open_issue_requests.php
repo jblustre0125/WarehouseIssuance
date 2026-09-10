@@ -55,10 +55,6 @@ function open_issue_request_line_is_visible(array $line)
         return false;
     }
 
-    if (array_key_exists('available_lots', $line) && is_array($line['available_lots']) && count($line['available_lots']) === 0) {
-        return false;
-    }
-
     return true;
 }
 
@@ -235,7 +231,7 @@ foreach ($rows as $sigRow) {
 $cacheKey = sap_cache_make_key('sap.open_issue_requests', [
     'signature' => hash('sha256', implode('|', $rowSignatureParts)),
     'pack_sizes' => itr_pack_sizes_cache_token(),
-    'lot_query_version' => 'fifo_initial_available_lots_requestor_section_location_v8_hide_no_batch_lot_balance'
+    'lot_query_version' => 'fifo_initial_available_lots_requestor_section_location_v9_show_no_lot_pending'
 ]);
 
 $cached = sap_cache_get_preferred($conn, $cacheKey, 86400);
@@ -327,7 +323,7 @@ if (!$sapLiveQueriesEnabled) {
         );
 
         foreach ($stockRows as $stockRow) {
-            $stockByItem[(string)$stockRow['ItemCode']] = (float)$stockRow['OnHand'];
+            $stockByItem[trim((string)$stockRow['ItemCode'])] = (float)$stockRow['OnHand'];
         }
     }
 
@@ -343,7 +339,7 @@ if (!$sapLiveQueriesEnabled) {
         );
 
         foreach ($uomRows as $uomRow) {
-            $uomByItem[(string)$uomRow['ItemCode']] = (string)$uomRow['UomName'];
+            $uomByItem[trim((string)$uomRow['ItemCode'])] = (string)$uomRow['UomName'];
         }
     }
 
@@ -526,6 +522,7 @@ $documents = [];
 $requests = [];
 $itemLocationByCode = item_locations_by_codes($conn, array_keys($itemCodes));
 foreach ($rows as $r) {
+    $itemCode = trim((string)$r['ItemCode']);
     $neededDate = $r['NeededDate'] instanceof DateTimeInterface ? $r['NeededDate']->format('Y-m-d') : (string)$r['NeededDate'];
     $requestedAt = $r['RequestedAt'] instanceof DateTimeInterface ? $r['RequestedAt']->format('Y-m-d H:i:s') : (string)$r['RequestedAt'];
     $requestedQty = (float)$r['RequestedQty'];
@@ -535,17 +532,17 @@ foreach ($rows as $r) {
         continue;
     }
 
-    $stockQty = $stockByItem[(string)$r['ItemCode']] ?? 0.0;
-    $qtyPerPack = itr_qty_per_pack_for_item($r['ItemCode']);
-    $itemLocation = $itemLocationByCode[(string)$r['ItemCode']] ?? [];
-    $batchStatus = $batchByItem[(string)$r['ItemCode']] ?? [
+    $stockQty = $stockByItem[$itemCode] ?? 0.0;
+    $qtyPerPack = itr_qty_per_pack_for_item($itemCode);
+    $itemLocation = $itemLocationByCode[$itemCode] ?? [];
+    $batchStatus = $batchByItem[$itemCode] ?? [
         'managed' => true,
         'message' => ''
     ];
     $isBatchManaged = (bool)($batchStatus['managed'] ?? true);
     $isReturnedNoStock = strtoupper((string)($r['LineStatus'] ?? '')) === 'RETURNED_NO_STOCK';
 
-    if (!$isBatchManaged || count($lotsByItem[(string)$r['ItemCode']] ?? []) === 0) {
+    if (!$isBatchManaged) {
         continue;
     }
     $line = [
@@ -556,7 +553,7 @@ foreach ($rows as $r) {
         'doc_entry' => $r['SAP_IT_DocEntry'] !== null ? (int)$r['SAP_IT_DocEntry'] : null,
         'doc_num' => (string)$r['ITRNumber'],
         'line_num' => $r['SAP_IT_LineNum'] !== null ? (int)$r['SAP_IT_LineNum'] : null,
-        'item_code' => (string)$r['ItemCode'],
+        'item_code' => $itemCode,
         'part_name' => (string)$r['PartName'],
         'parts_code' => (string)($itemLocation['parts_code'] ?? ''),
         'location_code' => (string)($itemLocation['location_code'] ?? ''),
@@ -566,12 +563,12 @@ foreach ($rows as $r) {
         'remaining_qty' => $remainingQty,
         'lot_no' => $isReturnedNoStock ? '' : (string)($r['LotNo'] ?? ''),
         'warehouse_lot_no' => $isReturnedNoStock ? '' : (string)($r['WarehouseLotNo'] ?? ''),
-        'available_lots' => $lotsByItem[(string)$r['ItemCode']] ?? [],
+        'available_lots' => $lotsByItem[$itemCode] ?? [],
         'is_batch_managed' => true,
         'batch_management_message' => '',
         'stock_whs_code' => '01',
         'warehouse_stock_qty' => $stockQty,
-        'uom' => $uomByItem[(string)$r['ItemCode']] ?? '',
+        'uom' => $uomByItem[$itemCode] ?? '',
         'qty_per_pack' => $qtyPerPack,
         'qty_per_pack_source' => $qtyPerPack > 0 ? 'June 2026 Excel SUMMARY' : '',
         'num_per_msr' => 1,

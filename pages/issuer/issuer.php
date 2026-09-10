@@ -1775,9 +1775,19 @@ function renderRequests() {
 
         const wh = getDocumentWarehouseText(doc);
         const blockedLine = firstBatchBlockedLine(doc.lines || []);
+        const noStockLines = (doc.lines || []).filter(line => {
+            const lots = Array.isArray(line.available_lots) ? line.available_lots : [];
+            return lots.length === 0 && Number(line.warehouse_stock_qty || 0) <= 0;
+        });
+        const allNoStock = (doc.lines || []).length > 0 && noStockLines.length === (doc.lines || []).length;
         const loadDisabled = blockedLine ? ' disabled' : '';
-        const loadBadge = blockedLine ? 'Blocked' : 'Load';
-        const blockedTitle = blockedLine ? batchManagedMessageForLine(blockedLine) : 'Load request';
+        const loadBadge = blockedLine ? 'Blocked' : allNoStock ? 'No stock' : 'Load';
+        const loadBadgeClass = blockedLine ? 'text-bg-danger' : allNoStock ? 'text-bg-warning' : 'text-bg-primary';
+        const blockedTitle = blockedLine
+            ? batchManagedMessageForLine(blockedLine)
+            : allNoStock
+            ? 'No available stock. Load the request to return individual items to the requestor.'
+            : 'Load request';
 
         list.insertAdjacentHTML('beforeend', `
             <div class="itr-card${docActive}">
@@ -1797,7 +1807,7 @@ function renderRequests() {
                             ${getDocumentWarehouseRouteHtml(doc)}
                         </div>
 
-                        <span class="badge ${blockedLine ? 'text-bg-danger' : 'text-bg-primary'} rounded-pill">${esc(loadBadge)}</span>
+                        <span class="badge ${loadBadgeClass} rounded-pill">${esc(loadBadge)}</span>
                     </div>
 
                     <div class="qty-grid">

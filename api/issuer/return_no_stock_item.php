@@ -173,9 +173,9 @@ try {
     if ($hasOitw) {
         $stockRow = fetch_one(
             $erp,
-            "SELECT ISNULL(OnHand, 0) AS StockQty
+                        "SELECT ISNULL(OnHand, 0) AS StockQty
              FROM OITW
-             WHERE ItemCode = ?
+                         WHERE LTRIM(RTRIM(ItemCode)) = LTRIM(RTRIM(?))
                AND WhsCode = ?",
             [(string)$line['ItemCode'], $stockWhsCode]
         );
