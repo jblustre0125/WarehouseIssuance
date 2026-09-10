@@ -1,7 +1,8 @@
 param(
     [string]$RelayRoot = "C:\NittoPrintRelay",
     [string]$PrinterName = "NITTO DURA-SL-400",
-    [string]$TaskName = "Warehouse Nitto Print Relay"
+    [string]$TaskName = "Warehouse Nitto Print Relay",
+    [string]$TaskUser = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,7 +40,11 @@ $action = New-ScheduledTaskAction `
     -Execute "powershell.exe" `
     -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$installedWorkerPath`" -InboxPath `"$inboxPath`" -PrinterName `"$PrinterName`""
 
-$currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+$currentUser = if ([string]::IsNullOrWhiteSpace($TaskUser)) {
+    [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+} else {
+    $TaskUser.Trim()
+}
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $currentUser
 $principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
