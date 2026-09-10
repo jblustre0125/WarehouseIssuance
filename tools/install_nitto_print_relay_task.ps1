@@ -4,6 +4,8 @@ param(
     [string]$TaskName = "Warehouse Nitto Print Relay"
 )
 
+$ErrorActionPreference = 'Stop'
+
 $inboxPath = Join-Path $RelayRoot "inbox"
 $sourceWorkerPath = Join-Path $PSScriptRoot "run_nitto_print_relay.ps1"
 $installedWorkerPath = Join-Path $RelayRoot "run_nitto_print_relay.ps1"
@@ -37,8 +39,9 @@ $action = New-ScheduledTaskAction `
     -Execute "powershell.exe" `
     -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$installedWorkerPath`" -InboxPath `"$inboxPath`" -PrinterName `"$PrinterName`""
 
-$trigger = New-ScheduledTaskTrigger -AtStartup
-$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
+$currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User $currentUser
+$principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 
 Register-ScheduledTask `
@@ -57,3 +60,4 @@ Write-Output "Share: \\$env:COMPUTERNAME\NittoPrintRelay\inbox"
 Write-Output "Worker: $installedWorkerPath"
 Write-Output "Printer: $PrinterName"
 Write-Output "Task: $TaskName"
+Write-Output "Task user: $currentUser"

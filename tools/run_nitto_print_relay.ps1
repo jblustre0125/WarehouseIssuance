@@ -24,6 +24,45 @@ function Write-RelayLog {
     Add-Content -LiteralPath $script:LogFile -Value ("[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Message)
 }
 
+function Resolve-PrinterName {
+    param([string]$TargetPrinter)
+
+    $installedPrinters = [System.Drawing.Printing.PrinterSettings]::InstalledPrinters
+    $candidates = New-Object System.Collections.ArrayList
+    $target = $TargetPrinter.Trim()
+
+    if ($target -ne '') {
+        [void]$candidates.Add($target)
+    }
+
+    $queueName = ($target -split '\\')[-1]
+    if ($queueName -ne '' -and -not $candidates.Contains($queueName)) {
+        [void]$candidates.Add($queueName)
+    }
+
+    foreach ($installedPrinter in $installedPrinters) {
+        if ([string]$installedPrinter -ieq $queueName -or [string]$installedPrinter -like "$queueName on *") {
+            if (-not $candidates.Contains([string]$installedPrinter)) {
+                [void]$candidates.Add([string]$installedPrinter)
+            }
+        }
+    }
+
+    Write-RelayLog "Visible printers: $(([string[]]$installedPrinters) -join ' | ')"
+
+    foreach ($candidate in $candidates) {
+        $settings = New-Object System.Drawing.Printing.PrinterSettings
+        $settings.PrinterName = [string]$candidate
+
+        if ($settings.IsValid) {
+            Write-RelayLog "Resolved printer '$TargetPrinter' as '$candidate'"
+            return [string]$candidate
+        }
+    }
+
+    throw "Printer queue is not valid for this Windows account: $TargetPrinter. Tried: $($candidates -join ' | ')"
+}
+
 function Print-RelayImage {
     param(
         [string]$ImagePath,
@@ -32,18 +71,13 @@ function Print-RelayImage {
         [int]$HeightHundredths
     )
 
-    $settings = New-Object System.Drawing.Printing.PrinterSettings
-    $settings.PrinterName = $TargetPrinter
-
-    if (-not $settings.IsValid) {
-        throw "Printer queue is not valid on this PC: $TargetPrinter"
-    }
+    $resolvedPrinterName = Resolve-PrinterName $TargetPrinter
 
     $image = [System.Drawing.Image]::FromFile($ImagePath)
     $doc = New-Object System.Drawing.Printing.PrintDocument
 
     try {
-        $doc.PrinterSettings.PrinterName = $TargetPrinter
+        $doc.PrinterSettings.PrinterName = $resolvedPrinterName
         $doc.DocumentName = "NBC Picker Tag Relay"
         $doc.OriginAtMargins = $false
         $doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0, 0, 0, 0)
