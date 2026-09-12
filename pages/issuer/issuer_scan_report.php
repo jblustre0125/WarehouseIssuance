@@ -721,103 +721,6 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
 
 enrich_issuer_rows_with_request_line_receive_cache($rows, $conn);
 
-function enrich_issuer_rows_with_transaction_scan_receiver(array &$rows, $conn): void
-{
-    if (empty($rows)
-        || !issuer_report_has_column($conn, 'WarehouseIssueTransactionReceiveAllocation', 'TransactionID')
-        || !issuer_report_has_column($conn, 'WarehouseIssueTransactionReceiveAllocation', 'BarcodeUser')) {
-        return;
-    }
-
-    $transactionIds = [];
-
-    foreach ($rows as $row) {
-        $transactionId = (int)($row['TransactionID'] ?? 0);
-
-        if ($transactionId > 0) {
-            $transactionIds[$transactionId] = true;
-        }
-    }
-
-    if (empty($transactionIds)) {
-        return;
-    }
-
-    $hasReceivedAt = issuer_report_has_column($conn, 'WarehouseIssueTransactionReceiveAllocation', 'ReceivedAt');
-    $hasLastSyncedAt = issuer_report_has_column($conn, 'WarehouseIssueTransactionReceiveAllocation', 'LastSyncedAt');
-    $hasAllocationId = issuer_report_has_column($conn, 'WarehouseIssueTransactionReceiveAllocation', 'AllocationID');
-    $hasAllocatedQty = issuer_report_has_column($conn, 'WarehouseIssueTransactionReceiveAllocation', 'AllocatedQty');
-
-    $receivedAtSelect = $hasReceivedAt
-        ? 'ReceivedAt'
-        : 'CAST(NULL AS DATETIME) AS ReceivedAt';
-    $lastSyncedAtSelect = $hasLastSyncedAt
-        ? 'LastSyncedAt'
-        : 'CAST(NULL AS DATETIME) AS LastSyncedAt';
-    $allocatedQtyFilter = $hasAllocatedQty
-        ? 'AND ISNULL(AllocatedQty, 0) > 0'
-        : '';
-    $receivedAtOrder = $hasReceivedAt
-        ? 'ReceivedAt DESC,'
-        : '';
-    $lastSyncedAtOrder = $hasLastSyncedAt
-        ? 'LastSyncedAt DESC,'
-        : '';
-    $allocationIdOrder = $hasAllocationId
-        ? 'AllocationID DESC'
-        : 'TransactionID DESC';
-
-    $byTransaction = [];
-
-    foreach (array_chunk(array_keys($transactionIds), 300) as $chunk) {
-        $placeholders = implode(',', array_fill(0, count($chunk), '?'));
-        $fallbackRows = fetch_all(
-            $conn,
-            "WITH Ranked AS (
-                SELECT
-                    TransactionID,
-                    BarcodeUser,
-                    {$receivedAtSelect},
-                    {$lastSyncedAtSelect},
-                    ROW_NUMBER() OVER (
-                        PARTITION BY TransactionID
-                        ORDER BY
-                            {$receivedAtOrder}
-                            {$lastSyncedAtOrder}
-                            {$allocationIdOrder}
-                    ) AS RowNum
-                FROM dbo.WarehouseIssueTransactionReceiveAllocation
-                WHERE TransactionID IN ({$placeholders})
-                  AND NULLIF(LTRIM(RTRIM(ISNULL(BarcodeUser, ''))), '') IS NOT NULL
-                  AND UPPER(LTRIM(RTRIM(ISNULL(BarcodeUser, '')))) <> 'SAP OWTR'
-                  {$allocatedQtyFilter}
-             )
-             SELECT TransactionID, BarcodeUser, ReceivedAt, LastSyncedAt
-             FROM Ranked
-             WHERE RowNum = 1",
-            $chunk
-        );
-
-        foreach ($fallbackRows as $fallbackRow) {
-            $byTransaction[(int)($fallbackRow['TransactionID'] ?? 0)] = $fallbackRow;
-        }
-    }
-
-    foreach ($rows as &$row) {
-        $transactionId = (int)($row['TransactionID'] ?? 0);
-
-        if ($transactionId <= 0 || !isset($byTransaction[$transactionId])) {
-            continue;
-        }
-
-        $row['TransactionScanBarcodeUser'] = trim((string)($byTransaction[$transactionId]['BarcodeUser'] ?? ''));
-        $row['TransactionScanReceivedAt'] = $byTransaction[$transactionId]['ReceivedAt'] ?? '';
-    }
-    unset($row);
-}
-
-enrich_issuer_rows_with_transaction_scan_receiver($rows, $conn);
-
 function issuer_report_valid_datetime($value): bool
 {
     $dateValue = trim(report_cell($value));
@@ -889,25 +792,30 @@ function issuer_report_has_authoritative_line_allocation(array $row): bool
 
 function issuer_row_is_received($row): bool
 {
-    /* A same-day ScanPlus scan is not a receipt until SAP OWTR/WTR1 is posted. */
+    /*
+     * A ScanPlus scan alone is not a receipt.
+     * The row becomes received only when an actual positive quantity has been
+     * confirmed by the authoritative SAP/request-line allocation or by the
+     * legacy local receive source.
+     */
     if (issuer_report_cache_blocks_received($row)) {
         return false;
     }
 
-    // For a mapped request line, the SAP-posted FIFO allocation is authoritative per transaction.
     if (issuer_report_has_authoritative_line_allocation($row)) {
-        return ((float)($row['ReceivedQty'] ?? 0) > 0);
+        return is_numeric($row['ReceivedQty'] ?? null)
+            && (float)$row['ReceivedQty'] > 0.0005;
     }
+
+    $localQty = $row['LocalReceivedQty'] ?? null;
+    $sapQty = $row['ReceivedQty'] ?? null;
 
     return issuer_report_received_status($row['RequestHeaderStatus'] ?? '') ||
         issuer_report_received_status($row['RequestLineStatus'] ?? '') ||
         issuer_report_received_status($row['LocalReceiveStatus'] ?? '') ||
         issuer_report_received_status($row['ScanStatus'] ?? '') ||
-        ((float)($row['LocalReceivedQty'] ?? 0) > 0) ||
-        ((float)($row['ReceivedQty'] ?? 0) > 0) ||
-        trim((string)($row['LocalScannedBy'] ?? '')) !== '' ||
-        issuer_report_valid_datetime($row['LocalReceivedAt'] ?? '') ||
-        issuer_report_valid_datetime($row['ReceivedAt'] ?? '');
+        (is_numeric($localQty) && (float)$localQty > 0.0005) ||
+        (is_numeric($sapQty) && (float)$sapQty > 0.0005);
 }
 
 
@@ -987,17 +895,60 @@ function issuer_report_lot_matches_any($receivedLot, array $issuedLots): bool
     return false;
 }
 
-function report_received_value($row, $field)
+function issuer_report_effective_received_qty(array $row): float
 {
     /*
-     * Received By means the actual ScanPlus receiver/scanner.  It is useful
-     * metadata even when the scan has not yet posted to SAP, so do not hide it
-     * behind issuer_row_is_received().  Also suppress the old synthetic label
-     * "SAP OWTR" if stale cache data is still present before the next sync.
+     * Return the same quantity that the report is allowed to display.
+     * Scanner/user/date metadata must never make a row look received by itself.
      */
+    if (!issuer_row_is_received($row)) {
+        return 0.0;
+    }
+
+    if (issuer_report_has_authoritative_line_allocation($row)) {
+        $qty = $row['ReceivedQty'] ?? null;
+        return is_numeric($qty) && (float)$qty > 0.0005
+            ? (float)$qty
+            : 0.0;
+    }
+
+    $localQty = $row['LocalReceivedQty'] ?? null;
+    if (is_numeric($localQty) && (float)$localQty > 0.0005) {
+        $capped = issuer_cap_received_qty($localQty, $row);
+        return is_numeric($capped) ? (float)$capped : 0.0;
+    }
+
+    $qty = issuer_cap_received_qty($row['ReceivedQty'] ?? 0, $row);
+    return is_numeric($qty) ? (float)$qty : 0.0;
+}
+
+function report_received_value($row, $field)
+{
+    $effectiveReceivedQty = issuer_report_effective_received_qty($row);
+
+    /*
+     * Received Qty is the gate for every receive-related display field.
+     * If there is no positive received quantity, Received By, Received Lot and
+     * Received At must also stay blank. This prevents ScanPlus staging metadata
+     * from looking like a completed receipt.
+     */
+    if ($field === 'ReceivedQty') {
+        if ($effectiveReceivedQty <= 0.0005) {
+            return '';
+        }
+
+        return rtrim(
+            rtrim(number_format($effectiveReceivedQty, 3, '.', ''), '0'),
+            '.'
+        );
+    }
+
+    if ($effectiveReceivedQty <= 0.0005) {
+        return '';
+    }
+
     if ($field === 'BarcodeUser') {
         $candidates = [
-            $row['TransactionScanBarcodeUser'] ?? '',
             $row['CacheBarcodeUser'] ?? '',
             $row['BarcodeUser'] ?? '',
             $row['LocalScannedBy'] ?? '',
@@ -1005,7 +956,11 @@ function report_received_value($row, $field)
 
         foreach ($candidates as $candidate) {
             $candidate = trim((string)$candidate);
-            if ($candidate !== '' && strcasecmp($candidate, 'SAP OWTR') !== 0) {
+
+            if (
+                $candidate !== '' &&
+                strcasecmp($candidate, 'SAP OWTR') !== 0
+            ) {
                 return $candidate;
             }
         }
@@ -1013,31 +968,20 @@ function report_received_value($row, $field)
         return '';
     }
 
-    if (!issuer_row_is_received($row)) {
-        return '';
-    }
-
     /*
-     * When a request-line FIFO allocation exists, never let LocalRx overwrite it.
-     * LocalRx is only a legacy/fallback source for rows without an authoritative
-     * request-line allocation.
+     * When a request-line FIFO allocation exists, it is authoritative.
+     * Local receive metadata must not overwrite it.
      */
     if (issuer_report_has_authoritative_line_allocation($row)) {
-        if ($field === 'ReceivedQty') {
-            $qty = $row['ReceivedQty'] ?? '';
-            if (trim((string)$qty) === '' || !is_numeric($qty) || (float)$qty <= 0) {
-                return '';
-            }
-            return rtrim(rtrim(number_format((float)$qty, 3, '.', ''), '0'), '.');
-        }
-
         if ($field === 'ReceivedLotNo') {
             return trim((string)($row['ReceivedLotNo'] ?? ''));
         }
 
         if ($field === 'ReceivedAt') {
             $dateValue = $row['ReceivedAt'] ?? '';
-            return issuer_report_valid_datetime($dateValue) ? report_cell($dateValue) : '';
+            return issuer_report_valid_datetime($dateValue)
+                ? report_cell($dateValue)
+                : '';
         }
 
         return $row[$field] ?? '';
@@ -1045,31 +989,25 @@ function report_received_value($row, $field)
 
     if ($field === 'ReceivedAt') {
         $localDate = $row['LocalReceivedAt'] ?? '';
+
         if (issuer_report_valid_datetime($localDate)) {
             return report_cell($localDate);
         }
 
         $dateValue = $row[$field] ?? '';
-        return issuer_report_valid_datetime($dateValue) ? report_cell($dateValue) : '';
+        return issuer_report_valid_datetime($dateValue)
+            ? report_cell($dateValue)
+            : '';
     }
 
     if ($field === 'ReceivedLotNo') {
         $localLot = trim((string)($row['LocalReceivedLotNo'] ?? ''));
+
         if ($localLot !== '') {
             return $localLot;
         }
 
         return trim((string)($row[$field] ?? ''));
-    }
-
-    if ($field === 'ReceivedQty') {
-        $localQty = $row['LocalReceivedQty'] ?? '';
-
-        if (trim((string)$localQty) !== '' && is_numeric($localQty) && (float)$localQty > 0) {
-            return issuer_cap_received_qty($localQty, $row);
-        }
-
-        return issuer_cap_received_qty($row[$field] ?? 0, $row);
     }
 
     return $row[$field] ?? '';
