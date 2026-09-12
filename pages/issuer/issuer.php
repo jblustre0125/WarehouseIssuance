@@ -3485,7 +3485,7 @@ async function savePrintedItemsAjax(printedItems, message = '') {
         body.append('success_message', message);
     }
 
-    const res = await fetch('actions/save_issue.php', {
+    const res = await fetch('actions/save_issue_with_lot_validation.php', {
         method: 'POST',
         headers: {
             'Accept': 'application/json',

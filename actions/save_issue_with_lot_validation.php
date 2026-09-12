@@ -65,5 +65,6 @@ if (!$validation['ok']) {
     issuer_save_lot_fail($validation['message'] ?? 'Lot balance validation failed.');
 }
 
+define('SAVE_ISSUE_LOT_VALIDATED', true);
 require __DIR__ . '/save_issue.php';
 ?>

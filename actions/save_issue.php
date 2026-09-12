@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/sap_item_batch.php';
+require_once __DIR__ . '/../api/issuer/lot_balance_lib.php';
 require_role([ROLE_ISSUER, ROLE_ADMIN]);
 
 if (!function_exists('issuer_wants_json_response')) {
@@ -39,6 +40,14 @@ $erp = get_erp_connection();
 $u = current_user();
 $preflightItemCodes = [];
 $requestLineIssueTotals = [];
+
+if (!defined('SAVE_ISSUE_LOT_VALIDATED')) {
+    $lotValidation = issuer_validate_batch_lot_balances($erp, $conn, $items);
+
+    if (!($lotValidation['ok'] ?? false)) {
+        save_issue_fail_response($lotValidation['message'] ?? 'Lot balance validation failed.', 400);
+    }
+}
 
 foreach ($items as $item) {
     if (!is_array($item)) {
