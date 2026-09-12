@@ -297,13 +297,10 @@ $sql = '
                     AND L.RequestLineID = IT.IssueRequestLineID
                 )
                 OR (
-                    IT.IssueRequestLineID IS NULL
-                    AND (
-                        H.IssuedTraceNo = IT.TraceNo
-                        OR (
-                            L.SAP_IT_DocEntry = IT.ITRDocEntry
-                            AND L.SAP_IT_LineNum = IT.ITRLineNum
-                        )
+                    H.IssuedTraceNo = IT.TraceNo
+                    OR (
+                        ISNULL(COALESCE(NULLIF(L.SAP_IT_DocEntry, 0), H.SAP_IT_DocEntry), 0) = ISNULL(IT.ITRDocEntry, 0)
+                        AND L.SAP_IT_LineNum = IT.ITRLineNum
                     )
                 )
             )
@@ -314,6 +311,10 @@ $sql = '
                 OR LEN(LTRIM(RTRIM(ISNULL(IT.LotNo, NCHAR(0))))) = 0
             )
         ORDER BY
+            CASE
+                WHEN IT.IssueRequestLineID IS NOT NULL AND L.RequestLineID = IT.IssueRequestLineID THEN 0
+                ELSE 1
+            END,
             CASE WHEN H.IssuedTraceNo = IT.TraceNo THEN 0 ELSE 1 END,
             H.RequestedAt DESC,
             L.RequestLineID DESC
@@ -771,9 +772,45 @@ function issuer_report_cache_status(array $row): string
     return strtoupper(trim((string)($row['CacheMatchStatus'] ?? '')));
 }
 
+function issuer_report_actual_issue_exists(array $row): bool
+{
+    /*
+     * The actual issuer transaction is more authoritative than an older
+     * NOT_ISSUED_REQUEST_LINE cache result. The scheduled receive-cache sync
+     * can run before the issuer finishes a new issuance, so that status can be
+     * temporarily stale until the next synchronization.
+     */
+    $issuedQty = is_numeric($row['Quantity'] ?? null)
+        ? (float)$row['Quantity']
+        : 0.0;
+
+    if ($issuedQty > 0.0005) {
+        return true;
+    }
+
+    $issuedAt = trim((string)($row['IssuedAt'] ?? ''));
+
+    return $issuedAt !== '' && issuer_report_valid_datetime($issuedAt);
+}
+
 function issuer_report_cache_blocks_received(array $row): bool
 {
-    return in_array(issuer_report_cache_status($row), [
+    $status = issuer_report_cache_status($row);
+
+    /*
+     * Do not let a stale pre-issuance cache result override the current
+     * issuance transaction. If this row now has an issued quantity or a valid
+     * IssuedAt timestamp, verification should continue as PENDING RECEIVE (or
+     * another current receive state) rather than showing NOT ISSUED.
+     */
+    if (
+        $status === 'NOT_ISSUED_REQUEST_LINE' &&
+        issuer_report_actual_issue_exists($row)
+    ) {
+        return false;
+    }
+
+    return in_array($status, [
         'SCANNED_NOT_POSTED',
         'GROUP_PARTIAL_POSTED',
         'UNALLOCATED_DAILY_SCAN',
@@ -1033,8 +1070,8 @@ function issuer_report_receive_verification(array $row): array
 
     if ($cacheStatus === 'UNALLOCATED_DAILY_SCAN') {
         return [
-            'status' => 'UNALLOCATED_DAILY_SCAN',
-            'note' => 'Same-day ScanPlus activity exists for the ITR line/item, but none of that quantity was FIFO-allocated to this request line.'
+            'status' => 'PENDING_RECEIVE',
+            'note' => 'Same-day ScanPlus activity exists for this ITR line/item, but no valid receipt has been allocated to this issuance transaction.'
         ];
     }
 
@@ -1046,10 +1083,24 @@ function issuer_report_receive_verification(array $row): array
     }
 
     if ($cacheStatus === 'NOT_ISSUED_REQUEST_LINE') {
-        return [
-            'status' => 'NOT_ISSUED',
-            'note' => 'No issued quantity is available for SAP posting verification.'
-        ];
+        /*
+         * The cache can still say NOT_ISSUED_REQUEST_LINE when it was synced
+         * before the issuer completed the transaction. Trust the actual
+         * issuance quantity / IssuedAt on the row first.
+         */
+        if (!issuer_report_actual_issue_exists($row)) {
+            return [
+                'status' => 'NOT_ISSUED',
+                'note' => 'No issued quantity is available for SAP posting verification.'
+            ];
+        }
+
+        /*
+         * This is a real issued row. Ignore the stale cache status and allow
+         * the normal verification flow below to resolve it as PENDING RECEIVE,
+         * SCANNED - NOT POSTED, PARTIAL, MATCHED, etc.
+         */
+        $cacheStatus = '';
     }
 
     if (!issuer_row_is_received($row)) {
@@ -1133,7 +1184,7 @@ function issuer_report_verification_label($status): string
         'PARTIAL_POSTED_LOT_MISMATCH' => 'PARTIAL + LOT MISMATCH',
         'GROUP_PARTIAL_POSTED' => 'PARTIAL SAP - ROW PENDING',
         'SCANNED_NOT_POSTED' => 'SCANNED - NOT POSTED',
-        'UNALLOCATED_DAILY_SCAN' => 'SCAN NOT ALLOCATED',
+        'UNALLOCATED_DAILY_SCAN' => 'PENDING RECEIVE',
         'UNVERIFIED_DATE' => 'UNVERIFIED DATE',
         'NOT_ISSUED' => 'NOT ISSUED',
         'PENDING_RECEIVE' => 'PENDING RECEIVE',
@@ -1256,7 +1307,7 @@ function issuer_scan_report_url($query)
 }
 
 $columns = [
-    'Trace No',
+    'Request No',
     'Part No',
     'Part Name',
     'Req Qty',
@@ -1342,7 +1393,7 @@ if ($export) {
             <?php else: ?>
                 <?php foreach ($rows as $r): ?>
                     <?= excel_xml_row([
-                        $r['TraceNo'] ?? '',
+                        $r['RequestNo'] ?? '',
                         $r['ItemCode'] ?? '',
                         $r['PartName'] ?? '',
                         $r['RequestedQty'] ?? '',
@@ -1719,6 +1770,74 @@ if ($export) {
         }
 
         .col-trace { width: 9%; white-space: nowrap; }
+
+        .request-verify-link {
+            border: 0;
+            padding: 0;
+            background: transparent;
+            color: #0f6fd6;
+            font: inherit;
+            font-weight: 700;
+            text-align: left;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+
+        .request-verify-link:hover,
+        .request-verify-link:focus {
+            color: #0a58ca;
+        }
+
+        .verify-summary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .verify-summary .status-pill {
+            max-width: none;
+            font-size: 11px;
+            padding: 5px 9px;
+        }
+
+        .verify-overall {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .verify-overall .status-pill {
+            max-width: none;
+            font-size: 12px;
+            padding: 6px 10px;
+        }
+
+        .verify-table-wrap {
+            max-height: 58vh;
+            overflow: auto;
+            border: 1px solid #d8e0eb;
+            border-radius: 8px;
+        }
+
+        .verify-table {
+            margin-bottom: 0;
+            font-size: 12px;
+        }
+
+        .verify-table th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #f8fafc;
+            white-space: nowrap;
+        }
+
+        .source-transfer-cell {
+            min-width: 180px;
+            white-space: normal;
+        }
         .col-item { width: 8%; white-space: nowrap; }
         .col-part { width: 14%; white-space: normal; line-height: 1.25; }
         .col-qty { width: 5%; text-align: right; white-space: nowrap; }
@@ -2018,7 +2137,7 @@ if ($export) {
                                 id="searchReport"
                                 name="q"
                                 value="<?= h($q) ?>"
-                                placeholder="Search SAP code, part name, trace, GRPO lot, WH lot, ITR, issuer..."
+                                placeholder="Search SAP code, part name, GRPO lot, WH lot, ITR, issuer..."
                             >
                             <div class="form-text">
                                 Use SAP ItemCode or Part Name to search items. Press Enter or click Filter to search all records.
@@ -2031,7 +2150,7 @@ if ($export) {
                     <table class="table table-bordered table-striped align-middle report-table" id="reportTable">
                         <thead>
                             <tr>
-                                <th class="col-trace">Trace No</th>
+                                <th class="col-trace">Request No</th>
                                 <th class="col-item">Part No</th>
                                 <th class="col-part">Part Name</th>
                                 <th class="col-qty">Req Qty</th>
@@ -2064,10 +2183,20 @@ if ($export) {
                                 <?php foreach ($rows as $r): ?>
                                     <?php
                                         $scanStatus = strtolower((string)($r['IssueStatus'] ?? 'ISSUED'));
+                                        $requestNo = trim((string)($r['RequestNo'] ?? ''));
                                     ?>
                                     <tr>
-                                        <td class="col-trace" title="<?= h(report_cell($r['TraceNo'] ?? '')) ?>">
-                                            <?= h(report_cell($r['TraceNo'] ?? '')) ?>
+                                        <td class="col-trace" title="<?= h($requestNo) ?>">
+                                            <?php if ($requestNo !== ''): ?>
+                                                <button
+                                                    class="request-verify-link"
+                                                    type="button"
+                                                    data-request-no="<?= h($requestNo) ?>"
+                                                    title="Open receive verification for <?= h($requestNo) ?>"
+                                                >
+                                                    <?= h($requestNo) ?>
+                                                </button>
+                                            <?php endif; ?>
                                         </td>
 
                                         <td class="col-item" title="<?= h(report_cell($r['ItemCode'] ?? '')) ?>">
@@ -2232,8 +2361,18 @@ if ($export) {
                             <?php else: ?>
                                 <?php foreach ($noStockRows as $r): ?>
                                     <tr>
-                                        <td class="col-trace" title="<?= h(report_cell($r['RequestNo'] ?? '')) ?>">
-                                            <?= h(report_cell($r['RequestNo'] ?? '')) ?>
+                                        <?php $noStockRequestNo = trim((string)($r['RequestNo'] ?? '')); ?>
+                                        <td class="col-trace" title="<?= h($noStockRequestNo) ?>">
+                                            <?php if ($noStockRequestNo !== ''): ?>
+                                                <button
+                                                    class="request-verify-link"
+                                                    type="button"
+                                                    data-request-no="<?= h($noStockRequestNo) ?>"
+                                                    title="Open receive verification for <?= h($noStockRequestNo) ?>"
+                                                >
+                                                    <?= h($noStockRequestNo) ?>
+                                                </button>
+                                            <?php endif; ?>
                                         </td>
                                         <td class="col-item" title="<?= h(report_cell($r['ItemCode'] ?? '')) ?>">
                                             <?= h(report_cell($r['ItemCode'] ?? '')) ?>
@@ -2299,6 +2438,58 @@ if ($export) {
     </main>
 </div>
 
+<div
+    class="modal fade"
+    id="receiveVerifyModal"
+    tabindex="-1"
+    aria-labelledby="receiveVerifyTitle"
+    aria-hidden="true"
+>
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" id="receiveVerifyTitle">Receive Verification</h5>
+                    <div class="text-muted small" id="receiveVerifySubtitle">Local ScanPlus / SAP verification</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="receiveVerifyStatus" class="alert alert-light border">
+                    Select a request to verify receive status.
+                </div>
+
+                <div class="verify-overall" id="receiveVerifyOverall"></div>
+                <div class="verify-summary mb-3" id="receiveVerifySummary"></div>
+
+                <div class="verify-table-wrap d-none" id="receiveVerifyTableWrap">
+                    <table class="table table-sm table-striped table-bordered verify-table">
+                        <thead>
+                        <tr>
+                            <th>Result</th>
+                            <th>Item</th>
+                            <th>Part Name</th>
+                            <th class="text-end">Issued</th>
+                            <th>Issued At</th>
+                            <th class="text-end">Received</th>
+                            <th>GRPO Lot</th>
+                            <th>WH Lot</th>
+                            <th>Received Lot</th>
+                            <th>SAP / ScanPlus Source</th>
+                            <th>Received By</th>
+                            <th>Received At</th>
+                            <th>Cache Synced</th>
+                        </tr>
+                        </thead>
+                        <tbody id="receiveVerifyRows"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
@@ -2331,6 +2522,209 @@ if (sidebarBackdrop) {
         sidebarBackdrop.classList.remove('show');
     });
 }
+
+const receiveVerifyModalEl = document.getElementById('receiveVerifyModal');
+const receiveVerifyModal = receiveVerifyModalEl
+    ? bootstrap.Modal.getOrCreateInstance(receiveVerifyModalEl)
+    : null;
+
+function verifyEscape(value) {
+    return String(value ?? '').replace(/[&<>"']/g, function (char) {
+        return {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        }[char];
+    });
+}
+
+function verifyNumber(value) {
+    const number = Number(value || 0);
+    if (!Number.isFinite(number)) {
+        return '';
+    }
+    return String(parseFloat(number.toFixed(3)));
+}
+
+function verifyStatusClass(status) {
+    return String(status || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+}
+
+function verifySetLoading(requestNo) {
+    document.getElementById('receiveVerifyTitle').textContent = 'Receive Verification';
+    document.getElementById('receiveVerifySubtitle').textContent =
+        requestNo + ' | checking received / partial status...';
+    document.getElementById('receiveVerifyStatus').className = 'alert alert-light border';
+    document.getElementById('receiveVerifyStatus').textContent =
+        'Loading request status from the local verification cache...';
+    document.getElementById('receiveVerifyOverall').innerHTML = '';
+    document.getElementById('receiveVerifySummary').innerHTML = '';
+    document.getElementById('receiveVerifyRows').innerHTML = '';
+    document.getElementById('receiveVerifyTableWrap').classList.add('d-none');
+}
+
+function verifyOverallStatus(summary) {
+    const received = Number(summary?.received || 0);
+    const partial = Number(summary?.partial_received || 0);
+    const issued = Number(summary?.issued || 0);
+    const total = received + partial + issued;
+
+    let label = 'PENDING RECEIVE';
+    let cls = 'pending_receive';
+
+    if (total > 0 && received === total) {
+        label = 'RECEIVED';
+        cls = 'received';
+    } else if (received > 0 || partial > 0) {
+        label = 'PARTIAL RECEIVED';
+        cls = 'partial_received';
+    } else if (issued > 0) {
+        label = 'ISSUED / PENDING RECEIVE';
+        cls = 'issued';
+    }
+
+    return '<span class="fw-semibold">Overall:</span>' +
+        '<span class="status-pill status-' + cls + '">' +
+        verifyEscape(label) + '</span>';
+}
+
+function verifyRenderSummary(summary) {
+    const labels = {
+        received: 'Received',
+        partial_received: 'Partial',
+        issued: 'Issued / Pending'
+    };
+
+    return Object.keys(labels).map(function (key) {
+        const count = Number(summary?.[key] || 0);
+        const cls = verifyStatusClass(key);
+        return '<span class="status-pill status-' + cls + '">' +
+            verifyEscape(labels[key] + ': ' + count) +
+            '</span>';
+    }).join('');
+}
+
+function verifyRenderRows(lines) {
+    if (!Array.isArray(lines) || lines.length === 0) {
+        return '<tr><td colspan="13" class="empty-row">No lines found.</td></tr>';
+    }
+
+    return lines.map(function (line) {
+        let status = String(line.verification_status || '').trim();
+        const issuedQty = Number(line.issued_qty || 0);
+        const normalizedStatus = status
+            .toUpperCase()
+            .replace(/[_-]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        // Do not show stale NOT ISSUED when an actual issued quantity exists.
+        if (
+            Number.isFinite(issuedQty) &&
+            issuedQty > 0 &&
+            (normalizedStatus === 'NOT ISSUED' || normalizedStatus === 'NOT ISSUED REQUEST LINE')
+        ) {
+            status = 'ISSUED';
+        }
+
+        const statusClass = verifyStatusClass(status);
+        const receivedQty = Number(line.cache_received_qty || 0);
+        const isReceivedStatus =
+            status === 'RECEIVED' ||
+            status === 'PARTIAL_RECEIVED' ||
+            status === 'PARTIAL RECEIVED';
+        const hasActualReceipt =
+            isReceivedStatus &&
+            Number.isFinite(receivedQty) &&
+            receivedQty > 0;
+
+        const receivedLot = hasActualReceipt
+            ? (line.cache_received_lot_no || line.cache_lot_no || '')
+            : '';
+        const sourceTransfer = hasActualReceipt
+            ? (line.source_transfer_details || '')
+            : '';
+        const receivedBy = hasActualReceipt
+            ? (line.cache_received_by || '')
+            : '';
+        const receivedAt = hasActualReceipt
+            ? (line.cache_received_at || '')
+            : '';
+
+        return '<tr>' +
+            '<td><span class="status-pill status-' + statusClass + '">' +
+                verifyEscape(status) +
+            '</span></td>' +
+            '<td>' + verifyEscape(line.item_code) + '</td>' +
+            '<td>' + verifyEscape(line.part_name) + '</td>' +
+            '<td class="text-end">' + verifyEscape(verifyNumber(line.issued_qty)) + '</td>' +
+            '<td>' + verifyEscape(line.issued_at || '') + '</td>' +
+            '<td class="text-end">' + verifyEscape(hasActualReceipt ? verifyNumber(receivedQty) : '') + '</td>' +
+            '<td>' + verifyEscape(line.lot_no) + '</td>' +
+            '<td>' + verifyEscape(line.warehouse_lot_no) + '</td>' +
+            '<td>' + verifyEscape(receivedLot) + '</td>' +
+            '<td class="source-transfer-cell">' + verifyEscape(sourceTransfer) + '</td>' +
+            '<td>' + verifyEscape(receivedBy) + '</td>' +
+            '<td>' + verifyEscape(receivedAt) + '</td>' +
+            '<td>' + verifyEscape(line.cache_last_synced_at) + '</td>' +
+        '</tr>';
+    }).join('');
+}
+
+async function openReceiveVerification(requestNo) {
+    if (!receiveVerifyModal || !requestNo) {
+        return;
+    }
+
+    verifySetLoading(requestNo);
+    receiveVerifyModal.show();
+
+    try {
+        const response = await fetch(
+            'api/requestor/verify_receive.php?request_no=' + encodeURIComponent(requestNo),
+            { cache: 'no-store' }
+        );
+        const data = await response.json();
+
+        if (!data.ok) {
+            document.getElementById('receiveVerifyStatus').className = 'alert alert-warning';
+            document.getElementById('receiveVerifyStatus').textContent =
+                data.message || 'Unable to verify receive status.';
+            return;
+        }
+
+        document.getElementById('receiveVerifyTitle').textContent = 'Receive Verification';
+        document.getElementById('receiveVerifySubtitle').textContent =
+            data.request_no + ' | ITR ' + (data.itr_number || '-') +
+            ' | Cache ' + (data.latest_scanplus_cache_sync || 'not synced');
+        document.getElementById('receiveVerifyStatus').className = 'alert alert-info';
+        document.getElementById('receiveVerifyStatus').textContent =
+            data.source || 'Checked local ScanPlus / SAP verification cache.';
+        document.getElementById('receiveVerifyOverall').innerHTML =
+            verifyOverallStatus(data.summary || {});
+        document.getElementById('receiveVerifySummary').innerHTML =
+            verifyRenderSummary(data.summary || {});
+        document.getElementById('receiveVerifyRows').innerHTML =
+            verifyRenderRows(data.lines || []);
+        document.getElementById('receiveVerifyTableWrap').classList.remove('d-none');
+    } catch (error) {
+        document.getElementById('receiveVerifyStatus').className = 'alert alert-danger';
+        document.getElementById('receiveVerifyStatus').textContent =
+            'Unable to load receive verification.';
+        console.error(error);
+    }
+}
+
+document.querySelectorAll('.request-verify-link').forEach(function (button) {
+    button.addEventListener('click', function () {
+        openReceiveVerification(button.dataset.requestNo || '');
+    });
+});
 </script>
 
 </body>

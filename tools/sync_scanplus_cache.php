@@ -2724,10 +2724,10 @@ function sync_allocate_daily_issue_receipts(array $issueRows, array $transferRow
             $aTime = sync_datetime_timestamp($issueState[$a]['row']['IssuedAt'] ?? '');
             $bTime = sync_datetime_timestamp($issueState[$b]['row']['IssuedAt'] ?? '');
             if ($aTime !== $bTime) {
-                return $aTime <=> $bTime;
+                return $bTime <=> $aTime;
             }
-            return (int)($issueState[$a]['row']['TransactionID'] ?? 0)
-                <=> (int)($issueState[$b]['row']['TransactionID'] ?? 0);
+            return (int)($issueState[$b]['row']['TransactionID'] ?? 0)
+                <=> (int)($issueState[$a]['row']['TransactionID'] ?? 0);
         });
     };
 
@@ -2748,6 +2748,68 @@ function sync_allocate_daily_issue_receipts(array $issueRows, array $transferRow
         });
     };
 
+    $issueCanUseReceipt = static function (int $issueIndex, int $receiptIndex) use (&$issueState, &$receiptState): bool {
+        $issueTime = sync_datetime_timestamp($issueState[$issueIndex]['row']['IssuedAt'] ?? '');
+        $receiptTime = sync_datetime_timestamp($receiptState[$receiptIndex]['row']['received_at'] ?? '');
+
+        if ($issueTime <= 0 || $receiptTime <= 0) {
+            return true;
+        }
+
+        return $issueTime <= $receiptTime;
+    };
+
+    $allocateReceiptsToIssues = static function (
+        array $issueIndices,
+        array $receiptIndices,
+        callable $lotMatchFor,
+        string $matchPrefix
+    ) use (
+        &$lineAllocations,
+        &$transactionAllocations,
+        &$issueState,
+        &$receiptState,
+        $sortIssueIndices,
+        $sortReceiptIndices,
+        $issueCanUseReceipt
+    ): void {
+        $sortIssueIndices($issueIndices);
+        $sortReceiptIndices($receiptIndices);
+
+        foreach ($receiptIndices as $ri) {
+            if ($receiptState[$ri]['remaining'] <= 0.0005) {
+                continue;
+            }
+
+            foreach ($issueIndices as $ii) {
+                if ($receiptState[$ri]['remaining'] <= 0.0005) {
+                    break;
+                }
+
+                if ($issueState[$ii]['remaining'] <= 0.0005) {
+                    continue;
+                }
+
+                if (!$issueCanUseReceipt($ii, $ri)) {
+                    continue;
+                }
+
+                $qty = min($issueState[$ii]['remaining'], $receiptState[$ri]['remaining']);
+                sync_add_daily_allocation_chunk(
+                    $lineAllocations,
+                    $transactionAllocations,
+                    $issueState,
+                    $receiptState,
+                    $ii,
+                    $ri,
+                    $qty,
+                    (bool)$lotMatchFor($ii, $ri),
+                    $matchPrefix
+                );
+            }
+        }
+    };
+
     /* Pass 1: exact lot. */
     foreach ($issuesByLot as $lotKey => $issueIndices) {
         $receiptIndices = $receiptsByLot[$lotKey] ?? [];
@@ -2755,27 +2817,7 @@ function sync_allocate_daily_issue_receipts(array $issueRows, array $transferRow
             continue;
         }
 
-        $sortIssueIndices($issueIndices);
-        $sortReceiptIndices($receiptIndices);
-        $i = 0;
-        $r = 0;
-
-        while ($i < count($issueIndices) && $r < count($receiptIndices)) {
-            $ii = $issueIndices[$i];
-            $ri = $receiptIndices[$r];
-
-            if ($issueState[$ii]['remaining'] <= 0.0005) {
-                $i++;
-                continue;
-            }
-            if ($receiptState[$ri]['remaining'] <= 0.0005) {
-                $r++;
-                continue;
-            }
-
-            $qty = min($issueState[$ii]['remaining'], $receiptState[$ri]['remaining']);
-            sync_add_daily_allocation_chunk($lineAllocations, $transactionAllocations, $issueState, $receiptState, $ii, $ri, $qty, true, $matchPrefix);
-        }
+        $allocateReceiptsToIssues($issueIndices, $receiptIndices, static fn(): bool => true, $matchPrefix);
     }
 
     /* Pass 2: same-day quantity is present, but under another lot. */
@@ -2792,30 +2834,11 @@ function sync_allocate_daily_issue_receipts(array $issueRows, array $transferRow
             continue;
         }
 
-        $sortIssueIndices($issueIndices);
-        $sortReceiptIndices($receiptIndices);
-        $i = 0;
-        $r = 0;
-
-        while ($i < count($issueIndices) && $r < count($receiptIndices)) {
-            $ii = $issueIndices[$i];
-            $ri = $receiptIndices[$r];
-
-            if ($issueState[$ii]['remaining'] <= 0.0005) {
-                $i++;
-                continue;
-            }
-            if ($receiptState[$ri]['remaining'] <= 0.0005) {
-                $r++;
-                continue;
-            }
-
-            $qty = min($issueState[$ii]['remaining'], $receiptState[$ri]['remaining']);
+        $allocateReceiptsToIssues($issueIndices, $receiptIndices, static function (int $ii, int $ri) use (&$issueState, &$receiptState): bool {
             $issueLot = sync_normalize_lot($issueState[$ii]['row']['LotNo'] ?? '');
             $receiptLot = sync_normalize_lot($receiptState[$ri]['row']['received_lot_no'] ?? '');
-            $lotMatch = $issueLot !== '' && $issueLot === $receiptLot;
-            sync_add_daily_allocation_chunk($lineAllocations, $transactionAllocations, $issueState, $receiptState, $ii, $ri, $qty, $lotMatch, $matchPrefix);
-        }
+            return $issueLot !== '' && $issueLot === $receiptLot;
+        }, $matchPrefix);
     }
 
     foreach ($lineAllocations as &$allocation) {
@@ -3495,15 +3518,20 @@ try {
                 ];
             }
         } elseif ($groupScanQty > 0.0005 || $rawDailyScannedQty > 0.0005) {
-            /* Same-day ScanPlus activity exists, but none was FIFO-allocated to this request line. */
+            /*
+             * Same-day ScanPlus activity exists, but none was allocated to this
+             * request line. For user-facing verification this is still pending:
+             * the scan may belong to another request line or may have happened
+             * before this line was issued.
+             */
             $lineScan = [
                 'raw_received_qty' => 0.0,
                 'received_qty' => 0.0,
                 'received_lot_no' => '',
                 'barcode_user' => '',
                 'received_at' => null,
-                'scan_status' => 'UNALLOCATED_DAILY_SCAN',
-                'match_status' => 'UNALLOCATED_DAILY_SCAN',
+                'scan_status' => 'NOT_RECEIVED_IN_SCANPLUS',
+                'match_status' => 'PENDING_RECEIVE',
             ];
         } else {
             $lineScan = [

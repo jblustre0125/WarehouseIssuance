@@ -1379,12 +1379,17 @@ SELECT
     COALESCE(ITXSUM.IssuedAt, ITX.IssuedAt) AS IssuedAt,
 
     /*
-     * Received By means the real ScanPlus scanner (FT_INVT.CreatedBy), not the
-     * synthetic SAP source label. Request-line cache metadata is authoritative
-     * whenever it exists, even when SAP has not posted the quantity yet.
+     * Receive metadata must only be displayed when this report row has an
+     * actual positive received quantity. This keeps Received Qty, Received By,
+     * Receive Area and Received At consistent with each other. ScanPlus-only
+     * staging metadata remains in the cache for troubleshooting, but it is not
+     * presented as a completed receipt.
      */
     CASE
-        WHEN S.UseLineReceiveMetadata = 1
+        WHEN ISNULL(E.EffectiveReceivedQty, 0) <= 0
+            THEN ''
+
+        WHEN S.UseLineReceive = 1
              AND UPPER(LTRIM(RTRIM(ISNULL(M.BarcodeUser, '')))) <> 'SAP OWTR'
             THEN COALESCE(
                 NULLIF(LTRIM(RTRIM(M.BarcodeUser)), ''),
@@ -1410,14 +1415,23 @@ SELECT
     END AS ScannedBy,
 
     CASE
+        WHEN ISNULL(E.EffectiveReceivedQty, 0) <= 0
+            THEN ''
+
         WHEN ISNULL(M.RequestLineID, 0) = 0
              AND V.LocalReceiveValid = 1
-            THEN TL.ReceiverArea
+            THEN COALESCE(
+                NULLIF(LTRIM(RTRIM(TL.ReceiverArea)), ''),
+                ''
+            )
+
         ELSE ''
     END AS ScannedArea,
 
-    /* Received At is shown only for an actual posted/received quantity. */
     CASE
+        WHEN ISNULL(E.EffectiveReceivedQty, 0) <= 0
+            THEN NULL
+
         WHEN S.UseLineReceive = 1
              AND M.ReceivedAt IS NOT NULL
             THEN M.ReceivedAt
@@ -1450,12 +1464,24 @@ SELECT
                     WHEN 'PARTIAL_POSTED_LOT_MISMATCH' THEN 'PARTIAL + LOT MISMATCH'
                     WHEN 'GROUP_PARTIAL_POSTED' THEN 'PARTIAL SAP - ROW PENDING'
                     WHEN 'SCANNED_NOT_POSTED' THEN 'SCANNED - NOT POSTED'
-                    WHEN 'UNALLOCATED_DAILY_SCAN' THEN 'SCAN NOT ALLOCATED'
+                    WHEN 'UNALLOCATED_DAILY_SCAN' THEN 'ISSUED'
                     WHEN 'UNVERIFIED_DATE' THEN 'UNVERIFIED DATE'
                     WHEN 'PENDING_RECEIVE' THEN 'PENDING RECEIVE'
                     WHEN 'SAP_RECEIVED' THEN 'RECEIVED'
                     WHEN 'SAP_PARTIAL' THEN 'PARTIAL RECEIVED'
-                    WHEN 'NOT_ISSUED_REQUEST_LINE' THEN 'NOT ISSUED'
+                    WHEN 'NOT_ISSUED_REQUEST_LINE' THEN
+                        CASE
+                            /*
+                             * The receive cache may have been synchronized before
+                             * the issuer completed this request line. If the local
+                             * issuance transaction now proves that quantity was
+                             * issued, do not keep showing the stale NOT ISSUED state.
+                             */
+                            WHEN ISNULL(R.BaseIssuedQty, 0) > 0
+                                 OR COALESCE(ITXSUM.IssuedAt, ITX.IssuedAt) IS NOT NULL
+                                THEN 'ISSUED'
+                            ELSE 'NOT ISSUED'
+                        END
                     WHEN 'NOT_ALLOCATED_TO_REQUEST_LINE' THEN 'ISSUED'
                     WHEN 'LOT_REQUIRED_FOR_ALLOCATION' THEN 'ISSUED'
                     WHEN 'GRPO_LOT_REQUIRED' THEN 'ISSUED'
@@ -1488,6 +1514,7 @@ SELECT
                 END
 
         WHEN V.LocalReceiveValid = 1
+             AND ISNULL(E.EffectiveReceivedQty, 0) > 0
             THEN COALESCE(
                 NULLIF(LTRIM(RTRIM(TL.VerificationStatus)), ''),
                 'RECEIVED'
@@ -1526,6 +1553,7 @@ SELECT
         WHEN
             ISNULL(M.RequestLineID, 0) = 0
             AND V.LocalReceiveValid = 1
+            AND ISNULL(E.EffectiveReceivedQty, 0) > 0
 
             AND UPPER(
                 LTRIM(
@@ -3344,14 +3372,42 @@ function verifyRenderRows(lines) {
     }
 
     return lines.map(function (line) {
-        const status = line.verification_status || '';
+        let status = String(line.verification_status || '').trim();
+        const issuedQty = Number(line.issued_qty || 0);
+        const normalizedStatus = status.toUpperCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+        // A stale receive-cache state must never say NOT ISSUED when the
+        // actual local issuance row already has a positive issued quantity.
+        if (
+            Number.isFinite(issuedQty) &&
+            issuedQty > 0 &&
+            (
+                normalizedStatus === 'NOT ISSUED' ||
+                normalizedStatus === 'NOT ISSUED REQUEST LINE'
+            )
+        ) {
+            status = 'ISSUED';
+        }
+
         const statusClass = verifyStatusClass(status);
         const isReceived = status === 'RECEIVED' || status === 'PARTIAL_RECEIVED';
-        const sapLot = isReceived
+        const receivedQty = Number(line.cache_received_qty || 0);
+        const hasActualReceipt =
+            isReceived &&
+            Number.isFinite(receivedQty) &&
+            receivedQty > 0;
+
+        const sapLot = hasActualReceipt
             ? (line.cache_received_lot_no || line.cache_lot_no || '')
             : '';
-        const sourceTransfer = isReceived
+        const sourceTransfer = hasActualReceipt
             ? (line.source_transfer_details || '')
+            : '';
+        const receivedBy = hasActualReceipt
+            ? (line.cache_received_by || '')
+            : '';
+        const receivedAt = hasActualReceipt
+            ? (line.cache_received_at || '')
             : '';
 
         return '<tr>' +
@@ -3366,8 +3422,8 @@ function verifyRenderRows(lines) {
             '<td>' + verifyEscape(line.warehouse_lot_no) + '</td>' +
             '<td>' + verifyEscape(sapLot) + '</td>' +
             '<td class="source-transfer-cell">' + verifyEscape(sourceTransfer) + '</td>' +
-            '<td>' + verifyEscape(line.cache_received_by) + '</td>' +
-            '<td>' + verifyEscape(line.cache_received_at) + '</td>' +
+            '<td>' + verifyEscape(receivedBy) + '</td>' +
+            '<td>' + verifyEscape(receivedAt) + '</td>' +
             '<td>' + verifyEscape(line.cache_last_synced_at) + '</td>' +
         '</tr>';
     }).join('');

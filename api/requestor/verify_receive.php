@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/../../includes/auth.php';
-require_role([ROLE_REQUESTOR, ROLE_ADMIN]);
+require_role([ROLE_REQUESTOR, ROLE_ISSUER, ROLE_WAREHOUSE, ROLE_ADMIN]);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -298,12 +298,43 @@ if ($hasReceiveAllocationSource) {
     ";
 }
 
+$hasIssueTransactionIssuedAt = verify_receive_has_table($conn, 'IssuanceTransactions')
+    && verify_receive_has_column($conn, 'IssuanceTransactions', 'IssueRequestLineID')
+    && verify_receive_has_column($conn, 'IssuanceTransactions', 'IssuedAt');
+
+$issueSummaryApply = "
+    OUTER APPLY
+    (
+        SELECT CAST(NULL AS DATETIME) AS LatestIssuedAt
+    ) IX
+";
+
+if ($hasIssueTransactionIssuedAt) {
+    $issueSummaryItemCondition = verify_receive_has_column($conn, 'IssuanceTransactions', 'ItemCode')
+        ? 'AND (IT0.ItemCode = B.ItemCode OR IT0.ItemCode IS NULL)'
+        : '';
+    $issueSummaryQtyCondition = verify_receive_has_column($conn, 'IssuanceTransactions', 'Quantity')
+        ? 'AND ISNULL(TRY_CONVERT(DECIMAL(18,3), IT0.Quantity), 0) > 0'
+        : '';
+
+    $issueSummaryApply = "
+        OUTER APPLY
+        (
+            SELECT MAX(IT0.IssuedAt) AS LatestIssuedAt
+            FROM dbo.IssuanceTransactions IT0
+            WHERE IT0.IssueRequestLineID = B.RequestLineID
+              {$issueSummaryItemCondition}
+              {$issueSummaryQtyCondition}
+        ) IX
+    ";
+}
+
 $user = current_user();
 $role = strtolower(trim((string)($user['role'] ?? $user['RoleName'] ?? '')));
 $where = ['H.RequestNo = ?'];
 $params = [$requestNo];
 
-if ($role !== ROLE_ADMIN) {
+if ($role === ROLE_REQUESTOR) {
     $where[] = '(H.RequestedByUserID = ? OR H.RequestedByUsername = ?)';
     $params[] = (int)($user['id'] ?? $user['user_id'] ?? $user['UserID'] ?? 0);
     $params[] = (string)($user['username'] ?? $user['Username'] ?? '');
@@ -373,7 +404,8 @@ $rows = fetch_all(
         S.SourceAllocatedQty,
         S.SourceTransferDetails,
         S.SourceMatchMethod,
-        S.SourceLatestReceivedAt
+        S.SourceLatestReceivedAt,
+        IX.LatestIssuedAt
     FROM RequestLines B
     OUTER APPLY
     (
@@ -421,6 +453,7 @@ $rows = fetch_all(
     ) C
     {$lineReceiveApply}
     {$receiveSourceApply}
+    {$issueSummaryApply}
     ORDER BY B.RequestLineID ASC
     ",
     $params
@@ -450,6 +483,21 @@ $summary = [
 ];
 
 foreach ($rows as $row) {
+    $latestIssuedAt = verify_receive_cell($row['LatestIssuedAt'] ?? '');
+    $cacheReceivedAt = verify_receive_cell($row['CacheReceivedAt'] ?? '');
+    $issuedAtTs = $latestIssuedAt !== '' ? strtotime($latestIssuedAt) : false;
+    $receivedAtTs = $cacheReceivedAt !== '' ? strtotime($cacheReceivedAt) : false;
+
+    if ($issuedAtTs !== false && $receivedAtTs !== false && $receivedAtTs < $issuedAtTs) {
+        $row['CacheReceivedQty'] = 0;
+        $row['CacheReceivedLotNo'] = '';
+        $row['CacheReceivedBy'] = '';
+        $row['CacheReceivedAt'] = '';
+        $row['SourceTransferDetails'] = '';
+        $row['SourceAllocatedQty'] = 0;
+        $row['SourceTransferCount'] = 0;
+    }
+
     $status = verify_receive_status($row);
     $summaryKey = strtolower($status);
 
@@ -466,6 +514,7 @@ foreach ($rows as $row) {
         'part_name' => (string)($row['PartName'] ?? ''),
         'requested_qty' => verify_receive_qty($row['RequestedQty'] ?? 0),
         'issued_qty' => verify_receive_qty($row['IssuedQty'] ?? 0),
+        'issued_at' => $latestIssuedAt,
         'lot_no' => (string)($row['LotNo'] ?? ''),
         'warehouse_lot_no' => (string)($row['WarehouseLotNo'] ?? ''),
         'cache_status' => (string)($row['CacheStatus'] ?? ''),
