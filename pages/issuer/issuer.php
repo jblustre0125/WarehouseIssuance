@@ -1414,7 +1414,7 @@ async function loadStocks() {
 
 async function refreshSideTabs() {
     await Promise.all([
-        loadOpenRequests(),
+        loadOpenRequests(true, true),
         loadStocks()
     ]);
 }
@@ -1729,7 +1729,7 @@ function requestLotListHtml(doc) {
         } else if (requestedLot) {
             lotHtml = `<span class="lot-pill" title="Request lot">${esc(requestedLot)}</span>`;
         } else {
-            lotHtml = '<span class="lot-empty">No WH 01 lot balance</span>';
+            lotHtml = '<span class="lot-empty">Lot balance loads when processing this item</span>';
         }
 
         return `

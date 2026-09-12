@@ -120,6 +120,25 @@ function open_issue_request_filter_payload(array $payload)
     return $payload;
 }
 
+function open_issue_available_lot_qty(array $lots)
+{
+    $total = 0.0;
+
+    foreach ($lots as $lot) {
+        if (!is_array($lot)) {
+            continue;
+        }
+
+        $availableQty = (float)($lot['available_qty'] ?? 0);
+
+        if ($availableQty > 0) {
+            $total += $availableQty;
+        }
+    }
+
+    return $total;
+}
+
 $conn = get_whpokayoke_connection();
 $hasHeader = fetch_one($conn, "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'WarehouseIssueRequestHeader'");
 $hasLines = fetch_one($conn, "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'WarehouseIssueRequestLines'");
@@ -231,13 +250,29 @@ foreach ($rows as $sigRow) {
 $cacheKey = sap_cache_make_key('sap.open_issue_requests', [
     'signature' => hash('sha256', implode('|', $rowSignatureParts)),
     'pack_sizes' => itr_pack_sizes_cache_token(),
-    'lot_query_version' => 'fifo_initial_available_lots_requestor_section_location_v9_show_no_lot_pending'
+    // New cache version: initial request loading uses lightweight OITW stock only.
+    // Batch/lot balances are loaded lazily per item from get_lot_suggestions.php.
+    'lot_query_version' => 'oitw_stock_always_refresh_v11'
 ]);
 
-$cached = sap_cache_get_preferred($conn, $cacheKey, 86400);
+$forceRefresh = isset($_GET['refresh'])
+    && in_array(
+        strtolower(trim((string)$_GET['refresh'])),
+        ['1', 'true', 'yes'],
+        true
+    );
 
-if ($cached !== null) {
-    json_out(open_issue_request_filter_payload($cached));
+/*
+    Normal page loads may use a short stale window to protect SAP.
+    ?refresh=1 bypasses this request cache and performs the lightweight OITW refresh
+    when live SAP reads are enabled.
+*/
+if (!$forceRefresh) {
+    $cached = sap_cache_get_preferred($conn, $cacheKey, 300);
+
+    if ($cached !== null) {
+        json_out(open_issue_request_filter_payload($cached));
+    }
 }
 
 $sapLiveQueriesEnabled = sap_cache_live_queries_enabled();
@@ -257,6 +292,10 @@ foreach ($rows as $r) {
 }
 
 if (!$sapLiveQueriesEnabled) {
+    /*
+        Full/heavy live SAP reads are disabled, so keep any useful cached metadata.
+        IMPORTANT: stock itself is refreshed from OITW below using one lightweight query.
+    */
     $latestCached = sap_cache_get_latest_by_scope($conn, 'sap.open_issue_requests', 86400);
 
     if (is_array($latestCached)) {
@@ -275,11 +314,6 @@ if (!$sapLiveQueriesEnabled) {
                 $uomByItem[$itemCode] = $cachedUom;
             }
 
-            $cachedLots = $cachedLine['available_lots'] ?? [];
-            if (is_array($cachedLots) && count($cachedLots) > 0 && !isset($lotsByItem[$itemCode])) {
-                $lotsByItem[$itemCode] = $cachedLots;
-            }
-
             if (array_key_exists('is_batch_managed', $cachedLine)) {
                 $batchByItem[$itemCode] = [
                     'managed' => (bool)$cachedLine['is_batch_managed'],
@@ -290,233 +324,127 @@ if (!$sapLiveQueriesEnabled) {
 
         $hydratedFromCache = $latestCached['_cache'] ?? null;
     }
-} elseif ($sapLiveQueriesEnabled) {
-    $erp = get_erp_connection();
 
-    if (count($itemCodes) > 0 && fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OITM' AND COLUMN_NAME = 'ManBtchNum'")) {
-        foreach (sap_item_batch_statuses($erp, array_keys($itemCodes)) as $itemCode => $batchStatus) {
-            $batchByItem[$itemCode] = $batchStatus;
+    $latestStockCached = sap_cache_get_latest_by_scope($conn, 'sap.stock.list', 86400);
 
-            if (!($batchStatus['managed'] ?? false)) {
-                unset($itemCodes[$itemCode]);
+    if (is_array($latestStockCached)) {
+        foreach (($latestStockCached['stocks'] ?? []) as $cachedStock) {
+            $itemCode = trim((string)($cachedStock['item_code'] ?? ''));
+            $warehouseCode = trim((string)($cachedStock['warehouse_code'] ?? ''));
+
+            if ($itemCode === '' || !isset($itemCodes[$itemCode]) || strcasecmp($warehouseCode, '01') !== 0) {
+                continue;
+            }
+
+            $cachedStockQty = (float)($cachedStock['on_hand_qty'] ?? 0);
+            $stockByItem[$itemCode] = max($stockByItem[$itemCode] ?? 0.0, $cachedStockQty);
+        }
+    }
+}
+
+/*
+    LIGHTWEIGHT LIVE STOCK REFRESH
+    ------------------------------
+    Even when sap_cache_live_queries_enabled() is FALSE, refresh WH 01 item stock
+    using ONE indexed OITW query. This avoids the old false-zero problem while still
+    keeping expensive OBTQ/OBTN batch/lot reads out of the initial page load.
+*/
+$didLiveStockRefresh = false;
+$stockRefreshError = '';
+
+try {
+    if (count($itemCodes) > 0) {
+        $erp = get_erp_connection();
+
+        /*
+            When full live reads are enabled, preserve the existing batch-managed
+            filtering and UOM lookup. When disabled, do not run these extra lookups;
+            only the lightweight OITW stock query is required.
+        */
+        if ($sapLiveQueriesEnabled && fetch_one(
+            $erp,
+            "SELECT 1 AS HasColumn
+             FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_NAME = 'OITM'
+               AND COLUMN_NAME = 'ManBtchNum'"
+        )) {
+            foreach (sap_item_batch_statuses($erp, array_keys($itemCodes)) as $itemCode => $batchStatus) {
+                $batchByItem[$itemCode] = $batchStatus;
+
+                if (!($batchStatus['managed'] ?? false)) {
+                    unset($itemCodes[$itemCode]);
+                }
+            }
+        }
+
+        if (count($itemCodes) > 0) {
+            $codes = array_keys($itemCodes);
+            $placeholders = implode(',', array_fill(0, count($codes), '?'));
+
+            $stockRows = fetch_all(
+                $erp,
+                "SELECT ItemCode, WhsCode, ISNULL(OnHand, 0) AS OnHand
+                 FROM OITW
+                 WHERE WhsCode = ?
+                   AND ItemCode IN ({$placeholders})",
+                array_merge(['01'], $codes)
+            );
+
+            /*
+                IMPORTANT: overwrite cached zero/stale values with SAP OITW values.
+                Do not use max() here; SAP is authoritative for the current item stock.
+            */
+            foreach ($codes as $code) {
+                $stockByItem[$code] = 0.0;
+            }
+
+            foreach ($stockRows as $stockRow) {
+                $code = trim((string)($stockRow['ItemCode'] ?? ''));
+                if ($code !== '') {
+                    $stockByItem[$code] = (float)($stockRow['OnHand'] ?? 0);
+                }
+            }
+
+            $didLiveStockRefresh = true;
+        }
+
+        if ($sapLiveQueriesEnabled && count($itemCodes) > 0 && fetch_one(
+            $erp,
+            "SELECT 1 AS HasColumn
+             FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_NAME = 'OITM'
+               AND COLUMN_NAME = 'InvntryUom'"
+        )) {
+            $codes = array_keys($itemCodes);
+            $placeholders = implode(',', array_fill(0, count($codes), '?'));
+            $uomRows = fetch_all(
+                $erp,
+                "SELECT ItemCode, COALESCE(InvntryUom, '') AS UomName
+                 FROM OITM
+                 WHERE ItemCode IN ({$placeholders})",
+                $codes
+            );
+
+            foreach ($uomRows as $uomRow) {
+                $uomByItem[trim((string)$uomRow['ItemCode'])] = (string)$uomRow['UomName'];
             }
         }
     }
-
-    $hasOitw = fetch_one(
-        $erp,
-        "SELECT 1 AS HasTable
-         FROM INFORMATION_SCHEMA.TABLES
-         WHERE TABLE_NAME = 'OITW'"
-    );
-
-    if ($hasOitw && count($itemCodes) > 0) {
-        $codes = array_keys($itemCodes);
-        $placeholders = implode(',', array_fill(0, count($codes), '?'));
-        $stockRows = fetch_all(
-            $erp,
-            "SELECT ItemCode, WhsCode, OnHand
-             FROM OITW
-             WHERE WhsCode = ?
-               AND ItemCode IN ({$placeholders})",
-            array_merge(['01'], $codes)
-        );
-
-        foreach ($stockRows as $stockRow) {
-            $stockByItem[trim((string)$stockRow['ItemCode'])] = (float)$stockRow['OnHand'];
-        }
-    }
-
-    if (count($itemCodes) > 0 && fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OITM' AND COLUMN_NAME = 'InvntryUom'")) {
-        $codes = array_keys($itemCodes);
-        $placeholders = implode(',', array_fill(0, count($codes), '?'));
-        $uomRows = fetch_all(
-            $erp,
-            "SELECT ItemCode, COALESCE(InvntryUom, '') AS UomName
-             FROM OITM
-             WHERE ItemCode IN ({$placeholders})",
-            $codes
-        );
-
-        foreach ($uomRows as $uomRow) {
-            $uomByItem[trim((string)$uomRow['ItemCode'])] = (string)$uomRow['UomName'];
-        }
-    }
-
+} catch (Throwable $e) {
     /*
-        FAST FIFO MODE:
-        Do not load every SAP lot during initial request loading. Load a small FIFO
-        window per ItemCode, then subtract Warehouse Issuance issued qty so a fully
-        consumed first lot does not hide the next available lot.
-
-        Final validation still uses api/issuer/check_lot_balance.php before printing/saving.
+        Do not break the issuer page if SAP is temporarily unreachable.
+        Existing cache values remain as fallback.
     */
-    $lotsByItem = [];
-
-    $hasBatchBalance =
-        count($itemCodes) > 0 &&
-        fetch_one($erp, "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'OBTQ'") &&
-        fetch_one($erp, "SELECT 1 AS HasTable FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'OBTN'") &&
-        fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'ItemCode'") &&
-        fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'SysNumber'") &&
-        fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'WhsCode'") &&
-        fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'Quantity'") &&
-        fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = 'ItemCode'") &&
-        fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = 'SysNumber'") &&
-        fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = 'DistNumber'");
-
-if ($hasBatchBalance) {
-    $codes = array_keys($itemCodes);
-    $placeholders = implode(',', array_fill(0, count($codes), '?'));
-    $hasCommitQty = fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTQ' AND COLUMN_NAME = 'CommitQty'");
-    $commitExpr = $hasCommitQty ? 'ISNULL(Q.CommitQty, 0)' : '0';
-
-    $fifoDateParts = [];
-    foreach (['InDate', 'CreateDate', 'MnfDate', 'ExpDate'] as $dateColumn) {
-        if (fetch_one($erp, "SELECT 1 AS HasColumn FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'OBTN' AND COLUMN_NAME = ?", [$dateColumn])) {
-            $fifoDateParts[] = 'TRY_CONVERT(datetime, B.[' . $dateColumn . '])';
-        }
-    }
-
-    $fifoDateExpr = count($fifoDateParts) > 0
-        ? 'COALESCE(' . implode(', ', $fifoDateParts) . ", CONVERT(datetime, '2099-12-31'))"
-        : "CONVERT(datetime, '2099-12-31')";
-
-    $lotRows = fetch_all(
-        $erp,
-        "WITH LotBalances AS (
-             SELECT
-                 Q.ItemCode,
-                 B.DistNumber AS LotNo,
-                 Q.WhsCode,
-                 ISNULL(SUM(ISNULL(Q.Quantity, 0)), 0) AS OnHandQty,
-                 ISNULL(SUM({$commitExpr}), 0) AS CommittedQty,
-                 MIN({$fifoDateExpr}) AS FifoDate
-             FROM OBTQ Q
-             INNER JOIN OBTN B
-                ON B.ItemCode = Q.ItemCode
-               AND B.SysNumber = Q.SysNumber
-             WHERE Q.WhsCode = ?
-               AND Q.ItemCode IN ({$placeholders})
-             GROUP BY Q.ItemCode, B.DistNumber, Q.WhsCode
-             HAVING ISNULL(SUM(ISNULL(Q.Quantity, 0)), 0) - ISNULL(SUM({$commitExpr}), 0) > 0
-         ), RankedLots AS (
-             SELECT
-                 ItemCode,
-                 LotNo,
-                 WhsCode,
-                 OnHandQty,
-                 CommittedQty,
-                 OnHandQty - CommittedQty AS AvailableQty,
-                 FifoDate,
-                 ROW_NUMBER() OVER (PARTITION BY ItemCode ORDER BY FifoDate ASC, LotNo ASC) AS Rn
-             FROM LotBalances
-         )
-         SELECT ItemCode, LotNo, WhsCode, OnHandQty, CommittedQty, AvailableQty, FifoDate, Rn
-         FROM RankedLots
-         WHERE Rn <= 10
-         ORDER BY ItemCode, Rn",
-        array_merge(['01'], $codes)
-    );
-
-    $appIssuedByItemLot = [];
-    if (count($lotRows) > 0) {
-        $lotItemCodes = [];
-        $lotNos = [];
-        foreach ($lotRows as $lotRow) {
-            $lotItemCode = trim((string)($lotRow['ItemCode'] ?? ''));
-            $lotNo = trim((string)($lotRow['LotNo'] ?? ''));
-            if ($lotItemCode !== '') {
-                $lotItemCodes[$lotItemCode] = true;
-            }
-            if ($lotNo !== '') {
-                $lotNos[$lotNo] = true;
-            }
-        }
-
-        if (count($lotItemCodes) > 0 && count($lotNos) > 0) {
-            $itemPlaceholders = implode(',', array_fill(0, count($lotItemCodes), '?'));
-            $lotPlaceholders = implode(',', array_fill(0, count($lotNos), '?'));
-
-            if (
-                issuer_lot_has_table($conn, 'IssuanceTransactions') &&
-                issuer_lot_has_column($conn, 'IssuanceTransactions', 'ItemCode') &&
-                issuer_lot_has_column($conn, 'IssuanceTransactions', 'LotNo') &&
-                issuer_lot_has_column($conn, 'IssuanceTransactions', 'Quantity')
-            ) {
-                $issuedRows = fetch_all(
-                    $conn,
-                    "SELECT ItemCode, LotNo, ISNULL(SUM(ISNULL(Quantity, 0)), 0) AS IssuedQty
-                     FROM IssuanceTransactions
-                     WHERE ItemCode IN ({$itemPlaceholders})
-                       AND LotNo IN ({$lotPlaceholders})
-                     GROUP BY ItemCode, LotNo",
-                    array_merge(array_keys($lotItemCodes), array_keys($lotNos))
-                );
-            } elseif (
-                issuer_lot_has_table($conn, 'WarehouseIssueRequestLines') &&
-                issuer_lot_has_column($conn, 'WarehouseIssueRequestLines', 'ItemCode') &&
-                issuer_lot_has_column($conn, 'WarehouseIssueRequestLines', 'LotNo') &&
-                issuer_lot_has_column($conn, 'WarehouseIssueRequestLines', 'IssuedQty')
-            ) {
-                $statusFilter = issuer_lot_has_column($conn, 'WarehouseIssueRequestLines', 'Status')
-                    ? "AND ISNULL(Status, '') NOT IN ('CANCELLED', 'CANCELED', 'VOID')"
-                    : '';
-                $issuedRows = fetch_all(
-                    $conn,
-                    "SELECT ItemCode, LotNo, ISNULL(SUM(ISNULL(IssuedQty, 0)), 0) AS IssuedQty
-                     FROM WarehouseIssueRequestLines
-                     WHERE ItemCode IN ({$itemPlaceholders})
-                       AND LotNo IN ({$lotPlaceholders})
-                       {$statusFilter}
-                     GROUP BY ItemCode, LotNo",
-                    array_merge(array_keys($lotItemCodes), array_keys($lotNos))
-                );
-            } else {
-                $issuedRows = [];
-            }
-
-            foreach ($issuedRows as $issuedRow) {
-                $key = strtoupper(trim((string)($issuedRow['ItemCode'] ?? ''))) . '|' . strtoupper(trim((string)($issuedRow['LotNo'] ?? '')));
-                $appIssuedByItemLot[$key] = (float)($issuedRow['IssuedQty'] ?? 0);
-            }
-        }
-    }
-
-    foreach ($lotRows as $lotRow) {
-        $itemCode = trim((string)($lotRow['ItemCode'] ?? ''));
-        $lotNo = trim((string)($lotRow['LotNo'] ?? ''));
-        $sapAvailableQty = (float)($lotRow['AvailableQty'] ?? 0);
-        $appIssuedQty = $appIssuedByItemLot[strtoupper($itemCode) . '|' . strtoupper($lotNo)] ?? 0.0;
-        $availableQty = $sapAvailableQty;
-
-        if ($itemCode === '' || $lotNo === '' || $availableQty <= 0) {
-            continue;
-        }
-
-        $fifoDate = $lotRow['FifoDate'] ?? null;
-        if ($fifoDate instanceof DateTimeInterface) {
-            $fifoDate = $fifoDate->format('Y-m-d');
-        }
-
-        if (!isset($lotsByItem[$itemCode])) {
-            $lotsByItem[$itemCode] = [];
-        }
-
-        $lotsByItem[$itemCode][] = [
-            'lot_no' => $lotNo,
-            'warehouse_code' => (string)($lotRow['WhsCode'] ?? '01'),
-            'on_hand_qty' => (float)($lotRow['OnHandQty'] ?? 0),
-            'committed_qty' => (float)($lotRow['CommittedQty'] ?? 0),
-            'sap_available_qty' => $sapAvailableQty,
-            'issued_qty' => $appIssuedQty,
-            'available_qty' => $availableQty,
-            'fifo_date' => (string)$fifoDate,
-            'fifo_rank' => (int)($lotRow['Rn'] ?? 0)
-        ];
-    }
+    $stockRefreshError = $e->getMessage();
 }
-}
+
+/*
+    LOTS ARE LAZY-LOADED
+    --------------------
+    Do not query OBTQ/OBTN for all open request items here.
+    api/issuer/get_lot_suggestions.php should fetch lots only for the selected item.
+*/
+$lotsByItem = [];
 
 $documents = [];
 $requests = [];
@@ -533,6 +461,11 @@ foreach ($rows as $r) {
     }
 
     $stockQty = $stockByItem[$itemCode] ?? 0.0;
+    $lotAvailableStockQty = open_issue_available_lot_qty($lotsByItem[$itemCode] ?? []);
+    if ($lotAvailableStockQty > 0 && $stockQty <= 0.0005) {
+        $stockQty = $lotAvailableStockQty;
+    }
+
     $qtyPerPack = itr_qty_per_pack_for_item($itemCode);
     $itemLocation = $itemLocationByCode[$itemCode] ?? [];
     $batchStatus = $batchByItem[$itemCode] ?? [
@@ -619,7 +552,13 @@ foreach ($rows as $r) {
 $payload = [
     'ok' => true,
     'requests' => $requests,
-    'documents' => array_values($documents)
+    'documents' => array_values($documents),
+    '_stock' => [
+        'warehouse' => '01',
+        'source' => $didLiveStockRefresh ? 'SAP_OITW_LIVE' : 'CACHE_FALLBACK',
+        'live_queries_enabled' => $sapLiveQueriesEnabled,
+        'refresh_error' => $stockRefreshError
+    ]
 ];
 
 if ($hydratedFromCache !== null) {
@@ -632,7 +571,7 @@ if ($hydratedFromCache !== null) {
     ];
 }
 
-if ($sapLiveQueriesEnabled) {
+if ($sapLiveQueriesEnabled || $didLiveStockRefresh) {
     sap_cache_put($conn, 'sap.open_issue_requests', $cacheKey, $payload, 60);
 }
 json_out($payload);
