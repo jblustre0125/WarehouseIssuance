@@ -850,6 +850,11 @@ function sync_upsert_request_line_receive_cache($conn, array $ref, ?array $scan)
         ? (float)$scan['received_qty']
         : null;
     $receivedAt = is_array($scan) ? ($scan['received_at'] ?? null) : null;
+    $receivedAtText = trim((string)$receivedAt);
+    if ($receivedAtText === '' || str_starts_with($receivedAtText, '1900-01-01')) {
+        $receivedAt = null;
+    }
+
     $scanStatus = strtoupper(trim((string)($scan['scan_status'] ?? '')));
     $isBlockedStatus = in_array($scanStatus, [
         'NOT_ISSUED_REQUEST_LINE',
@@ -858,7 +863,10 @@ function sync_upsert_request_line_receive_cache($conn, array $ref, ?array $scan)
         'GRPO_LOT_REQUIRED',
         'AMBIGUOUS_REQUEST_MATCH',
         'NOT_RECEIVED_IN_SCANPLUS',
-        'SCANPLUS_SCANNED_NOT_POSTED'
+        'SCANPLUS_SCANNED_NOT_POSTED',
+        'UNALLOCATED_DAILY_SCAN',
+        'UNVERIFIED_DATE',
+        'GROUP_PARTIAL_POSTED'
     ], true);
     $isCurrentMatch = !$isBlockedStatus
         && $allocatedReceivedQty !== null
@@ -1496,7 +1504,7 @@ function sync_lookup_transfer_rows_by_itr_lines($erp, array $refs, int $lookback
 function sync_lookup_sap_posted_rows_by_itr_lines($erp, array $refs, int $lookbackDays = 45): array
 {
     /*
-     * V4 optimization:
+     * V5 optimization:
      * - Build the exact recent issuance keys in PHP.
      * - Query SAP by recent OWTR date + BaseEntry only (usually one monthly ITR).
      * - Filter BaseLine + ItemCode against the recent issuance keys in PHP.
@@ -2817,7 +2825,8 @@ function sync_allocate_daily_issue_receipts(array $issueRows, array $transferRow
         }
         $allocation['raw_daily_received_qty'] = $rawDaily;
         $allocation['received_lot_no'] = implode(', ', array_values($allocation['received_lots'] ?? []));
-        unset($allocation['received_lots'], $allocation['daily_base_keys']);
+        $allocation['daily_base_keys'] = array_values(array_keys($allocation['daily_base_keys'] ?? []));
+        unset($allocation['received_lots']);
     }
     unset($allocation);
 
@@ -2905,6 +2914,129 @@ function sync_replace_issue_transaction_receive_allocations($conn, array $issueR
     }
 }
 
+
+/**
+ * Exact TransactionID -> SAP OWTR allocation audit table.
+ * V5 persists the actual SAP posting FIFO separately from FT_INVT staging.
+ */
+function sync_ensure_issue_transaction_sap_posting_allocation($conn): bool
+{
+    sync_exec(
+        $conn,
+        "IF OBJECT_ID('dbo.WarehouseIssueTransactionSapPostingAllocation', 'U') IS NULL
+         BEGIN
+            CREATE TABLE dbo.WarehouseIssueTransactionSapPostingAllocation (
+                AllocationID BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                TransactionID BIGINT NOT NULL,
+                RequestLineID INT NULL,
+                ITRDocEntry INT NOT NULL,
+                ITRLineNum INT NULL,
+                ItemCode NVARCHAR(50) NOT NULL,
+                IssuedLotNo NVARCHAR(80) NULL,
+                SAPBatchNo NVARCHAR(80) NULL,
+                AllocatedQty DECIMAL(18,3) NOT NULL,
+                LotMatch BIT NOT NULL,
+                SAPTransferDocEntry INT NOT NULL,
+                SAPTransferLineNum INT NOT NULL,
+                SourceDocumentKey NVARCHAR(100) NULL,
+                PostedAt DATETIME NULL,
+                MatchMethod NVARCHAR(80) NOT NULL,
+                LastSyncedAt DATETIME NOT NULL DEFAULT GETDATE()
+            );
+         END"
+    );
+
+    sync_exec(
+        $conn,
+        "IF NOT EXISTS (
+            SELECT 1 FROM sys.indexes
+            WHERE name = 'UX_WITSAPA_TransactionSource'
+              AND object_id = OBJECT_ID('dbo.WarehouseIssueTransactionSapPostingAllocation')
+         )
+         BEGIN
+            CREATE UNIQUE INDEX UX_WITSAPA_TransactionSource
+            ON dbo.WarehouseIssueTransactionSapPostingAllocation
+            (TransactionID, SAPTransferDocEntry, SAPTransferLineNum, SAPBatchNo);
+         END"
+    );
+
+    sync_exec(
+        $conn,
+        "IF NOT EXISTS (
+            SELECT 1 FROM sys.indexes
+            WHERE name = 'IX_WITSAPA_RequestLine'
+              AND object_id = OBJECT_ID('dbo.WarehouseIssueTransactionSapPostingAllocation')
+         )
+         BEGIN
+            CREATE INDEX IX_WITSAPA_RequestLine
+            ON dbo.WarehouseIssueTransactionSapPostingAllocation
+            (RequestLineID, TransactionID, PostedAt);
+         END"
+    );
+
+    return sync_has_table($conn, 'WarehouseIssueTransactionSapPostingAllocation');
+}
+
+function sync_replace_issue_transaction_sap_posting_allocations($conn, array $issueRows, array $allocations): void
+{
+    if (!sync_has_table($conn, 'WarehouseIssueTransactionSapPostingAllocation')) {
+        return;
+    }
+
+    $transactionIds = [];
+    foreach ($issueRows as $row) {
+        $transactionId = (int)($row['TransactionID'] ?? 0);
+        if ($transactionId > 0) {
+            $transactionIds[$transactionId] = true;
+        }
+    }
+
+    foreach (array_chunk(array_keys($transactionIds), 500) as $idChunk) {
+        if (empty($idChunk)) {
+            continue;
+        }
+        $placeholders = implode(',', array_fill(0, count($idChunk), '?'));
+        sync_exec(
+            $conn,
+            "DELETE FROM dbo.WarehouseIssueTransactionSapPostingAllocation WHERE TransactionID IN ({$placeholders})",
+            array_values($idChunk)
+        );
+    }
+
+    foreach ($allocations as $a) {
+        if ((int)($a['transaction_id'] ?? 0) <= 0 || (float)($a['allocated_qty'] ?? 0) <= 0.0005) {
+            continue;
+        }
+
+        sync_exec(
+            $conn,
+            "INSERT INTO dbo.WarehouseIssueTransactionSapPostingAllocation
+            (
+                TransactionID, RequestLineID, ITRDocEntry, ITRLineNum, ItemCode,
+                IssuedLotNo, SAPBatchNo, AllocatedQty, LotMatch,
+                SAPTransferDocEntry, SAPTransferLineNum, SourceDocumentKey,
+                PostedAt, MatchMethod, LastSyncedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE())",
+            [
+                (int)$a['transaction_id'],
+                $a['request_line_id'] ?? null,
+                (int)$a['itr_doc_entry'],
+                $a['itr_line_num'] ?? null,
+                $a['item_code'],
+                $a['issued_lot_no'] ?? null,
+                $a['received_lot_no'] ?? null,
+                (float)$a['allocated_qty'],
+                (int)($a['lot_match'] ?? 0),
+                (int)($a['ft_doc_entry'] ?? 0),
+                (int)($a['ft_line_id'] ?? 0),
+                $a['source_document_key'] ?? null,
+                $a['received_at'] ?? null,
+                $a['match_method'] ?? 'SAP_SAME_DAY_FIFO',
+            ]
+        );
+    }
+}
+
 $whp = null;
 $syncId = null;
 $updated = 0;
@@ -2913,6 +3045,9 @@ $missing = 0;
 $verifyChecked = 0;
 $verifyMissingInScanPlus = 0;
 $verifyScannedNotPosted = 0;
+$verifyGroupPartialPosted = 0;
+$verifyUnallocatedDailyScan = 0;
+$verifyUnverifiedDate = 0;
 $verifyQtyMismatch = 0;
 $verifyLotMismatch = 0;
 $verifyIssues = [];
@@ -2932,6 +3067,7 @@ try {
     sync_ensure_request_line_receive_cache($whp);
     sync_ensure_request_line_receive_allocation($whp);
     sync_ensure_issue_transaction_receive_allocation($whp);
+    sync_ensure_issue_transaction_sap_posting_allocation($whp);
 
     $syncId = sync_begin_log($whp);
     sync_log("Starting ScanPlus cache refresh. Lookback={$lookbackDays} days, chunk={$chunkSize}, maxRefs={$maxRefs}.");
@@ -3032,6 +3168,13 @@ try {
             $requestIssuedAtExpr = 'IX.LatestIssuedAt';
         }
 
+        $requestScopeSql = $requestIssueApply !== ''
+            ? 'AND (H.RequestedAt >= DATEADD(DAY, -?, GETDATE()) OR IX.LatestIssuedAt >= DATEADD(DAY, -?, GETDATE()))'
+            : 'AND H.RequestedAt >= DATEADD(DAY, -?, GETDATE())';
+        $requestScopeParams = $requestIssueApply !== ''
+            ? [$lookbackDays, $lookbackDays]
+            : [$lookbackDays];
+
         sync_add_refs($refs, $seen, sync_fetch_all(
             $whp,
             "SELECT TOP {$remaining}
@@ -3051,8 +3194,9 @@ try {
              {$requestIssueApply}
              WHERE ISNULL(COALESCE(NULLIF(L.SAP_IT_DocEntry, 0), H.SAP_IT_DocEntry), 0) > 0
                AND NULLIF(LTRIM(RTRIM(L.ItemCode)), '') IS NOT NULL
+               {$requestScopeSql}
              ORDER BY H.RequestedAt DESC, L.RequestLineID DESC",
-            []
+            $requestScopeParams
         ));
     }
 
@@ -3174,6 +3318,7 @@ try {
 
     $sapAllocationResult = sync_allocate_daily_issue_receipts($issueRows, $sapPostedRows, 'SAP_SAME_DAY');
     $sapLineAllocations = $sapAllocationResult['line_allocations'] ?? [];
+    $sapTransactionAllocations = $sapAllocationResult['transaction_allocations'] ?? [];
     $sapDailyTotals = $sapAllocationResult['daily_totals'] ?? [];
     $sapUnallocatedReceipts = $sapAllocationResult['unallocated_receipts'] ?? [];
 
@@ -3184,8 +3329,9 @@ try {
     $ambiguousTransfers = [];
 
     sync_clear_request_line_receive_allocations($whp, $refs);
-    /* Keep the FT transaction audit table for staging diagnostics. */
+    /* Keep separate transaction-level audits for staging and actual SAP posting. */
     sync_replace_issue_transaction_receive_allocations($whp, $issueRows, $transactionAllocations);
+    sync_replace_issue_transaction_sap_posting_allocations($whp, $issueRows, $sapTransactionAllocations);
 
     foreach ($refs as $ref) {
         $requestLineId = (int)($ref['local_request_line_id'] ?? 0);
@@ -3216,6 +3362,7 @@ try {
             'barcode_user' => '',
             'received_lot_no' => '',
             'source_transfers' => [],
+            'daily_base_keys' => [],
         ];
         $sapAllocation = $sapLineAllocations[$requestLineId] ?? [
             'issued_qty' => 0.0,
@@ -3227,6 +3374,7 @@ try {
             'barcode_user' => '',
             'received_lot_no' => '',
             'source_transfers' => [],
+            'daily_base_keys' => [],
         ];
 
         /* Actual IssuanceTransactions are authoritative for the daily quantity. */
@@ -3243,15 +3391,37 @@ try {
         $sapAllocatedQty = max(0.0, (float)($sapAllocation['qty'] ?? 0));
         $sapMismatchQty = max(0.0, (float)($sapAllocation['lot_mismatch_qty'] ?? 0));
         $rawDailySapQty = max(0.0, (float)($sapAllocation['raw_daily_received_qty'] ?? 0));
+
+        /*
+         * V5: keep group totals for diagnostics only. Cache quantities are the
+         * FIFO quantities actually allocated to this RequestLineID, never the
+         * full same-day ITR/item total repeated across several request lines.
+         */
+        $dailyBaseKeys = array_values(array_unique(array_merge(
+            is_array($scanAllocation['daily_base_keys'] ?? null) ? $scanAllocation['daily_base_keys'] : [],
+            is_array($sapAllocation['daily_base_keys'] ?? null) ? $sapAllocation['daily_base_keys'] : []
+        )));
+        $groupScanQty = 0.0;
+        $groupSapQty = 0.0;
+        foreach ($dailyBaseKeys as $dailyBaseKey) {
+            $groupScanQty += (float)($dailyTotals[$dailyBaseKey]['received'] ?? 0);
+            $groupSapQty += (float)($sapDailyTotals[$dailyBaseKey]['received'] ?? 0);
+        }
+
+        $scanReceivedAt = trim((string)($scanAllocation['received_at'] ?? ''));
+        $scanDateValid = $scanReceivedAt !== ''
+            && !str_starts_with($scanReceivedAt, '1900-01-01')
+            && sync_datetime_date_key($scanReceivedAt) !== '';
+
         $lineScan = null;
 
         if ($issuedQty <= 0) {
             $lineScan = [
-                'raw_received_qty' => $rawDailyScannedQty,
+                'raw_received_qty' => 0.0,
                 'received_qty' => 0.0,
                 'received_lot_no' => '',
                 'barcode_user' => '',
-                'received_at' => '',
+                'received_at' => null,
                 'scan_status' => 'NOT_ISSUED_REQUEST_LINE',
                 'match_status' => 'NOT_ISSUED_REQUEST_LINE',
             ];
@@ -3262,7 +3432,7 @@ try {
             if ($isSapFull && $hasSapLotMismatch) {
                 $matchStatus = 'LOT_MISMATCH';
             } elseif (!$isSapFull && $hasSapLotMismatch) {
-                $matchStatus = 'LOT_AND_QTY_VARIANCE';
+                $matchStatus = 'PARTIAL_POSTED_LOT_MISMATCH';
             } elseif ($isSapFull) {
                 $matchStatus = 'MATCHED';
             } else {
@@ -3270,8 +3440,8 @@ try {
             }
 
             $lineScan = [
-                /* RawReceivedQty remains the ScanPlus-staged quantity for audit. */
-                'raw_received_qty' => $rawDailyScannedQty,
+                /* RawReceivedQty = ScanPlus quantity FIFO-allocated to this line only. */
+                'raw_received_qty' => min($scanAllocatedQty, $issuedQty),
                 'received_qty' => min($sapAllocatedQty, $issuedQty),
                 'received_lot_no' => (string)($sapAllocation['received_lot_no'] ?? ''),
                 'barcode_user' => (string)($sapAllocation['barcode_user'] ?? 'SAP OWTR'),
@@ -3279,16 +3449,54 @@ try {
                 'scan_status' => $isSapFull ? 'SAP_POSTED' : 'SAP_POSTED_PARTIAL',
                 'match_status' => $matchStatus,
             ];
-        } elseif ($scanAllocatedQty > 0.0005 || $rawDailyScannedQty > 0.0005) {
-            /* Scanned/staged in ScanPlus, but no same-day OWTR/WTR1 posting exists. */
+        } elseif ($scanAllocatedQty > 0.0005) {
+            if (!$scanDateValid) {
+                $lineScan = [
+                    'raw_received_qty' => min($scanAllocatedQty, $issuedQty),
+                    'received_qty' => 0.0,
+                    'received_lot_no' => (string)($scanAllocation['received_lot_no'] ?? ''),
+                    'barcode_user' => (string)($scanAllocation['barcode_user'] ?? ''),
+                    'received_at' => null,
+                    'scan_status' => 'UNVERIFIED_DATE',
+                    'match_status' => 'UNVERIFIED_DATE',
+                ];
+            } elseif ($groupSapQty > 0.0005) {
+                /*
+                 * Same-day SAP posting exists for this ITR line/item, but FIFO
+                 * allocated it to other issuance transactions/request lines.
+                 * Do not falsely copy that SAP quantity onto this line.
+                 */
+                $lineScan = [
+                    'raw_received_qty' => min($scanAllocatedQty, $issuedQty),
+                    'received_qty' => 0.0,
+                    'received_lot_no' => (string)($scanAllocation['received_lot_no'] ?? ''),
+                    'barcode_user' => (string)($scanAllocation['barcode_user'] ?? ''),
+                    'received_at' => $scanReceivedAt,
+                    'scan_status' => 'GROUP_PARTIAL_POSTED',
+                    'match_status' => 'GROUP_PARTIAL_POSTED',
+                ];
+            } else {
+                /* Scanned/staged in ScanPlus, but no same-day OWTR/WTR1 posting exists. */
+                $lineScan = [
+                    'raw_received_qty' => min($scanAllocatedQty, $issuedQty),
+                    'received_qty' => 0.0,
+                    'received_lot_no' => (string)($scanAllocation['received_lot_no'] ?? ''),
+                    'barcode_user' => (string)($scanAllocation['barcode_user'] ?? ''),
+                    'received_at' => $scanReceivedAt,
+                    'scan_status' => 'SCANPLUS_SCANNED_NOT_POSTED',
+                    'match_status' => 'SCANNED_NOT_POSTED',
+                ];
+            }
+        } elseif ($groupScanQty > 0.0005 || $rawDailyScannedQty > 0.0005) {
+            /* Same-day ScanPlus activity exists, but none was FIFO-allocated to this request line. */
             $lineScan = [
-                'raw_received_qty' => $rawDailyScannedQty,
+                'raw_received_qty' => 0.0,
                 'received_qty' => 0.0,
-                'received_lot_no' => (string)($scanAllocation['received_lot_no'] ?? ''),
-                'barcode_user' => (string)($scanAllocation['barcode_user'] ?? ''),
-                'received_at' => (string)($scanAllocation['received_at'] ?? ''),
-                'scan_status' => 'SCANPLUS_SCANNED_NOT_POSTED',
-                'match_status' => 'SCANNED_NOT_POSTED',
+                'received_lot_no' => '',
+                'barcode_user' => '',
+                'received_at' => null,
+                'scan_status' => 'UNALLOCATED_DAILY_SCAN',
+                'match_status' => 'UNALLOCATED_DAILY_SCAN',
             ];
         } else {
             $lineScan = [
@@ -3296,7 +3504,7 @@ try {
                 'received_qty' => 0.0,
                 'received_lot_no' => '',
                 'barcode_user' => '',
-                'received_at' => '',
+                'received_at' => null,
                 'scan_status' => 'NOT_RECEIVED_IN_SCANPLUS',
                 'match_status' => 'PENDING_RECEIVE',
             ];
@@ -3315,7 +3523,7 @@ try {
         if ($issuedQty > 0) {
             $verifyChecked++;
 
-            if ($rawDailyScannedQty <= 0.0005) {
+            if ($scanAllocatedQty <= 0.0005 && $groupScanQty <= 0.0005) {
                 $verifyMissingInScanPlus++;
 
                 if (count($verifyIssues) < 200) {
@@ -3326,6 +3534,49 @@ try {
                         $ref['item_code'],
                         $requestLineId,
                         $issuedQty
+                    );
+                }
+            } elseif ($scanAllocatedQty <= 0.0005 && $groupScanQty > 0.0005) {
+                $verifyUnallocatedDailyScan++;
+
+                if (count($verifyIssues) < 200) {
+                    $verifyIssues[] = sprintf(
+                        'UNALLOCATED_DAILY_SCAN doc=%d line=%s item=%s requestLine=%d issuedQty=%.3f groupScanQty=%.3f',
+                        $ref['doc_entry'],
+                        $ref['line_num'] ?? '-',
+                        $ref['item_code'],
+                        $requestLineId,
+                        $issuedQty,
+                        $groupScanQty
+                    );
+                }
+            } elseif (!$scanDateValid) {
+                $verifyUnverifiedDate++;
+
+                if (count($verifyIssues) < 200) {
+                    $verifyIssues[] = sprintf(
+                        'UNVERIFIED_DATE doc=%d line=%s item=%s requestLine=%d issuedQty=%.3f scanplusQty=%.3f',
+                        $ref['doc_entry'],
+                        $ref['line_num'] ?? '-',
+                        $ref['item_code'],
+                        $requestLineId,
+                        $issuedQty,
+                        $scanAllocatedQty
+                    );
+                }
+            } elseif ($sapAllocatedQty <= 0.0005 && $groupSapQty > 0.0005) {
+                $verifyGroupPartialPosted++;
+
+                if (count($verifyIssues) < 200) {
+                    $verifyIssues[] = sprintf(
+                        'GROUP_PARTIAL_POSTED doc=%d line=%s item=%s requestLine=%d issuedQty=%.3f scanplusQty=%.3f groupSapQty=%.3f',
+                        $ref['doc_entry'],
+                        $ref['line_num'] ?? '-',
+                        $ref['item_code'],
+                        $requestLineId,
+                        $issuedQty,
+                        $scanAllocatedQty,
+                        $groupSapQty
                     );
                 }
             } elseif ($sapAllocatedQty <= 0.0005) {
@@ -3339,7 +3590,7 @@ try {
                         $ref['item_code'],
                         $requestLineId,
                         $issuedQty,
-                        $rawDailyScannedQty
+                        $scanAllocatedQty
                     );
                 }
             } elseif (abs($sapAllocatedQty - $issuedQty) > 0.001) {
@@ -3469,7 +3720,9 @@ try {
     }
 
     sync_log("Verification against issued lines: checked={$verifyChecked}, missing_in_scanplus={$verifyMissingInScanPlus}, "
-        . "scanned_not_posted={$verifyScannedNotPosted}, qty_mismatch={$verifyQtyMismatch}, lot_mismatch={$verifyLotMismatch}.");
+        . "scanned_not_posted={$verifyScannedNotPosted}, group_partial_posted={$verifyGroupPartialPosted}, "
+        . "unallocated_daily_scan={$verifyUnallocatedDailyScan}, unverified_date={$verifyUnverifiedDate}, "
+        . "qty_mismatch={$verifyQtyMismatch}, lot_mismatch={$verifyLotMismatch}.");
 
     foreach ($verifyIssues as $verifyIssueLine) {
         sync_log('  ' . $verifyIssueLine);
@@ -3477,7 +3730,8 @@ try {
 
     $message = "Completed. Updated={$updated}, sap_posted_or_matched={$matched}, not_posted_or_unmatched={$missing}. "
         . "Verified={$verifyChecked}, missing_in_scanplus={$verifyMissingInScanPlus}, scanned_not_posted={$verifyScannedNotPosted}, "
-        . "qty_mismatch={$verifyQtyMismatch}, lot_mismatch={$verifyLotMismatch}.";
+        . "group_partial_posted={$verifyGroupPartialPosted}, unallocated_daily_scan={$verifyUnallocatedDailyScan}, "
+        . "unverified_date={$verifyUnverifiedDate}, qty_mismatch={$verifyQtyMismatch}, lot_mismatch={$verifyLotMismatch}.";
     sync_finish_log($whp, $syncId, 'SUCCESS', $message, $updated);
     sync_log($message);
     exit(0);

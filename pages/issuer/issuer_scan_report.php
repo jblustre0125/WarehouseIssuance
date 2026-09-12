@@ -763,6 +763,9 @@ function issuer_report_cache_blocks_received(array $row): bool
 {
     return in_array(issuer_report_cache_status($row), [
         'SCANNED_NOT_POSTED',
+        'GROUP_PARTIAL_POSTED',
+        'UNALLOCATED_DAILY_SCAN',
+        'UNVERIFIED_DATE',
         'PENDING_RECEIVE',
         'NOT_RECEIVED_IN_SCANPLUS',
         'NOT_ISSUED_REQUEST_LINE'
@@ -957,7 +960,28 @@ function issuer_report_receive_verification(array $row): array
     if ($cacheStatus === 'SCANNED_NOT_POSTED') {
         return [
             'status' => 'SCANNED_NOT_POSTED',
-            'note' => 'ScanPlus has a same-day scan, but no matching SAP OWTR/WTR1 posting was found.'
+            'note' => 'ScanPlus quantity was FIFO-allocated to this request line, but no same-day SAP OWTR/WTR1 posting was found.'
+        ];
+    }
+
+    if ($cacheStatus === 'GROUP_PARTIAL_POSTED') {
+        return [
+            'status' => 'GROUP_PARTIAL_POSTED',
+            'note' => 'A same-day SAP posting exists for this ITR line/item, but its FIFO quantity was allocated to other issuance transactions. No SAP quantity was copied onto this row.'
+        ];
+    }
+
+    if ($cacheStatus === 'UNALLOCATED_DAILY_SCAN') {
+        return [
+            'status' => 'UNALLOCATED_DAILY_SCAN',
+            'note' => 'Same-day ScanPlus activity exists for the ITR line/item, but none of that quantity was FIFO-allocated to this request line.'
+        ];
+    }
+
+    if ($cacheStatus === 'UNVERIFIED_DATE') {
+        return [
+            'status' => 'UNVERIFIED_DATE',
+            'note' => 'The ScanPlus allocation has no valid receive date, so same-day SAP verification cannot be trusted.'
         ];
     }
 
@@ -1002,9 +1026,13 @@ function issuer_report_receive_verification(array $row): array
     $lotMatches = $hasComparableLot && issuer_report_lot_matches_any($receivedLot, $issuedLots);
 
     if ($isPartial) {
-        $status = (!$hasComparableLot || $lotMatches)
-            ? ($cacheStatus === 'PARTIAL_POSTED' ? 'PARTIAL_POSTED' : 'PARTIAL_RECEIVED')
-            : 'LOT_AND_QTY_VARIANCE';
+        if ($cacheStatus === 'PARTIAL_POSTED_LOT_MISMATCH') {
+            $status = 'PARTIAL_POSTED_LOT_MISMATCH';
+        } else {
+            $status = (!$hasComparableLot || $lotMatches)
+                ? ($cacheStatus === 'PARTIAL_POSTED' ? 'PARTIAL_POSTED' : 'PARTIAL_RECEIVED')
+                : 'LOT_AND_QTY_VARIANCE';
+        }
     } elseif ($qtyMatches && $lotMatches) {
         $status = 'MATCHED';
     } elseif ($qtyMatches && !$hasComparableLot) {
