@@ -721,6 +721,103 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
 
 enrich_issuer_rows_with_request_line_receive_cache($rows, $conn);
 
+function enrich_issuer_rows_with_transaction_scan_receiver(array &$rows, $conn): void
+{
+    if (empty($rows)
+        || !issuer_report_has_column($conn, 'WarehouseIssueTransactionReceiveAllocation', 'TransactionID')
+        || !issuer_report_has_column($conn, 'WarehouseIssueTransactionReceiveAllocation', 'BarcodeUser')) {
+        return;
+    }
+
+    $transactionIds = [];
+
+    foreach ($rows as $row) {
+        $transactionId = (int)($row['TransactionID'] ?? 0);
+
+        if ($transactionId > 0) {
+            $transactionIds[$transactionId] = true;
+        }
+    }
+
+    if (empty($transactionIds)) {
+        return;
+    }
+
+    $hasReceivedAt = issuer_report_has_column($conn, 'WarehouseIssueTransactionReceiveAllocation', 'ReceivedAt');
+    $hasLastSyncedAt = issuer_report_has_column($conn, 'WarehouseIssueTransactionReceiveAllocation', 'LastSyncedAt');
+    $hasAllocationId = issuer_report_has_column($conn, 'WarehouseIssueTransactionReceiveAllocation', 'AllocationID');
+    $hasAllocatedQty = issuer_report_has_column($conn, 'WarehouseIssueTransactionReceiveAllocation', 'AllocatedQty');
+
+    $receivedAtSelect = $hasReceivedAt
+        ? 'ReceivedAt'
+        : 'CAST(NULL AS DATETIME) AS ReceivedAt';
+    $lastSyncedAtSelect = $hasLastSyncedAt
+        ? 'LastSyncedAt'
+        : 'CAST(NULL AS DATETIME) AS LastSyncedAt';
+    $allocatedQtyFilter = $hasAllocatedQty
+        ? 'AND ISNULL(AllocatedQty, 0) > 0'
+        : '';
+    $receivedAtOrder = $hasReceivedAt
+        ? 'ReceivedAt DESC,'
+        : '';
+    $lastSyncedAtOrder = $hasLastSyncedAt
+        ? 'LastSyncedAt DESC,'
+        : '';
+    $allocationIdOrder = $hasAllocationId
+        ? 'AllocationID DESC'
+        : 'TransactionID DESC';
+
+    $byTransaction = [];
+
+    foreach (array_chunk(array_keys($transactionIds), 300) as $chunk) {
+        $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+        $fallbackRows = fetch_all(
+            $conn,
+            "WITH Ranked AS (
+                SELECT
+                    TransactionID,
+                    BarcodeUser,
+                    {$receivedAtSelect},
+                    {$lastSyncedAtSelect},
+                    ROW_NUMBER() OVER (
+                        PARTITION BY TransactionID
+                        ORDER BY
+                            {$receivedAtOrder}
+                            {$lastSyncedAtOrder}
+                            {$allocationIdOrder}
+                    ) AS RowNum
+                FROM dbo.WarehouseIssueTransactionReceiveAllocation
+                WHERE TransactionID IN ({$placeholders})
+                  AND NULLIF(LTRIM(RTRIM(ISNULL(BarcodeUser, ''))), '') IS NOT NULL
+                  AND UPPER(LTRIM(RTRIM(ISNULL(BarcodeUser, '')))) <> 'SAP OWTR'
+                  {$allocatedQtyFilter}
+             )
+             SELECT TransactionID, BarcodeUser, ReceivedAt, LastSyncedAt
+             FROM Ranked
+             WHERE RowNum = 1",
+            $chunk
+        );
+
+        foreach ($fallbackRows as $fallbackRow) {
+            $byTransaction[(int)($fallbackRow['TransactionID'] ?? 0)] = $fallbackRow;
+        }
+    }
+
+    foreach ($rows as &$row) {
+        $transactionId = (int)($row['TransactionID'] ?? 0);
+
+        if ($transactionId <= 0 || !isset($byTransaction[$transactionId])) {
+            continue;
+        }
+
+        $row['TransactionScanBarcodeUser'] = trim((string)($byTransaction[$transactionId]['BarcodeUser'] ?? ''));
+        $row['TransactionScanReceivedAt'] = $byTransaction[$transactionId]['ReceivedAt'] ?? '';
+    }
+    unset($row);
+}
+
+enrich_issuer_rows_with_transaction_scan_receiver($rows, $conn);
+
 function issuer_report_valid_datetime($value): bool
 {
     $dateValue = trim(report_cell($value));
@@ -900,6 +997,7 @@ function report_received_value($row, $field)
      */
     if ($field === 'BarcodeUser') {
         $candidates = [
+            $row['TransactionScanBarcodeUser'] ?? '',
             $row['CacheBarcodeUser'] ?? '',
             $row['BarcodeUser'] ?? '',
             $row['LocalScannedBy'] ?? '',
