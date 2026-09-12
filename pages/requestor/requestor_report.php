@@ -648,6 +648,15 @@ $issuanceApply = "
     ) ITX
 ";
 
+$issuanceSumApply = "
+    OUTER APPLY
+    (
+        SELECT
+            CAST(NULL AS DECIMAL(18, 3)) AS Quantity,
+            CAST(NULL AS DATETIME) AS IssuedAt
+    ) ITXSUM
+";
+
 if ($hasIssuanceTransactions) {
     $transactionMatches = [];
     $transactionOrder = [];
@@ -700,6 +709,35 @@ if ($hasIssuanceTransactions) {
             'IssuanceTransactions',
             'IssuedAt'
         );
+
+    /*
+     * Exact request-line aggregate used as a safe fallback when
+     * WarehouseIssueRequestLines.IssuedQty is empty/zero.
+     * This avoids treating only the latest issuance transaction as the
+     * full issued quantity when one request line was issued in several scans.
+     */
+    if ($txHasRequestLineID) {
+        $sumIssuedAtExpr = $txHasIssuedAt
+            ? 'MAX(IT1.IssuedAt)'
+            : 'CAST(NULL AS DATETIME)';
+
+        $sumDateCondition = $txHasIssuedAt
+            ? 'AND IT1.IssuedAt >= B.RequestedAt'
+            : '';
+
+        $issuanceSumApply = "
+            OUTER APPLY
+            (
+                SELECT
+                    SUM(TRY_CONVERT(DECIMAL(18, 3), IT1.Quantity)) AS Quantity,
+                    {$sumIssuedAtExpr} AS IssuedAt
+                FROM dbo.IssuanceTransactions IT1
+                WHERE IT1.IssueRequestLineID = B.RequestLineID
+                  AND IT1.ItemCode = B.ItemCode
+                  {$sumDateCondition}
+            ) ITXSUM
+        ";
+    }
 
     if ($txHasRequestLineID) {
         $transactionMatches[] =
@@ -1284,7 +1322,7 @@ SELECT
         Q.CacheReceivedQty
     ) AS IssuedQty,
 
-    E.EffectiveReceivedQty AS SAPReceivedQty,
+    E.EffectiveReceivedQty AS ReceivedQty,
 
     CASE
         WHEN
@@ -1338,7 +1376,7 @@ SELECT
 
     B.RequestedByUsername,
     B.RequestedAt,
-    ITX.IssuedAt AS IssuedAt,
+    COALESCE(ITXSUM.IssuedAt, ITX.IssuedAt) AS IssuedAt,
 
     CASE
         WHEN V.LocalReceiveValid = 1
@@ -1560,6 +1598,8 @@ FROM PagedRows B
 
 {$issuanceApply}
 
+{$issuanceSumApply}
+
 CROSS APPLY
 (
     SELECT
@@ -1572,6 +1612,7 @@ CROSS APPLY
                 0
             ),
             NULLIF(TL.TraceIssuedQty, 0),
+            NULLIF(ITXSUM.Quantity, 0),
             NULLIF(ITX.Quantity, 0)
         ) AS BaseIssuedQty,
 
@@ -2015,7 +2056,7 @@ if ($export) {
                     <td>
                         <?= request_report_excel_cell(
                             request_report_number(
-                                $row['SAPReceivedQty'] ?? ''
+                                $row['ReceivedQty'] ?? ''
                             )
                         ) ?>
                     </td>
@@ -2863,7 +2904,7 @@ $showingTo = min(
                                     <td class="quantity-cell">
                                         <?= h(
                                             request_report_number(
-                                                $row['SAPReceivedQty'] ?? ''
+                                                $row['ReceivedQty'] ?? ''
                                             )
                                         ) ?>
                                     </td>

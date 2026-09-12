@@ -496,10 +496,24 @@ function sync_ensure_request_line_receive_allocation($conn): bool
     );
 
     /*
-     * One SAP transfer source may belong to only one local request line.
-     * Remove historical duplicate source rows before creating the global
-     * unique index so an old incorrect allocation can be moved safely.
+     * One FT_INVT source row may be split across several local request lines
+     * when one same-day ScanPlus receipt covers several issuance transactions.
+     * Therefore uniqueness is PER REQUEST LINE, not global.
      */
+    sync_exec(
+        $conn,
+        "IF EXISTS (
+            SELECT 1
+            FROM sys.indexes
+            WHERE name = 'UX_WIRLA_SourceGlobal'
+              AND object_id = OBJECT_ID('dbo.WarehouseIssueRequestLineReceiveAllocation')
+         )
+         BEGIN
+            DROP INDEX UX_WIRLA_SourceGlobal
+            ON dbo.WarehouseIssueRequestLineReceiveAllocation;
+         END"
+    );
+
     sync_exec(
         $conn,
         "IF OBJECT_ID('dbo.WarehouseIssueRequestLineReceiveAllocation', 'U') IS NOT NULL
@@ -511,6 +525,7 @@ function sync_ensure_request_line_receive_allocation($conn): bool
                     ROW_NUMBER() OVER
                     (
                         PARTITION BY
+                            RequestLineID,
                             SAPTransferDocEntry,
                             SAPTransferLineNum,
                             ItemCode,
@@ -528,13 +543,14 @@ function sync_ensure_request_line_receive_allocation($conn): bool
         "IF NOT EXISTS (
             SELECT 1
             FROM sys.indexes
-            WHERE name = 'UX_WIRLA_SourceGlobal'
+            WHERE name = 'UX_WIRLA_SourcePerRequest'
               AND object_id = OBJECT_ID('dbo.WarehouseIssueRequestLineReceiveAllocation')
          )
          BEGIN
-            CREATE UNIQUE INDEX UX_WIRLA_SourceGlobal
+            CREATE UNIQUE INDEX UX_WIRLA_SourcePerRequest
             ON dbo.WarehouseIssueRequestLineReceiveAllocation
             (
+                RequestLineID,
                 SAPTransferDocEntry,
                 SAPTransferLineNum,
                 ItemCode,
@@ -548,7 +564,7 @@ function sync_ensure_request_line_receive_allocation($conn): bool
         "IF NOT EXISTS (
             SELECT 1
             FROM sys.indexes
-            WHERE name = 'IX_WIRLA_GrpoSourceLookup'
+            WHERE name = 'IX_WIRLA_GrpoSourceLookup' 
               AND object_id = OBJECT_ID('dbo.WarehouseIssueRequestLineReceiveAllocation')
          )
          BEGIN
@@ -614,7 +630,7 @@ function sync_replace_request_line_receive_allocations(
         $allocatedQty = is_numeric($source['allocated_qty'] ?? null)
             ? max(0.0, (float)$source['allocated_qty'])
             : 0.0;
-        $grpoLot = trim((string)($ref['lot_no'] ?? ''));
+        $grpoLot = trim((string)($source['issued_lot_no'] ?? $ref['lot_no'] ?? ''));
 
         if ($allocatedQty <= 0.0005
             || (int)($source['transfer_doc_entry'] ?? 0) <= 0
@@ -834,7 +850,9 @@ function sync_upsert_request_line_receive_cache($conn, array $ref, ?array $scan)
         'NOT_ISSUED_REQUEST_LINE',
         'NOT_ALLOCATED_TO_REQUEST_LINE',
         'LOT_REQUIRED_FOR_ALLOCATION',
-        'AMBIGUOUS_REQUEST_MATCH'
+        'GRPO_LOT_REQUIRED',
+        'AMBIGUOUS_REQUEST_MATCH',
+        'NOT_RECEIVED_IN_SCANPLUS'
     ], true);
     $isCurrentMatch = !$isBlockedStatus
         && $allocatedReceivedQty !== null
@@ -842,10 +860,12 @@ function sync_upsert_request_line_receive_cache($conn, array $ref, ?array $scan)
 
     $matchStatus = 'NOT_CONFIRMED';
 
-    if ($isCurrentMatch) {
+    if (is_array($scan) && trim((string)($scan['match_status'] ?? '')) !== '') {
+        $matchStatus = (string)$scan['match_status'];
+    } elseif ($isCurrentMatch) {
         $matchStatus = (string)($scan['scan_status'] ?? 'RECEIVED');
     } elseif (is_array($scan)) {
-        $matchStatus = (string)($scan['scan_status'] ?? 'NOT_RECEIVED_IN_SAP_CACHE');
+        $matchStatus = (string)($scan['scan_status'] ?? 'NOT_RECEIVED_IN_SCANPLUS');
     }
 
     $receivedQty = $isCurrentMatch ? $allocatedReceivedQty : null;
@@ -1347,8 +1367,8 @@ function sync_lookup_transfer_rows_by_itr_lines($erp, array $refs, int $lookback
                 CAST(F.CreatedBy AS NVARCHAR(120)) AS BarcodeUser,
 
                 COALESCE(
-                    NULLIF(LTRIM(RTRIM(CAST(F.U_BSNo AS NVARCHAR(80)))), ''),
                     NULLIF(LTRIM(RTRIM(CAST(F.U_BatchNo AS NVARCHAR(80)))), ''),
+                    NULLIF(LTRIM(RTRIM(CAST(F.U_BSNo AS NVARCHAR(80)))), ''),
                     ''
                 ) AS ReceivedLotNo,
 
@@ -2106,6 +2126,574 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
 }
 
 
+/**
+ * Exact TransactionID -> FT_INVT allocation audit table.
+ * A request line can contain several issuance transactions and several lots.
+ */
+function sync_ensure_issue_transaction_receive_allocation($conn): bool
+{
+    sync_exec(
+        $conn,
+        "IF OBJECT_ID('dbo.WarehouseIssueTransactionReceiveAllocation', 'U') IS NULL
+         BEGIN
+            CREATE TABLE dbo.WarehouseIssueTransactionReceiveAllocation (
+                AllocationID BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                TransactionID BIGINT NOT NULL,
+                RequestLineID INT NULL,
+                ITRDocEntry INT NOT NULL,
+                ITRLineNum INT NULL,
+                ItemCode NVARCHAR(50) NOT NULL,
+                IssuedLotNo NVARCHAR(80) NULL,
+                ReceivedLotNo NVARCHAR(80) NULL,
+                AllocatedQty DECIMAL(18,3) NOT NULL,
+                LotMatch BIT NOT NULL,
+                FTDocEntry INT NOT NULL,
+                FTLineId INT NOT NULL,
+                SourceDocumentKey NVARCHAR(100) NULL,
+                ReceivedAt DATETIME NULL,
+                BarcodeUser NVARCHAR(120) NULL,
+                MatchMethod NVARCHAR(80) NOT NULL,
+                LastSyncedAt DATETIME NOT NULL DEFAULT GETDATE()
+            );
+         END"
+    );
+
+    sync_exec(
+        $conn,
+        "IF NOT EXISTS (
+            SELECT 1 FROM sys.indexes
+            WHERE name = 'UX_WITRA_TransactionSource'
+              AND object_id = OBJECT_ID('dbo.WarehouseIssueTransactionReceiveAllocation')
+         )
+         BEGIN
+            CREATE UNIQUE INDEX UX_WITRA_TransactionSource
+            ON dbo.WarehouseIssueTransactionReceiveAllocation
+            (TransactionID, FTDocEntry, FTLineId, ReceivedLotNo);
+         END"
+    );
+
+    sync_exec(
+        $conn,
+        "IF NOT EXISTS (
+            SELECT 1 FROM sys.indexes
+            WHERE name = 'IX_WITRA_RequestLine'
+              AND object_id = OBJECT_ID('dbo.WarehouseIssueTransactionReceiveAllocation')
+         )
+         BEGIN
+            CREATE INDEX IX_WITRA_RequestLine
+            ON dbo.WarehouseIssueTransactionReceiveAllocation
+            (RequestLineID, TransactionID, ReceivedAt);
+         END"
+    );
+
+    return sync_has_table($conn, 'WarehouseIssueTransactionReceiveAllocation');
+}
+
+function sync_load_issue_transactions_for_daily_allocation($conn, array $refs, int $lookbackDays): array
+{
+    if (!sync_has_table($conn, 'IssuanceTransactions')
+        || !sync_has_column($conn, 'IssuanceTransactions', 'TransactionID')
+        || !sync_has_column($conn, 'IssuanceTransactions', 'ITRDocEntry')
+        || !sync_has_column($conn, 'IssuanceTransactions', 'ITRLineNum')
+        || !sync_has_column($conn, 'IssuanceTransactions', 'ItemCode')
+        || !sync_has_column($conn, 'IssuanceTransactions', 'Quantity')
+        || !sync_has_column($conn, 'IssuanceTransactions', 'IssuedAt')) {
+        return [];
+    }
+
+    $tuples = [];
+
+    foreach ($refs as $ref) {
+        $docEntry = (int)($ref['doc_entry'] ?? 0);
+        $lineRaw = $ref['line_num'] ?? null;
+        $itemCode = trim((string)($ref['item_code'] ?? ''));
+
+        if ($docEntry <= 0 || $lineRaw === null || trim((string)$lineRaw) === '' || $itemCode === '') {
+            continue;
+        }
+
+        $lineNum = (int)$lineRaw;
+        $key = scanplus_key($docEntry, $lineNum, $itemCode);
+        if ($key !== '') {
+            $tuples[$key] = [$docEntry, $lineNum, $itemCode];
+        }
+    }
+
+    if (empty($tuples)) {
+        return [];
+    }
+
+    $hasRequestLineId = sync_has_column($conn, 'IssuanceTransactions', 'IssueRequestLineID');
+    $hasLot = sync_has_column($conn, 'IssuanceTransactions', 'LotNo');
+    $requestLineExpr = $hasRequestLineId ? 'IT.IssueRequestLineID' : 'CAST(NULL AS INT)';
+    $lotExpr = $hasLot ? 'IT.LotNo' : "CAST('' AS NVARCHAR(80))";
+    $rows = [];
+
+    foreach (array_chunk(array_values($tuples), 40) as $tupleChunk) {
+        $parts = [];
+        $params = [];
+
+        foreach ($tupleChunk as $tuple) {
+            $parts[] = '(IT.ITRDocEntry = ? AND IT.ITRLineNum = ? AND IT.ItemCode = ?)';
+            array_push($params, $tuple[0], $tuple[1], $tuple[2]);
+        }
+
+        $params[] = max(1, min(180, $lookbackDays));
+
+        $chunkRows = sync_fetch_all(
+            $conn,
+            "SELECT
+                IT.TransactionID,
+                {$requestLineExpr} AS RequestLineID,
+                IT.ITRDocEntry,
+                IT.ITRLineNum,
+                IT.ItemCode,
+                {$lotExpr} AS LotNo,
+                TRY_CONVERT(DECIMAL(18,3), IT.Quantity) AS Quantity,
+                IT.IssuedAt
+             FROM dbo.IssuanceTransactions IT
+             WHERE (" . implode(' OR ', $parts) . ")
+               AND IT.IssuedAt >= DATEADD(DAY, -?, GETDATE())
+               AND ISNULL(TRY_CONVERT(DECIMAL(18,3), IT.Quantity), 0) > 0
+             ORDER BY IT.IssuedAt, IT.TransactionID",
+            $params
+        );
+
+        foreach ($chunkRows as $row) {
+            $rows[] = $row;
+        }
+    }
+
+    return $rows;
+}
+
+function sync_daily_base_key($dateKey, $docEntry, $lineNum, $itemCode): string
+{
+    $dateKey = trim((string)$dateKey);
+    $itemCode = strtoupper(trim((string)$itemCode));
+
+    if ($dateKey === '' || (int)$docEntry <= 0 || $itemCode === '') {
+        return '';
+    }
+
+    return $dateKey . '|'
+        . (int)$docEntry . '|'
+        . (($lineNum === null || $lineNum === '') ? '-1' : (int)$lineNum) . '|'
+        . $itemCode;
+}
+
+function sync_daily_lot_key(string $baseKey, $lotNo): string
+{
+    return $baseKey === '' ? '' : $baseKey . '|LOT|' . sync_normalize_lot($lotNo);
+}
+
+function sync_build_raw_group_scans(array $transferRows): array
+{
+    $groupScans = [];
+
+    foreach ($transferRows as $transfer) {
+        $groupKey = sync_monthly_itr_group_key(
+            $transfer['doc_entry'] ?? 0,
+            $transfer['line_num'] ?? null,
+            $transfer['item_code'] ?? '',
+            $transfer['received_lot_no'] ?? ''
+        );
+        $qty = max(0.0, (float)($transfer['received_qty'] ?? 0));
+
+        if ($groupKey === '' || $qty <= 0.0005) {
+            continue;
+        }
+
+        if (!isset($groupScans[$groupKey])) {
+            $groupScans[$groupKey] = [
+                'received_qty' => 0.0,
+                'received_lot_no' => trim((string)($transfer['received_lot_no'] ?? '')),
+                'barcode_user' => trim((string)($transfer['barcode_user'] ?? '')),
+                'received_at' => trim((string)($transfer['received_at'] ?? '')),
+                'scan_status' => 'SCANPLUS_RECEIVED',
+                'itr_requested_qty' => $transfer['itr_requested_qty'] ?? null,
+                'itr_open_qty' => $transfer['itr_open_qty'] ?? null,
+                'transfer_count' => 0,
+            ];
+        }
+
+        $groupScans[$groupKey]['received_qty'] += $qty;
+        $groupScans[$groupKey]['transfer_count']++;
+        $receivedAt = trim((string)($transfer['received_at'] ?? ''));
+
+        if ($receivedAt !== '' && strcmp($receivedAt, (string)$groupScans[$groupKey]['received_at']) >= 0) {
+            $groupScans[$groupKey]['received_at'] = $receivedAt;
+            $groupScans[$groupKey]['barcode_user'] = trim((string)($transfer['barcode_user'] ?? ''));
+        }
+    }
+
+    return $groupScans;
+}
+
+function sync_add_daily_allocation_chunk(
+    array &$lineAllocations,
+    array &$transactionAllocations,
+    array &$issueState,
+    array &$receiptState,
+    int $issueIndex,
+    int $receiptIndex,
+    float $qty,
+    bool $lotMatch
+): void {
+    if ($qty <= 0.0005) {
+        return;
+    }
+
+    $issue = $issueState[$issueIndex]['row'];
+    $receipt = $receiptState[$receiptIndex]['row'];
+    $requestLineId = (int)($issue['RequestLineID'] ?? 0);
+    $transactionId = (int)($issue['TransactionID'] ?? 0);
+    $issuedLot = trim((string)($issue['LotNo'] ?? ''));
+    $receivedLot = trim((string)($receipt['received_lot_no'] ?? ''));
+    $receivedAt = trim((string)($receipt['received_at'] ?? ''));
+
+    if ($requestLineId > 0) {
+        if (!isset($lineAllocations[$requestLineId])) {
+            $lineAllocations[$requestLineId] = [
+                'issued_qty' => 0.0,
+                'qty' => 0.0,
+                'exact_lot_qty' => 0.0,
+                'lot_mismatch_qty' => 0.0,
+                'raw_daily_received_qty' => 0.0,
+                'received_at' => '',
+                'barcode_user' => '',
+                'received_lots' => [],
+                'source_transfers' => [],
+                'daily_base_keys' => [],
+            ];
+        }
+
+        $lineAllocations[$requestLineId]['qty'] += $qty;
+        $lineAllocations[$requestLineId][$lotMatch ? 'exact_lot_qty' : 'lot_mismatch_qty'] += $qty;
+
+        if ($receivedLot !== '') {
+            $lotKey = sync_normalize_lot($receivedLot);
+            $lineAllocations[$requestLineId]['received_lots'][$lotKey !== '' ? $lotKey : $receivedLot] = $receivedLot;
+        }
+
+        if ($receivedAt !== '' && strcmp($receivedAt, (string)$lineAllocations[$requestLineId]['received_at']) >= 0) {
+            $lineAllocations[$requestLineId]['received_at'] = $receivedAt;
+            $lineAllocations[$requestLineId]['barcode_user'] = trim((string)($receipt['barcode_user'] ?? ''));
+        }
+
+        $sourceKey = (int)($receipt['transfer_doc_entry'] ?? 0) . '|'
+            . (int)($receipt['transfer_line_num'] ?? 0) . '|'
+            . strtoupper(trim((string)($receipt['item_code'] ?? ''))) . '|'
+            . sync_normalize_lot($receivedLot) . '|ISSUELOT|' . sync_normalize_lot($issuedLot);
+
+        if (!isset($lineAllocations[$requestLineId]['source_transfers'][$sourceKey])) {
+            $lineAllocations[$requestLineId]['source_transfers'][$sourceKey] = [
+                'transfer_doc_entry' => (int)($receipt['transfer_doc_entry'] ?? 0),
+                'transfer_doc_num' => $receipt['transfer_doc_num'] ?? null,
+                'transfer_line_num' => (int)($receipt['transfer_line_num'] ?? 0),
+                'item_code' => trim((string)($receipt['item_code'] ?? '')),
+                'issued_lot_no' => $issuedLot,
+                'received_lot_no' => $receivedLot,
+                'allocated_qty' => 0.0,
+                'received_at' => $receivedAt,
+                'barcode_user' => trim((string)($receipt['barcode_user'] ?? '')),
+                'match_method' => $lotMatch ? 'SAME_DAY_EXACT_LOT_FIFO' : 'SAME_DAY_LOT_MISMATCH_FIFO',
+            ];
+        }
+
+        $lineAllocations[$requestLineId]['source_transfers'][$sourceKey]['allocated_qty'] += $qty;
+    }
+
+    $transactionAllocations[] = [
+        'transaction_id' => $transactionId,
+        'request_line_id' => $requestLineId > 0 ? $requestLineId : null,
+        'itr_doc_entry' => (int)($issue['ITRDocEntry'] ?? 0),
+        'itr_line_num' => $issue['ITRLineNum'] ?? null,
+        'item_code' => trim((string)($issue['ItemCode'] ?? '')),
+        'issued_lot_no' => $issuedLot,
+        'received_lot_no' => $receivedLot,
+        'allocated_qty' => $qty,
+        'lot_match' => $lotMatch ? 1 : 0,
+        'ft_doc_entry' => (int)($receipt['transfer_doc_entry'] ?? 0),
+        'ft_line_id' => (int)($receipt['transfer_line_num'] ?? 0),
+        'source_document_key' => trim((string)($receipt['source_document_key'] ?? '')),
+        'received_at' => $receivedAt,
+        'barcode_user' => trim((string)($receipt['barcode_user'] ?? '')),
+        'match_method' => $lotMatch ? 'SAME_DAY_EXACT_LOT_FIFO' : 'SAME_DAY_LOT_MISMATCH_FIFO',
+    ];
+
+    $issueState[$issueIndex]['remaining'] = max(0.0, $issueState[$issueIndex]['remaining'] - $qty);
+    $receiptState[$receiptIndex]['remaining'] = max(0.0, $receiptState[$receiptIndex]['remaining'] - $qty);
+}
+
+/**
+ * Business rule:
+ *   1) Same calendar date is mandatory.
+ *   2) Same ITR DocEntry + line + item is mandatory.
+ *   3) Exact lot is allocated first.
+ *   4) Remaining same-day quantity is allocated as LOT_MISMATCH.
+ *   5) Nothing crosses to another date even if the monthly ITR/lot is reused.
+ */
+function sync_allocate_daily_issue_receipts(array $issueRows, array $transferRows): array
+{
+    $issueState = [];
+    $receiptState = [];
+    $issuesByBase = [];
+    $issuesByLot = [];
+    $receiptsByBase = [];
+    $receiptsByLot = [];
+    $lineAllocations = [];
+    $transactionAllocations = [];
+    $dailyTotals = [];
+
+    foreach ($issueRows as $row) {
+        $qty = max(0.0, (float)($row['Quantity'] ?? 0));
+        $dateKey = sync_datetime_date_key($row['IssuedAt'] ?? '');
+        $baseKey = sync_daily_base_key($dateKey, $row['ITRDocEntry'] ?? 0, $row['ITRLineNum'] ?? null, $row['ItemCode'] ?? '');
+
+        if ($qty <= 0.0005 || $baseKey === '') {
+            continue;
+        }
+
+        $index = count($issueState);
+        $issueState[] = ['row' => $row, 'remaining' => $qty];
+        $issuesByBase[$baseKey][] = $index;
+        $issuesByLot[sync_daily_lot_key($baseKey, $row['LotNo'] ?? '')][] = $index;
+        $dailyTotals[$baseKey]['issued'] = (float)($dailyTotals[$baseKey]['issued'] ?? 0) + $qty;
+        $dailyTotals[$baseKey]['received'] = (float)($dailyTotals[$baseKey]['received'] ?? 0);
+
+        $requestLineId = (int)($row['RequestLineID'] ?? 0);
+        if ($requestLineId > 0) {
+            if (!isset($lineAllocations[$requestLineId])) {
+                $lineAllocations[$requestLineId] = [
+                    'issued_qty' => 0.0,
+                    'qty' => 0.0,
+                    'exact_lot_qty' => 0.0,
+                    'lot_mismatch_qty' => 0.0,
+                    'raw_daily_received_qty' => 0.0,
+                    'received_at' => '',
+                    'barcode_user' => '',
+                    'received_lots' => [],
+                    'source_transfers' => [],
+                    'daily_base_keys' => [],
+                ];
+            }
+            $lineAllocations[$requestLineId]['issued_qty'] += $qty;
+            $lineAllocations[$requestLineId]['daily_base_keys'][$baseKey] = true;
+        }
+    }
+
+    foreach ($transferRows as $row) {
+        $qty = max(0.0, (float)($row['received_qty'] ?? 0));
+        $dateKey = sync_datetime_date_key($row['received_at'] ?? '');
+        $baseKey = sync_daily_base_key($dateKey, $row['doc_entry'] ?? 0, $row['line_num'] ?? null, $row['item_code'] ?? '');
+
+        if ($qty <= 0.0005 || $baseKey === '') {
+            continue;
+        }
+
+        $index = count($receiptState);
+        $receiptState[] = ['row' => $row, 'remaining' => $qty];
+        $receiptsByBase[$baseKey][] = $index;
+        $receiptsByLot[sync_daily_lot_key($baseKey, $row['received_lot_no'] ?? '')][] = $index;
+        $dailyTotals[$baseKey]['issued'] = (float)($dailyTotals[$baseKey]['issued'] ?? 0);
+        $dailyTotals[$baseKey]['received'] = (float)($dailyTotals[$baseKey]['received'] ?? 0) + $qty;
+    }
+
+    $sortIssueIndices = static function (array &$indices) use (&$issueState): void {
+        usort($indices, static function (int $a, int $b) use (&$issueState): int {
+            $aTime = sync_datetime_timestamp($issueState[$a]['row']['IssuedAt'] ?? '');
+            $bTime = sync_datetime_timestamp($issueState[$b]['row']['IssuedAt'] ?? '');
+            if ($aTime !== $bTime) {
+                return $aTime <=> $bTime;
+            }
+            return (int)($issueState[$a]['row']['TransactionID'] ?? 0)
+                <=> (int)($issueState[$b]['row']['TransactionID'] ?? 0);
+        });
+    };
+
+    $sortReceiptIndices = static function (array &$indices) use (&$receiptState): void {
+        usort($indices, static function (int $a, int $b) use (&$receiptState): int {
+            $aTime = sync_datetime_timestamp($receiptState[$a]['row']['received_at'] ?? '');
+            $bTime = sync_datetime_timestamp($receiptState[$b]['row']['received_at'] ?? '');
+            if ($aTime !== $bTime) {
+                return $aTime <=> $bTime;
+            }
+            $docCompare = (int)($receiptState[$a]['row']['transfer_doc_entry'] ?? 0)
+                <=> (int)($receiptState[$b]['row']['transfer_doc_entry'] ?? 0);
+            if ($docCompare !== 0) {
+                return $docCompare;
+            }
+            return (int)($receiptState[$a]['row']['transfer_line_num'] ?? 0)
+                <=> (int)($receiptState[$b]['row']['transfer_line_num'] ?? 0);
+        });
+    };
+
+    /* Pass 1: exact lot. */
+    foreach ($issuesByLot as $lotKey => $issueIndices) {
+        $receiptIndices = $receiptsByLot[$lotKey] ?? [];
+        if (empty($receiptIndices)) {
+            continue;
+        }
+
+        $sortIssueIndices($issueIndices);
+        $sortReceiptIndices($receiptIndices);
+        $i = 0;
+        $r = 0;
+
+        while ($i < count($issueIndices) && $r < count($receiptIndices)) {
+            $ii = $issueIndices[$i];
+            $ri = $receiptIndices[$r];
+
+            if ($issueState[$ii]['remaining'] <= 0.0005) {
+                $i++;
+                continue;
+            }
+            if ($receiptState[$ri]['remaining'] <= 0.0005) {
+                $r++;
+                continue;
+            }
+
+            $qty = min($issueState[$ii]['remaining'], $receiptState[$ri]['remaining']);
+            sync_add_daily_allocation_chunk($lineAllocations, $transactionAllocations, $issueState, $receiptState, $ii, $ri, $qty, true);
+        }
+    }
+
+    /* Pass 2: same-day quantity is present, but under another lot. */
+    foreach ($issuesByBase as $baseKey => $issueIndices) {
+        $receiptIndices = $receiptsByBase[$baseKey] ?? [];
+        if (empty($receiptIndices)) {
+            continue;
+        }
+
+        $issueIndices = array_values(array_filter($issueIndices, static fn(int $idx): bool => $issueState[$idx]['remaining'] > 0.0005));
+        $receiptIndices = array_values(array_filter($receiptIndices, static fn(int $idx): bool => $receiptState[$idx]['remaining'] > 0.0005));
+
+        if (empty($issueIndices) || empty($receiptIndices)) {
+            continue;
+        }
+
+        $sortIssueIndices($issueIndices);
+        $sortReceiptIndices($receiptIndices);
+        $i = 0;
+        $r = 0;
+
+        while ($i < count($issueIndices) && $r < count($receiptIndices)) {
+            $ii = $issueIndices[$i];
+            $ri = $receiptIndices[$r];
+
+            if ($issueState[$ii]['remaining'] <= 0.0005) {
+                $i++;
+                continue;
+            }
+            if ($receiptState[$ri]['remaining'] <= 0.0005) {
+                $r++;
+                continue;
+            }
+
+            $qty = min($issueState[$ii]['remaining'], $receiptState[$ri]['remaining']);
+            $issueLot = sync_normalize_lot($issueState[$ii]['row']['LotNo'] ?? '');
+            $receiptLot = sync_normalize_lot($receiptState[$ri]['row']['received_lot_no'] ?? '');
+            $lotMatch = $issueLot !== '' && $issueLot === $receiptLot;
+            sync_add_daily_allocation_chunk($lineAllocations, $transactionAllocations, $issueState, $receiptState, $ii, $ri, $qty, $lotMatch);
+        }
+    }
+
+    foreach ($lineAllocations as &$allocation) {
+        $rawDaily = 0.0;
+        foreach (array_keys($allocation['daily_base_keys'] ?? []) as $baseKey) {
+            $rawDaily += (float)($dailyTotals[$baseKey]['received'] ?? 0);
+        }
+        $allocation['raw_daily_received_qty'] = $rawDaily;
+        $allocation['received_lot_no'] = implode(', ', array_values($allocation['received_lots'] ?? []));
+        unset($allocation['received_lots'], $allocation['daily_base_keys']);
+    }
+    unset($allocation);
+
+    $unallocatedReceipts = [];
+    foreach ($receiptState as $state) {
+        if ($state['remaining'] > 0.0005) {
+            $row = $state['row'];
+            $row['unallocated_qty'] = $state['remaining'];
+            $unallocatedReceipts[] = $row;
+        }
+    }
+
+    $pendingIssues = [];
+    foreach ($issueState as $state) {
+        if ($state['remaining'] > 0.0005) {
+            $row = $state['row'];
+            $row['pending_qty'] = $state['remaining'];
+            $pendingIssues[] = $row;
+        }
+    }
+
+    return [
+        'line_allocations' => $lineAllocations,
+        'transaction_allocations' => $transactionAllocations,
+        'daily_totals' => $dailyTotals,
+        'unallocated_receipts' => $unallocatedReceipts,
+        'pending_issues' => $pendingIssues,
+    ];
+}
+
+function sync_replace_issue_transaction_receive_allocations($conn, array $issueRows, array $allocations): void
+{
+    if (!sync_has_table($conn, 'WarehouseIssueTransactionReceiveAllocation')) {
+        return;
+    }
+
+    $transactionIds = [];
+    foreach ($issueRows as $row) {
+        $transactionId = (int)($row['TransactionID'] ?? 0);
+        if ($transactionId > 0) {
+            $transactionIds[$transactionId] = true;
+        }
+    }
+
+    foreach (array_chunk(array_keys($transactionIds), 500) as $idChunk) {
+        if (empty($idChunk)) {
+            continue;
+        }
+        $placeholders = implode(',', array_fill(0, count($idChunk), '?'));
+        sync_exec($conn, "DELETE FROM dbo.WarehouseIssueTransactionReceiveAllocation WHERE TransactionID IN ({$placeholders})", array_values($idChunk));
+    }
+
+    foreach ($allocations as $a) {
+        if ((int)($a['transaction_id'] ?? 0) <= 0 || (float)($a['allocated_qty'] ?? 0) <= 0.0005) {
+            continue;
+        }
+
+        sync_exec(
+            $conn,
+            "INSERT INTO dbo.WarehouseIssueTransactionReceiveAllocation
+            (
+                TransactionID, RequestLineID, ITRDocEntry, ITRLineNum, ItemCode,
+                IssuedLotNo, ReceivedLotNo, AllocatedQty, LotMatch,
+                FTDocEntry, FTLineId, SourceDocumentKey, ReceivedAt,
+                BarcodeUser, MatchMethod, LastSyncedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE())",
+            [
+                (int)$a['transaction_id'],
+                $a['request_line_id'] ?? null,
+                (int)$a['itr_doc_entry'],
+                $a['itr_line_num'] ?? null,
+                $a['item_code'],
+                $a['issued_lot_no'] ?? null,
+                $a['received_lot_no'] ?? null,
+                (float)$a['allocated_qty'],
+                (int)($a['lot_match'] ?? 0),
+                (int)$a['ft_doc_entry'],
+                (int)$a['ft_line_id'],
+                $a['source_document_key'] ?? null,
+                $a['received_at'] ?? null,
+                $a['barcode_user'] ?? null,
+                $a['match_method'] ?? 'SAME_DAY_FIFO',
+            ]
+        );
+    }
+}
+
 $whp = null;
 $syncId = null;
 $updated = 0;
@@ -2131,6 +2719,7 @@ try {
     }
     sync_ensure_request_line_receive_cache($whp);
     sync_ensure_request_line_receive_allocation($whp);
+    sync_ensure_issue_transaction_receive_allocation($whp);
 
     $syncId = sync_begin_log($whp);
     sync_log("Starting ScanPlus cache refresh. Lookback={$lookbackDays} days, chunk={$chunkSize}, maxRefs={$maxRefs}.");
@@ -2341,16 +2930,29 @@ try {
     $transferRows = sync_lookup_transfer_rows_by_itr_lines($erp, $refs, $lookbackDays);
     sync_log('Individual ScanPlus FT_INVT receipt rows found: ' . count($transferRows)
         . ', lookup=' . round(microtime(true) - $transferLookupStarted, 3) . ' sec');
+    /*
+     * Business rule: reconcile against what was issued on the SAME calendar day.
+     * The monthly ITR and lot may be reused while balance remains, so a ScanPlus
+     * receipt must never borrow an issuance from a different date.
+     */
+    $issueRows = sync_load_issue_transactions_for_daily_allocation($whp, $refs, $lookbackDays);
+    sync_log('Local issuance transactions for daily allocation: ' . count($issueRows));
 
-    $allocationResult = sync_allocate_monthly_itr_transfers($refs, $transferRows);
+    $allocationResult = sync_allocate_daily_issue_receipts($issueRows, $transferRows);
     $lineAllocations = $allocationResult['line_allocations'] ?? [];
-    $groupScans = $allocationResult['group_scans'] ?? [];
-    $unallocatedByGroup = $allocationResult['unallocated_by_group'] ?? [];
-    $ambiguousByGroup = $allocationResult['ambiguous_by_group'] ?? [];
-    $ambiguousTransfers = $allocationResult['ambiguous_transfers'] ?? [];
+    $transactionAllocations = $allocationResult['transaction_allocations'] ?? [];
+    $dailyTotals = $allocationResult['daily_totals'] ?? [];
+    $unallocatedReceipts = $allocationResult['unallocated_receipts'] ?? [];
+    $pendingIssues = $allocationResult['pending_issues'] ?? [];
 
-    /* Remove old source links first so corrected transfers can move requests. */
+    /* Monthly raw cache remains diagnostic only. */
+    $groupScans = sync_build_raw_group_scans($transferRows);
+    $unallocatedByGroup = [];
+    $ambiguousByGroup = [];
+    $ambiguousTransfers = [];
+
     sync_clear_request_line_receive_allocations($whp, $refs);
+    sync_replace_issue_transaction_receive_allocations($whp, $issueRows, $transactionAllocations);
 
     foreach ($refs as $ref) {
         $requestLineId = (int)($ref['local_request_line_id'] ?? 0);
@@ -2371,78 +2973,71 @@ try {
             continue;
         }
 
-        $issuedQty = is_numeric($ref['local_issued_qty'] ?? null)
-            ? max(0.0, (float)$ref['local_issued_qty'])
-            : 0.0;
         $allocation = $lineAllocations[$requestLineId] ?? [
+            'issued_qty' => 0.0,
             'qty' => 0.0,
+            'exact_lot_qty' => 0.0,
+            'lot_mismatch_qty' => 0.0,
+            'raw_daily_received_qty' => 0.0,
             'received_at' => '',
             'barcode_user' => '',
             'received_lot_no' => '',
-            'transfer_doc_entries' => [],
             'source_transfers' => [],
         ];
+
+        /* Actual IssuanceTransactions are authoritative for the daily quantity. */
+        $issuedQty = max(0.0, (float)($allocation['issued_qty'] ?? 0));
+        if ($issuedQty <= 0 && is_numeric($ref['local_issued_qty'] ?? null)) {
+            $issuedQty = max(0.0, (float)$ref['local_issued_qty']);
+        }
+
         $allocatedQty = max(0.0, (float)($allocation['qty'] ?? 0));
+        $mismatchQty = max(0.0, (float)($allocation['lot_mismatch_qty'] ?? 0));
+        $rawDailyReceivedQty = max(0.0, (float)($allocation['raw_daily_received_qty'] ?? 0));
         $lineScan = null;
 
-        if (sync_normalize_lot($ref['lot_no'] ?? '') === '') {
+        if ($issuedQty <= 0) {
             $lineScan = [
-                'raw_received_qty' => 0.0,
+                'raw_received_qty' => $rawDailyReceivedQty,
                 'received_qty' => 0.0,
                 'received_lot_no' => '',
                 'barcode_user' => '',
                 'received_at' => '',
-                'scan_status' => 'GRPO_LOT_REQUIRED',
-            ];
-        } elseif ($issuedQty <= 0) {
-            $lineScan = [
-                'raw_received_qty' => is_array($groupScan)
-                    ? (float)($groupScan['received_qty'] ?? 0)
-                    : 0.0,
-                'received_qty' => 0.0,
-                'received_lot_no' => is_array($groupScan)
-                    ? (string)($groupScan['received_lot_no'] ?? '')
-                    : '',
-                'barcode_user' => '',
-                'received_at' => is_array($groupScan)
-                    ? (string)($groupScan['received_at'] ?? '')
-                    : '',
                 'scan_status' => 'NOT_ISSUED_REQUEST_LINE',
-            ];
-        } elseif (!is_array($groupScan)) {
-            $lineScan = [
-                'raw_received_qty' => 0.0,
-                'received_qty' => 0.0,
-                'received_lot_no' => '',
-                'barcode_user' => '',
-                'received_at' => '',
-                'scan_status' => 'NOT_RECEIVED_IN_SAP_CACHE',
+                'match_status' => 'NOT_ISSUED_REQUEST_LINE',
             ];
         } elseif ($allocatedQty <= 0.0005) {
             $lineScan = [
-                'raw_received_qty' => (float)($groupScan['received_qty'] ?? 0),
+                'raw_received_qty' => $rawDailyReceivedQty,
                 'received_qty' => 0.0,
-                'received_lot_no' => (string)($groupScan['received_lot_no'] ?? ''),
+                'received_lot_no' => '',
                 'barcode_user' => '',
-                'received_at' => (string)($groupScan['received_at'] ?? ''),
-                'scan_status' => (float)($ambiguousByGroup[$groupKey] ?? 0) > 0.0005
-                    ? 'AMBIGUOUS_REQUEST_MATCH'
-                    : 'NOT_ALLOCATED_TO_REQUEST_LINE',
+                'received_at' => '',
+                'scan_status' => 'NOT_RECEIVED_IN_SCANPLUS',
+                'match_status' => 'PENDING_RECEIVE',
             ];
         } else {
+            $isFull = $allocatedQty + 0.0005 >= $issuedQty;
+            $hasLotMismatch = $mismatchQty > 0.0005;
+
+            if ($isFull && $hasLotMismatch) {
+                $matchStatus = 'LOT_MISMATCH';
+            } elseif (!$isFull && $hasLotMismatch) {
+                $matchStatus = 'LOT_AND_QTY_VARIANCE';
+            } elseif ($isFull) {
+                $matchStatus = 'MATCHED';
+            } else {
+                $matchStatus = 'PARTIAL_RECEIVED';
+            }
+
             $lineScan = [
-                'raw_received_qty' => (float)($groupScan['received_qty'] ?? 0),
+                'raw_received_qty' => $rawDailyReceivedQty,
                 'received_qty' => min($allocatedQty, $issuedQty),
-                'received_lot_no' => (string)(
-                    $allocation['received_lot_no']
-                    ?? $groupScan['received_lot_no']
-                    ?? ''
-                ),
+                'received_lot_no' => (string)($allocation['received_lot_no'] ?? ''),
                 'barcode_user' => (string)($allocation['barcode_user'] ?? ''),
                 'received_at' => (string)($allocation['received_at'] ?? ''),
-                'scan_status' => $allocatedQty + 0.0005 >= $issuedQty
-                    ? 'SAP_RECEIVED'
-                    : 'SAP_PARTIAL',
+                'scan_status' => $isFull ? 'SCANPLUS_RECEIVED' : 'SCANPLUS_PARTIAL',
+                'match_status' => $matchStatus,
             ];
         }
 
@@ -2453,12 +3048,12 @@ try {
             array_values($allocation['source_transfers'] ?? [])
         );
         $updated++;
-        is_array($groupScan) ? $matched++ : $missing++;
+        $rawDailyReceivedQty > 0.0005 ? $matched++ : $missing++;
 
         if ($issuedQty > 0) {
             $verifyChecked++;
 
-            if (!is_array($groupScan)) {
+            if ($rawDailyReceivedQty <= 0.0005) {
                 $verifyMissingInScanPlus++;
 
                 if (count($verifyIssues) < 200) {
@@ -2476,7 +3071,7 @@ try {
 
                 if (count($verifyIssues) < 200) {
                     $verifyIssues[] = sprintf(
-                        'PARTIAL_REQUEST_ALLOCATION doc=%d line=%s item=%s requestLine=%d issuedQty=%.3f allocatedQty=%.3f remainingQty=%.3f',
+                        'PARTIAL_DAILY_ALLOCATION doc=%d line=%s item=%s requestLine=%d issuedQty=%.3f allocatedQty=%.3f remainingQty=%.3f',
                         $ref['doc_entry'],
                         $ref['line_num'] ?? '-',
                         $ref['item_code'],
@@ -2488,29 +3083,58 @@ try {
                 }
             }
 
-            $localLot = trim((string)($ref['lot_no'] ?? ''));
-            $sapLot = is_array($groupScan)
-                ? trim((string)($groupScan['received_lot_no'] ?? ''))
-                : '';
-
-            if ($localLot !== ''
-                && $sapLot !== ''
-                && sync_normalize_lot($localLot) !== sync_normalize_lot($sapLot)) {
+            if ($mismatchQty > 0.0005) {
                 $verifyLotMismatch++;
 
                 if (count($verifyIssues) < 200) {
                     $verifyIssues[] = sprintf(
-                        'LOT_MISMATCH doc=%d line=%s item=%s requestLine=%d localLot=%s sapLot=%s',
+                        'LOT_MISMATCH_DAILY doc=%d line=%s item=%s requestLine=%d mismatchQty=%.3f receivedLots=%s',
                         $ref['doc_entry'],
                         $ref['line_num'] ?? '-',
                         $ref['item_code'],
                         $requestLineId,
-                        $localLot,
-                        $sapLot
+                        $mismatchQty,
+                        (string)($allocation['received_lot_no'] ?? '')
                     );
                 }
             }
         }
+    }
+
+    foreach ($dailyTotals as $dailyKey => $dailyTotal) {
+        sync_log(sprintf(
+            'Daily reconciliation %s: issued=%.3f, scanplus_received=%.3f, variance=%.3f',
+            $dailyKey,
+            (float)($dailyTotal['issued'] ?? 0),
+            (float)($dailyTotal['received'] ?? 0),
+            (float)($dailyTotal['issued'] ?? 0) - (float)($dailyTotal['received'] ?? 0)
+        ));
+    }
+
+    foreach ($unallocatedReceipts as $receipt) {
+        sync_log(sprintf(
+            'UNALLOCATED_SAME_DAY_RECEIPT doc=%d line=%s item=%s lot=%s qty=%.3f received_at=%s',
+            (int)($receipt['doc_entry'] ?? 0),
+            $receipt['line_num'] ?? '-',
+            (string)($receipt['item_code'] ?? ''),
+            (string)($receipt['received_lot_no'] ?? ''),
+            (float)($receipt['unallocated_qty'] ?? 0),
+            sync_datetime_sort_key($receipt['received_at'] ?? '')
+        ));
+    }
+
+    foreach ($pendingIssues as $issue) {
+        sync_log(sprintf(
+            'PENDING_SAME_DAY_ISSUE tx=%d requestLine=%d doc=%d line=%s item=%s lot=%s qty=%.3f issued_at=%s',
+            (int)($issue['TransactionID'] ?? 0),
+            (int)($issue['RequestLineID'] ?? 0),
+            (int)($issue['ITRDocEntry'] ?? 0),
+            $issue['ITRLineNum'] ?? '-',
+            (string)($issue['ItemCode'] ?? ''),
+            (string)($issue['LotNo'] ?? ''),
+            (float)($issue['pending_qty'] ?? 0),
+            sync_datetime_sort_key($issue['IssuedAt'] ?? '')
+        ));
     }
 
     foreach ($ambiguousTransfers as $ambiguousTransfer) {
@@ -2519,7 +3143,7 @@ try {
             (int)($ambiguousTransfer['transfer_doc_entry'] ?? 0),
             (int)($ambiguousTransfer['transfer_line_num'] ?? 0),
             (float)($ambiguousTransfer['received_qty'] ?? 0),
-            (string)($ambiguousTransfer['received_at'] ?? ''),
+            sync_datetime_sort_key($ambiguousTransfer['received_at'] ?? ''),
             (string)($ambiguousTransfer['reason'] ?? ''),
             implode(',', array_map('strval', $ambiguousTransfer['candidate_request_line_ids'] ?? [])),
             (string)($ambiguousTransfer['group_key'] ?? '')

@@ -64,6 +64,7 @@ $traceHasReceivedBy = issuer_report_has_column($conn, 'RawmatTraceLines', 'Recei
 $traceHasReceivedAt = issuer_report_has_column($conn, 'RawmatTraceLines', 'ReceivedAt');
 $traceHasReceivedScanAt = issuer_report_has_column($conn, 'RawmatTraceLines', 'ReceivedScanAt');
 $traceHasWarehouseLotNo = issuer_report_has_column($conn, 'RawmatTraceLines', 'WarehouseLotNo');
+$traceHasIssueRequestLineId = issuer_report_has_column($conn, 'RawmatTraceLines', 'IssueRequestLineID');
 
 $localReceiveStatusExpr = $traceHasReceiveStatus ? 'TL.VerificationStatus' : "CAST('' AS NVARCHAR(80))";
 $localReceivedLotExpr = $traceHasReceivedLot ? 'TL.ReceivedLotNo' : "CAST('' AS NVARCHAR(80))";
@@ -88,8 +89,27 @@ $localWarehouseLotMatchSql = $traceHasWarehouseLotNo
                 )"
     : '';
 
-// Local receiver confirmation is the safest sign that the receiver process has run.
-// ScanPlus cache data can exist before local receiving details are finalized.
+// Prefer an exact RequestLineID match when both local tables support it.
+// Only fall back to TraceNo + ItemCode + lot for legacy records without RequestLineID.
+$localReceiverRequestMatchSql = $traceHasIssueRequestLineId
+    ? "
+          AND (
+                (
+                    IT.IssueRequestLineID IS NOT NULL
+                    AND TL.IssueRequestLineID = IT.IssueRequestLineID
+                )
+                OR (
+                    IT.IssueRequestLineID IS NULL
+                    AND TH.TraceNo = IT.TraceNo
+                )
+          )"
+    : "
+          AND TH.TraceNo = IT.TraceNo";
+
+$localReceiverOrderSql = $traceHasIssueRequestLineId
+    ? "CASE WHEN IT.IssueRequestLineID IS NOT NULL AND TL.IssueRequestLineID = IT.IssueRequestLineID THEN 0 ELSE 1 END,"
+    : '';
+
 $localReceiverApply = "
     OUTER APPLY (
         SELECT TOP 1
@@ -100,15 +120,15 @@ $localReceiverApply = "
             {$localReceivedAtExpr} AS LocalReceivedAt
         FROM RawmatTraceLines TL
         INNER JOIN RawmatTraceHeader TH ON TH.TraceID = TL.TraceID
-        WHERE TH.TraceNo = IT.TraceNo
-          AND TL.ItemCode = IT.ItemCode
+        WHERE TL.ItemCode = IT.ItemCode
+          {$localReceiverRequestMatchSql}
           AND (
                 ISNULL(TL.LotNo, NCHAR(0)) = ISNULL(IT.LotNo, NCHAR(0))
                 OR LEN(LTRIM(RTRIM(ISNULL(TL.LotNo, NCHAR(0))))) = 0
                 OR LEN(LTRIM(RTRIM(ISNULL(IT.LotNo, NCHAR(0))))) = 0
                 {$localWarehouseLotMatchSql}
           )
-        ORDER BY TL.TraceLineID DESC
+        ORDER BY {$localReceiverOrderSql} TL.TraceLineID DESC
     ) LocalRx";
 
 // WH Lot No was added after the original report. Detect the actual DB column name
@@ -232,6 +252,7 @@ $itSourceSql = $export
 
 $sql = '
     SELECT
+        IT.TransactionID,
         IT.TraceNo,
         IT.ItemCode,
         IT.PartName,
@@ -492,7 +513,6 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
 
     foreach ($rows as $row) {
         $id = (int)($row['RequestLineID'] ?? 0);
-
         if ($id > 0) {
             $ids[$id] = true;
         }
@@ -518,8 +538,7 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
                 {$receivedAtSelect},
                 {$isCurrentMatchSelect}
              FROM dbo.WarehouseIssueRequestLineReceiveCache
-             WHERE RequestLineID IN ({$placeholders})
-             ",
+             WHERE RequestLineID IN ({$placeholders})",
             $chunk
         );
 
@@ -528,17 +547,109 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
         }
     }
 
+    /*
+     * Build the full issuance history for every request line shown on the page.
+     * This is intentionally NOT limited to the paginated rows.  A consolidated
+     * ScanPlus receipt must be consumed once, FIFO, across every issuance
+     * transaction that belongs to the same RequestLineID.
+     */
+    $transactionsByLine = [];
+
+    if (issuer_report_has_column($conn, 'IssuanceTransactions', 'IssueRequestLineID')) {
+        foreach (array_chunk(array_keys($ids), 300) as $chunk) {
+            $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+            $txRows = fetch_all(
+                $conn,
+                "SELECT
+                    TransactionID,
+                    IssueRequestLineID,
+                    TRY_CONVERT(DECIMAL(18, 3), Quantity) AS Quantity,
+                    IssuedAt
+                 FROM dbo.IssuanceTransactions
+                 WHERE IssueRequestLineID IN ({$placeholders})
+                 ORDER BY IssueRequestLineID, IssuedAt, TransactionID",
+                $chunk
+            );
+
+            foreach ($txRows as $tx) {
+                $lineId = (int)($tx['IssueRequestLineID'] ?? 0);
+                if ($lineId <= 0) {
+                    continue;
+                }
+                $transactionsByLine[$lineId][] = $tx;
+            }
+        }
+    }
+
+    $allocatedByTransaction = [];
+
+    foreach ($mappedByLine as $lineId => $mapped) {
+        if ((int)($mapped['IsCurrentMatch'] ?? 0) !== 1) {
+            continue;
+        }
+
+        $receivedQty = is_numeric($mapped['ReceivedQty'] ?? null)
+            ? max(0.0, (float)$mapped['ReceivedQty'])
+            : 0.0;
+
+        if ($receivedQty <= 0 || empty($transactionsByLine[$lineId])) {
+            continue;
+        }
+
+        $receivedAtTs = null;
+        $receivedAtText = trim(report_cell($mapped['ReceivedAt'] ?? ''));
+        if ($receivedAtText !== '' && strpos($receivedAtText, '1900-01-01') !== 0) {
+            $ts = strtotime($receivedAtText);
+            $receivedAtTs = $ts === false ? null : $ts;
+        }
+
+        $remaining = $receivedQty;
+
+        foreach ($transactionsByLine[$lineId] as $tx) {
+            $transactionId = (int)($tx['TransactionID'] ?? 0);
+            $issueQty = is_numeric($tx['Quantity'] ?? null)
+                ? max(0.0, (float)$tx['Quantity'])
+                : 0.0;
+
+            if ($transactionId <= 0 || $issueQty <= 0) {
+                continue;
+            }
+
+            // A receipt cannot satisfy an issuance transaction created after it.
+            if ($receivedAtTs !== null) {
+                $issuedAtText = trim(report_cell($tx['IssuedAt'] ?? ''));
+                $issuedTs = $issuedAtText !== '' ? strtotime($issuedAtText) : false;
+                if ($issuedTs !== false && $issuedTs > $receivedAtTs) {
+                    $allocatedByTransaction[$transactionId] = 0.0;
+                    continue;
+                }
+            }
+
+            $allocated = min($issueQty, max(0.0, $remaining));
+            $allocatedByTransaction[$transactionId] = $allocated;
+            $remaining -= $allocated;
+
+            if ($remaining <= 0.0005) {
+                $remaining = 0.0;
+            }
+        }
+    }
+
     foreach ($rows as &$row) {
         $id = (int)($row['RequestLineID'] ?? 0);
+        $transactionId = (int)($row['TransactionID'] ?? 0);
+
+        $row['RequestLineCacheFound'] = 0;
+        $row['RequestLineCacheCurrent'] = 0;
+        $row['RequestLineAllocatedReceivedQty'] = '';
 
         if ($id <= 0) {
             continue;
         }
 
         /*
-         * A known local RequestLineID must use the request-specific receive cache.
-         * Never fall back to the aggregate ITR/item/lot cache, because a monthly
-         * ITR line can be reused and that could borrow another request's receipt.
+         * A known RequestLineID must use the request-specific allocation.
+         * Never borrow the aggregate ITR/item/lot cache for another request.
          */
         if (!isset($mappedByLine[$id])) {
             $row['CacheMatchStatus'] = 'REQUEST_LINE_CACHE_MISSING';
@@ -551,7 +662,8 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
         }
 
         $mapped = $mappedByLine[$id];
-        $row['CacheMatchStatus'] = $mapped['MatchStatus'] ?? $row['CacheMatchStatus'] ?? '';
+        $row['RequestLineCacheFound'] = 1;
+        $row['CacheMatchStatus'] = $mapped['MatchStatus'] ?? '';
 
         if ((int)($mapped['IsCurrentMatch'] ?? 0) !== 1) {
             $row['ScanStatus'] = '';
@@ -562,11 +674,32 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
             continue;
         }
 
-        $row['ScanStatus'] = $mapped['ScanStatus'] ?? $row['ScanStatus'] ?? '';
-        $row['ReceivedLotNo'] = $mapped['ReceivedLotNo'] ?? $row['ReceivedLotNo'] ?? '';
-        $row['ReceivedQty'] = $mapped['ReceivedQty'] ?? $row['ReceivedQty'] ?? '';
-        $row['BarcodeUser'] = $mapped['BarcodeUser'] ?? $row['BarcodeUser'] ?? '';
-        $row['ReceivedAt'] = $mapped['ReceivedAt'] ?? $row['ReceivedAt'] ?? '';
+        $row['RequestLineCacheCurrent'] = 1;
+
+        $allocatedQty = $transactionId > 0
+            ? (float)($allocatedByTransaction[$transactionId] ?? 0)
+            : 0.0;
+
+        $row['RequestLineAllocatedReceivedQty'] = $allocatedQty;
+
+        if ($allocatedQty <= 0.0005) {
+            // This individual issuance transaction has not yet been consumed.
+            $row['ScanStatus'] = '';
+            $row['ReceivedLotNo'] = '';
+            $row['ReceivedQty'] = '';
+            $row['BarcodeUser'] = '';
+            $row['ReceivedAt'] = '';
+            continue;
+        }
+
+        $issueQty = is_numeric($row['Quantity'] ?? null) ? (float)$row['Quantity'] : 0.0;
+        $row['ScanStatus'] = ($issueQty > 0 && $allocatedQty + 0.0005 >= $issueQty)
+            ? 'SCANPLUS_RECEIVED'
+            : 'SCANPLUS_PARTIAL';
+        $row['ReceivedLotNo'] = $mapped['ReceivedLotNo'] ?? '';
+        $row['ReceivedQty'] = rtrim(rtrim(number_format($allocatedQty, 3, '.', ''), '0'), '.');
+        $row['BarcodeUser'] = $mapped['BarcodeUser'] ?? '';
+        $row['ReceivedAt'] = $mapped['ReceivedAt'] ?? '';
     }
     unset($row);
 }
@@ -616,8 +749,19 @@ function issuer_report_received_status($status): bool
     ], true);
 }
 
+function issuer_report_has_authoritative_line_allocation(array $row): bool
+{
+    return (int)($row['RequestLineCacheFound'] ?? 0) === 1
+        && (int)($row['RequestLineCacheCurrent'] ?? 0) === 1;
+}
+
 function issuer_row_is_received($row): bool
 {
+    // For a mapped request line, the FIFO allocation is authoritative per transaction.
+    if (issuer_report_has_authoritative_line_allocation($row)) {
+        return ((float)($row['ReceivedQty'] ?? 0) > 0);
+    }
+
     return issuer_report_received_status($row['RequestHeaderStatus'] ?? '') ||
         issuer_report_received_status($row['RequestLineStatus'] ?? '') ||
         issuer_report_received_status($row['LocalReceiveStatus'] ?? '') ||
@@ -712,6 +856,36 @@ function report_received_value($row, $field)
         return '';
     }
 
+    /*
+     * When a request-line FIFO allocation exists, never let LocalRx overwrite it.
+     * LocalRx is only a legacy/fallback source for rows without an authoritative
+     * request-line allocation.
+     */
+    if (issuer_report_has_authoritative_line_allocation($row)) {
+        if ($field === 'ReceivedQty') {
+            $qty = $row['ReceivedQty'] ?? '';
+            if (trim((string)$qty) === '' || !is_numeric($qty) || (float)$qty <= 0) {
+                return '';
+            }
+            return rtrim(rtrim(number_format((float)$qty, 3, '.', ''), '0'), '.');
+        }
+
+        if ($field === 'ReceivedLotNo') {
+            return trim((string)($row['ReceivedLotNo'] ?? ''));
+        }
+
+        if ($field === 'BarcodeUser') {
+            return trim((string)($row['BarcodeUser'] ?? ''));
+        }
+
+        if ($field === 'ReceivedAt') {
+            $dateValue = $row['ReceivedAt'] ?? '';
+            return issuer_report_valid_datetime($dateValue) ? report_cell($dateValue) : '';
+        }
+
+        return $row[$field] ?? '';
+    }
+
     if ($field === 'BarcodeUser') {
         $local = trim((string)($row['LocalScannedBy'] ?? ''));
         if ($local !== '') {
@@ -731,7 +905,6 @@ function report_received_value($row, $field)
 
     if ($field === 'ReceivedLotNo') {
         $localLot = trim((string)($row['LocalReceivedLotNo'] ?? ''));
-
         if ($localLot !== '') {
             return $localLot;
         }
@@ -757,14 +930,24 @@ function issuer_report_receive_verification(array $row): array
     if (!issuer_row_is_received($row)) {
         return [
             'status' => 'PENDING_RECEIVE',
-            'note' => 'No requestor receipt has been confirmed yet.'
+            'note' => 'No requestor receipt has been allocated to this issuance transaction yet.'
         ];
     }
 
     $issuedQty = is_numeric($row['Quantity'] ?? null) ? (float)$row['Quantity'] : null;
     $receivedText = trim((string)($row['DisplayReceivedQty'] ?? ''));
     $receivedQty = is_numeric($receivedText) ? (float)$receivedText : null;
-    $qtyMatches = $issuedQty !== null && $receivedQty !== null && abs($issuedQty - $receivedQty) <= 0.0005;
+    $tolerance = 0.0005;
+
+    if ($issuedQty === null || $receivedQty === null || $receivedQty <= $tolerance) {
+        return [
+            'status' => 'PENDING_RECEIVE',
+            'note' => 'No requestor receipt has been allocated to this issuance transaction yet.'
+        ];
+    }
+
+    $qtyMatches = abs($issuedQty - $receivedQty) <= $tolerance;
+    $isPartial = $receivedQty > $tolerance && $receivedQty < ($issuedQty - $tolerance);
 
     $receivedLot = trim((string)($row['DisplayReceivedLotNo'] ?? ''));
     $issuedLots = array_filter([
@@ -777,7 +960,11 @@ function issuer_report_receive_verification(array $row): array
     $hasComparableLot = $receivedLot !== '' && !empty($issuedLots);
     $lotMatches = $hasComparableLot && issuer_report_lot_matches_any($receivedLot, $issuedLots);
 
-    if ($qtyMatches && $lotMatches) {
+    if ($isPartial) {
+        $status = (!$hasComparableLot || $lotMatches)
+            ? 'PARTIAL_RECEIVED'
+            : 'LOT_AND_QTY_VARIANCE';
+    } elseif ($qtyMatches && $lotMatches) {
         $status = 'MATCHED';
     } elseif ($qtyMatches && !$hasComparableLot) {
         $status = 'QTY_MATCH';
@@ -792,7 +979,7 @@ function issuer_report_receive_verification(array $row): array
     $issuedLotText = implode(' / ', $issuedLots);
     $noteParts = [
         'Issued qty: ' . report_cell($row['Quantity'] ?? ''),
-        'Received qty: ' . report_cell($row['DisplayReceivedQty'] ?? '')
+        'Allocated received qty: ' . report_cell($row['DisplayReceivedQty'] ?? '')
     ];
 
     if ($issuedLotText !== '' || $receivedLot !== '') {
