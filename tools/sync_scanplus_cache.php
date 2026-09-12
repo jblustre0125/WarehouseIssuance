@@ -2917,7 +2917,7 @@ function sync_replace_issue_transaction_receive_allocations($conn, array $issueR
 
 /**
  * Exact TransactionID -> SAP OWTR allocation audit table.
- * V5 persists the actual SAP posting FIFO separately from FT_INVT staging.
+ * V6 persists the actual SAP posting FIFO separately from FT_INVT staging and preserves the real ScanPlus receiver.
  */
 function sync_ensure_issue_transaction_sap_posting_allocation($conn): bool
 {
@@ -3439,12 +3439,19 @@ try {
                 $matchStatus = 'PARTIAL_POSTED';
             }
 
+            /*
+             * V6: Received By must be the actual ScanPlus operator (FT_INVT.CreatedBy),
+             * never the synthetic source label "SAP OWTR".  SAP still remains the
+             * authoritative source for posted quantity/lot/date.
+             */
+            $receivedByUser = trim((string)($scanAllocation['barcode_user'] ?? ''));
+
             $lineScan = [
                 /* RawReceivedQty = ScanPlus quantity FIFO-allocated to this line only. */
                 'raw_received_qty' => min($scanAllocatedQty, $issuedQty),
                 'received_qty' => min($sapAllocatedQty, $issuedQty),
                 'received_lot_no' => (string)($sapAllocation['received_lot_no'] ?? ''),
-                'barcode_user' => (string)($sapAllocation['barcode_user'] ?? 'SAP OWTR'),
+                'barcode_user' => $receivedByUser,
                 'received_at' => (string)($sapAllocation['received_at'] ?? ''),
                 'scan_status' => $isSapFull ? 'SAP_POSTED' : 'SAP_POSTED_PARTIAL',
                 'match_status' => $matchStatus,

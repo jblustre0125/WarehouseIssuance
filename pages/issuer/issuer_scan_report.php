@@ -665,6 +665,18 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
         $row['RequestLineCacheFound'] = 1;
         $row['CacheMatchStatus'] = $mapped['MatchStatus'] ?? '';
 
+        /*
+         * V6 keeps the real ScanPlus receiver separately from SAP receipt status.
+         * This allows Received By to show FT_INVT.CreatedBy even for
+         * SCANNED_NOT_POSTED / GROUP_PARTIAL_POSTED rows without pretending
+         * that their quantity was successfully posted in SAP.
+         */
+        $cacheBarcodeUser = trim((string)($mapped['BarcodeUser'] ?? ''));
+        if (strcasecmp($cacheBarcodeUser, 'SAP OWTR') === 0) {
+            $cacheBarcodeUser = '';
+        }
+        $row['CacheBarcodeUser'] = $cacheBarcodeUser;
+
         if ((int)($mapped['IsCurrentMatch'] ?? 0) !== 1) {
             $row['ScanStatus'] = '';
             $row['ReceivedLotNo'] = '';
@@ -880,6 +892,29 @@ function issuer_report_lot_matches_any($receivedLot, array $issuedLots): bool
 
 function report_received_value($row, $field)
 {
+    /*
+     * Received By means the actual ScanPlus receiver/scanner.  It is useful
+     * metadata even when the scan has not yet posted to SAP, so do not hide it
+     * behind issuer_row_is_received().  Also suppress the old synthetic label
+     * "SAP OWTR" if stale cache data is still present before the next sync.
+     */
+    if ($field === 'BarcodeUser') {
+        $candidates = [
+            $row['CacheBarcodeUser'] ?? '',
+            $row['BarcodeUser'] ?? '',
+            $row['LocalScannedBy'] ?? '',
+        ];
+
+        foreach ($candidates as $candidate) {
+            $candidate = trim((string)$candidate);
+            if ($candidate !== '' && strcasecmp($candidate, 'SAP OWTR') !== 0) {
+                return $candidate;
+            }
+        }
+
+        return '';
+    }
+
     if (!issuer_row_is_received($row)) {
         return '';
     }
@@ -902,23 +937,12 @@ function report_received_value($row, $field)
             return trim((string)($row['ReceivedLotNo'] ?? ''));
         }
 
-        if ($field === 'BarcodeUser') {
-            return trim((string)($row['BarcodeUser'] ?? ''));
-        }
-
         if ($field === 'ReceivedAt') {
             $dateValue = $row['ReceivedAt'] ?? '';
             return issuer_report_valid_datetime($dateValue) ? report_cell($dateValue) : '';
         }
 
         return $row[$field] ?? '';
-    }
-
-    if ($field === 'BarcodeUser') {
-        $local = trim((string)($row['LocalScannedBy'] ?? ''));
-        if ($local !== '') {
-            return $local;
-        }
     }
 
     if ($field === 'ReceivedAt') {
@@ -1062,6 +1086,32 @@ function issuer_report_receive_verification(array $row): array
     ];
 }
 
+function issuer_report_verification_label($status): string
+{
+    $status = strtoupper(trim((string)$status));
+
+    $labels = [
+        'MATCHED' => 'MATCHED',
+        'LOT_MISMATCH' => 'LOT MISMATCH',
+        'PARTIAL_POSTED' => 'PARTIAL POSTED',
+        'PARTIAL_POSTED_LOT_MISMATCH' => 'PARTIAL + LOT MISMATCH',
+        'GROUP_PARTIAL_POSTED' => 'PARTIAL SAP - ROW PENDING',
+        'SCANNED_NOT_POSTED' => 'SCANNED - NOT POSTED',
+        'UNALLOCATED_DAILY_SCAN' => 'SCAN NOT ALLOCATED',
+        'UNVERIFIED_DATE' => 'UNVERIFIED DATE',
+        'NOT_ISSUED' => 'NOT ISSUED',
+        'PENDING_RECEIVE' => 'PENDING RECEIVE',
+        'QTY_VARIANCE' => 'QTY VARIANCE',
+        'LOT_AND_QTY_VARIANCE' => 'LOT + QTY VARIANCE',
+    ];
+
+    if ($status === '') {
+        return 'PENDING RECEIVE';
+    }
+
+    return $labels[$status] ?? str_replace('_', ' ', $status);
+}
+
 // Show received values only when the request-line cache confirms an SAP posting.
 // A ScanPlus-only staging scan is intentionally not displayed as received.
 foreach ($rows as &$issuerReportRow) {
@@ -1079,6 +1129,7 @@ foreach ($rows as &$issuerReportRow) {
     $issuerReportRow['QtyVariance'] = issuer_report_qty_variance($issuerReportRow['Quantity'] ?? '', $issuerReportRow['DisplayReceivedQty']);
     $verification = issuer_report_receive_verification($issuerReportRow);
     $issuerReportRow['ReceiveVerification'] = $verification['status'];
+    $issuerReportRow['ReceiveVerificationLabel'] = issuer_report_verification_label($verification['status']);
     $issuerReportRow['ReceiveVerificationNote'] = $verification['note'];
     $issuerReportRow['DisplayBarcodeUser'] = report_received_value($issuerReportRow, 'BarcodeUser');
     $issuerReportRow['DisplayReceivedAt'] = report_received_value($issuerReportRow, 'ReceivedAt');
@@ -1263,7 +1314,7 @@ if ($export) {
                         $r['DisplayReceivedQty'] ?? '',
                         $r['QtyVariance'] ?? '',
                         $r['DisplayReceivedLotNo'] ?? '',
-                        $r['ReceiveVerification'] ?? '',
+                        $r['ReceiveVerificationLabel'] ?? ($r['ReceiveVerification'] ?? ''),
                         $r['LotNo'] ?? '',
                         $r['WarehouseLotNo'] ?? '',
                         $r['ITRNumber'] ?? '',
@@ -1672,6 +1723,9 @@ if ($export) {
         .status-pending,
         .status-pending_receive,
         .status-scanned_not_posted,
+        .status-group_partial_posted,
+        .status-unallocated_daily_scan,
+        .status-unverified_date,
         .status-partial_posted,
         .status-qty_match,
         .status-returned_no_stock {
@@ -1708,6 +1762,7 @@ if ($export) {
         .status-cancelled,
         .status-rejected,
         .status-lot_mismatch,
+        .status-partial_posted_lot_mismatch,
         .status-qty_variance,
         .status-lot_and_qty_variance {
             background: #fee2e2;
@@ -2009,7 +2064,7 @@ if ($export) {
 
                                         <td class="col-verification" title="<?= h(report_cell($r['ReceiveVerificationNote'] ?? '')) ?>">
                                             <span class="status-pill status-<?= h(strtolower((string)($r['ReceiveVerification'] ?? 'pending_receive'))) ?>">
-                                                <?= h(report_cell($r['ReceiveVerification'] ?? 'PENDING_RECEIVE')) ?>
+                                                <?= h(report_cell($r['ReceiveVerificationLabel'] ?? ($r['ReceiveVerification'] ?? 'PENDING RECEIVE'))) ?>
                                             </span>
                                         </td>
 
@@ -2035,7 +2090,7 @@ if ($export) {
                                             </span>
                                         </td>
 
-                                        <td class="col-user" title="<?= h(report_cell($r['DisplayBarcodeUser'] ?? '')) ?>">
+                                        <td class="col-user" title="ScanPlus receiver: <?= h(report_cell($r['DisplayBarcodeUser'] ?? '')) ?>">
                                             <?= h(report_cell($r['DisplayBarcodeUser'] ?? '')) ?>
                                         </td>
 

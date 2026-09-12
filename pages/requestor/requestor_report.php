@@ -1378,39 +1378,31 @@ SELECT
     B.RequestedAt,
     COALESCE(ITXSUM.IssuedAt, ITX.IssuedAt) AS IssuedAt,
 
+    /*
+     * Received By means the real ScanPlus scanner (FT_INVT.CreatedBy), not the
+     * synthetic SAP source label. Request-line cache metadata is authoritative
+     * whenever it exists, even when SAP has not posted the quantity yet.
+     */
     CASE
-        WHEN V.LocalReceiveValid = 1
+        WHEN S.UseLineReceiveMetadata = 1
+             AND UPPER(LTRIM(RTRIM(ISNULL(M.BarcodeUser, '')))) <> 'SAP OWTR'
             THEN COALESCE(
-                NULLIF(
-                    LTRIM(RTRIM(TL.ReceivedByUsername)),
-                    ''
-                ),
-                CASE
-                    WHEN Q.CacheReceivedQty > 0
-                        THEN M.BarcodeUser
-                    ELSE NULL
-                END,
+                NULLIF(LTRIM(RTRIM(M.BarcodeUser)), ''),
                 ''
             )
 
-        WHEN Q.CacheReceivedQty > 0
+        WHEN ISNULL(M.RequestLineID, 0) = 0
+             AND V.LocalReceiveValid = 1
             THEN COALESCE(
-                CASE
-                    WHEN S.UseLineReceive = 1
-                        THEN NULLIF(
-                            LTRIM(RTRIM(M.BarcodeUser)),
-                            ''
-                        )
-                    ELSE NULL
-                END,
-                CASE
-                    WHEN S.UseScanCache = 1
-                        THEN NULLIF(
-                            LTRIM(RTRIM(C.BarcodeUser)),
-                            ''
-                        )
-                    ELSE NULL
-                END,
+                NULLIF(LTRIM(RTRIM(TL.ReceivedByUsername)), ''),
+                ''
+            )
+
+        WHEN ISNULL(M.RequestLineID, 0) = 0
+             AND S.UseScanCache = 1
+             AND UPPER(LTRIM(RTRIM(ISNULL(C.BarcodeUser, '')))) <> 'SAP OWTR'
+            THEN COALESCE(
+                NULLIF(LTRIM(RTRIM(C.BarcodeUser)), ''),
                 ''
             )
 
@@ -1418,84 +1410,106 @@ SELECT
     END AS ScannedBy,
 
     CASE
-        WHEN V.LocalReceiveValid = 1
+        WHEN ISNULL(M.RequestLineID, 0) = 0
+             AND V.LocalReceiveValid = 1
             THEN TL.ReceiverArea
         ELSE ''
     END AS ScannedArea,
 
+    /* Received At is shown only for an actual posted/received quantity. */
     CASE
-        WHEN
-            V.LocalReceiveValid = 1
-            AND TL.LocalReceivedAt IS NOT NULL
+        WHEN S.UseLineReceive = 1
+             AND M.ReceivedAt IS NOT NULL
+            THEN M.ReceivedAt
+
+        WHEN ISNULL(M.RequestLineID, 0) = 0
+             AND V.LocalReceiveValid = 1
+             AND TL.LocalReceivedAt IS NOT NULL
             THEN TL.LocalReceivedAt
 
-        WHEN
-            Q.CacheReceivedQty > 0
-            AND COALESCE(
-                CASE WHEN S.UseLineReceive = 1 THEN M.ReceivedAt ELSE NULL END,
-                CASE WHEN S.UseScanCache = 1 THEN C.ReceivedAt ELSE NULL END
-            ) IS NOT NULL
-            THEN COALESCE(
-                CASE WHEN S.UseLineReceive = 1 THEN M.ReceivedAt ELSE NULL END,
-                CASE WHEN S.UseScanCache = 1 THEN C.ReceivedAt ELSE NULL END
-            )
+        WHEN ISNULL(M.RequestLineID, 0) = 0
+             AND S.UseScanCache = 1
+             AND C.ReceivedAt IS NOT NULL
+            THEN C.ReceivedAt
 
         ELSE NULL
     END AS ScannedAt,
 
     CASE
-        /* Same priority used by the issuer report: local receiver first. */
+        /*
+         * V6: the request-line cache is authoritative when present.  Do not
+         * convert ScanPlus-only activity into RECEIVED and do not allow a
+         * legacy local receiver row to overwrite the SAP verification result.
+         */
+        WHEN ISNULL(M.RequestLineID, 0) > 0
+            THEN
+                CASE UPPER(LTRIM(RTRIM(ISNULL(M.MatchStatus, ''))))
+                    WHEN 'MATCHED' THEN 'MATCHED'
+                    WHEN 'LOT_MISMATCH' THEN 'LOT MISMATCH'
+                    WHEN 'PARTIAL_POSTED' THEN 'PARTIAL POSTED'
+                    WHEN 'PARTIAL_POSTED_LOT_MISMATCH' THEN 'PARTIAL + LOT MISMATCH'
+                    WHEN 'GROUP_PARTIAL_POSTED' THEN 'PARTIAL SAP - ROW PENDING'
+                    WHEN 'SCANNED_NOT_POSTED' THEN 'SCANNED - NOT POSTED'
+                    WHEN 'UNALLOCATED_DAILY_SCAN' THEN 'SCAN NOT ALLOCATED'
+                    WHEN 'UNVERIFIED_DATE' THEN 'UNVERIFIED DATE'
+                    WHEN 'PENDING_RECEIVE' THEN 'PENDING RECEIVE'
+                    WHEN 'SAP_RECEIVED' THEN 'RECEIVED'
+                    WHEN 'SAP_PARTIAL' THEN 'PARTIAL RECEIVED'
+                    WHEN 'NOT_ISSUED_REQUEST_LINE' THEN 'NOT ISSUED'
+                    WHEN 'NOT_ALLOCATED_TO_REQUEST_LINE' THEN 'ISSUED'
+                    WHEN 'LOT_REQUIRED_FOR_ALLOCATION' THEN 'ISSUED'
+                    WHEN 'GRPO_LOT_REQUIRED' THEN 'ISSUED'
+                    WHEN 'AMBIGUOUS_REQUEST_MATCH' THEN 'ISSUED'
+                    WHEN 'ISSUED_AFTER_SAP_RECEIPT' THEN 'ISSUED'
+                    WHEN 'ISSUED_AFTER_SCANPLUS_RECEIPT' THEN 'ISSUED'
+                    WHEN 'NOT_CONFIRMED' THEN 'ISSUED'
+                    WHEN 'NOT_RECEIVED_IN_SAP_CACHE' THEN 'ISSUED'
+                    WHEN 'NOT_RECEIVED_IN_SCANPLUS' THEN 'ISSUED'
+                    WHEN 'NOT RECEIVED IN SAP' THEN 'ISSUED'
+                    WHEN 'OLD_CACHE_RECEIVE' THEN 'ISSUED'
+                    ELSE
+                        CASE
+                            WHEN S.UseLineReceive = 1
+                                 AND Q.CacheReceivedQty > 0
+                                 AND COALESCE(
+                                     R.BaseIssuedQty,
+                                     TRY_CONVERT(DECIMAL(18, 3), B.RequestedQty)
+                                 ) > 0
+                                 AND Q.CacheReceivedQty < COALESCE(
+                                     R.BaseIssuedQty,
+                                     TRY_CONVERT(DECIMAL(18, 3), B.RequestedQty)
+                                 )
+                                THEN 'PARTIAL POSTED'
+                            WHEN S.UseLineReceive = 1
+                                 AND Q.CacheReceivedQty > 0
+                                THEN 'MATCHED'
+                            ELSE 'ISSUED'
+                        END
+                END
+
         WHEN V.LocalReceiveValid = 1
             THEN COALESCE(
-                NULLIF(
-                    LTRIM(RTRIM(TL.VerificationStatus)),
-                    ''
-                ),
+                NULLIF(LTRIM(RTRIM(TL.VerificationStatus)), ''),
                 'RECEIVED'
             )
 
         WHEN Q.CacheReceivedQty > 0
             THEN
                 CASE
-                    WHEN UPPER(LTRIM(RTRIM(ISNULL(
-                        COALESCE(
-                            CASE
-                                WHEN S.UseLineReceive = 1
-                                    THEN COALESCE(M.MatchStatus, M.ScanStatus)
-                                ELSE NULL
-                            END,
-                            CASE
-                                WHEN S.UseScanCache = 1
-                                    THEN C.ScanStatus
-                                ELSE NULL
-                            END
-                        ),
-                        ''
-                    )))) IN
+                    WHEN UPPER(LTRIM(RTRIM(ISNULL(C.ScanStatus, '')))) IN
                     (
                         'CLOSED',
                         'COMPLETED',
-                        'MATCHED'
+                        'MATCHED',
+                        'SAP_RECEIVED'
                     )
-                        THEN COALESCE(
-                            CASE
-                                WHEN S.UseLineReceive = 1
-                                    THEN COALESCE(M.MatchStatus, M.ScanStatus)
-                                ELSE NULL
-                            END,
-                            CASE
-                                WHEN S.UseScanCache = 1
-                                    THEN C.ScanStatus
-                                ELSE NULL
-                            END
-                        )
+                        THEN 'RECEIVED'
 
                     WHEN
                         COALESCE(
                             R.BaseIssuedQty,
                             TRY_CONVERT(DECIMAL(18, 3), B.RequestedQty)
                         ) > 0
-
                         AND Q.CacheReceivedQty < COALESCE(
                             R.BaseIssuedQty,
                             TRY_CONVERT(DECIMAL(18, 3), B.RequestedQty)
@@ -1505,31 +1519,13 @@ SELECT
                     ELSE 'RECEIVED'
                 END
 
-        /*
-         * Allocation/debug states are internal. For the user-facing report,
-         * a line with no allocated received quantity remains ISSUED.
-         */
-        WHEN UPPER(LTRIM(RTRIM(ISNULL(M.MatchStatus, '')))) IN
-            (
-                'NOT_ISSUED_REQUEST_LINE',
-                'NOT_ALLOCATED_TO_REQUEST_LINE',
-                'LOT_REQUIRED_FOR_ALLOCATION',
-                'AMBIGUOUS_REQUEST_MATCH',
-                'ISSUED_AFTER_SAP_RECEIPT',
-                'ISSUED_AFTER_SCANPLUS_RECEIPT',
-                'NOT_CONFIRMED',
-                'NOT_RECEIVED_IN_SAP_CACHE',
-                'NOT_RECEIVED_IN_SCANPLUS'
-            )
-            THEN 'ISSUED'
-
-        /* No request-specific received quantity yet: still ISSUED. */
         ELSE 'ISSUED'
     END AS ReceiveStatus,
 
     CASE
         WHEN
-            V.LocalReceiveValid = 1
+            ISNULL(M.RequestLineID, 0) = 0
+            AND V.LocalReceiveValid = 1
 
             AND UPPER(
                 LTRIM(
@@ -1588,7 +1584,7 @@ SELECT
 
     B.Remarks,
     COALESCE(
-        CASE WHEN S.UseLineReceive = 1 THEN M.LastSyncedAt ELSE NULL END,
+        CASE WHEN ISNULL(M.RequestLineID, 0) > 0 THEN M.LastSyncedAt ELSE NULL END,
         CASE WHEN S.UseScanCache = 1 THEN C.LastSyncedAt ELSE NULL END
     ) AS CacheLastSyncedAt
 
@@ -1713,6 +1709,10 @@ CROSS APPLY
         CASE
             WHEN ISNULL(M.IsCurrentMatch, 0) = 1
                  AND ISNULL(R.BaseIssuedQty, 0) > 0
+                 AND ISNULL(
+                        TRY_CONVERT(DECIMAL(18, 3), M.ReceivedQty),
+                        0
+                     ) > 0
                  AND
                  (
                     M.ReceivedAt IS NULL
@@ -1721,6 +1721,26 @@ CROSS APPLY
                 THEN 1
             ELSE 0
         END AS UseLineReceive,
+
+        CASE
+            WHEN ISNULL(M.RequestLineID, 0) > 0
+                 AND
+                 (
+                    M.ReceivedAt IS NULL
+                    OR M.ReceivedAt >= R.RequestEventAt
+                 )
+                 AND
+                 (
+                    ISNULL(
+                        TRY_CONVERT(DECIMAL(18, 3), M.RawReceivedQty),
+                        0
+                    ) > 0
+                    OR NULLIF(LTRIM(RTRIM(M.BarcodeUser)), '') IS NOT NULL
+                    OR NULLIF(LTRIM(RTRIM(M.MatchStatus)), '') IS NOT NULL
+                 )
+                THEN 1
+            ELSE 0
+        END AS UseLineReceiveMetadata,
 
         CASE
             WHEN ISNULL(
@@ -1816,11 +1836,18 @@ CROSS APPLY
         END AS CacheReceivedQty
 ) Q
 
-/* Match issuer report behavior: local receiver quantity wins; ScanPlus cache is fallback. */
+/*
+ * V6: when a request-line receive cache row exists, its SAP allocation is
+ * authoritative. Legacy/local receiver quantities may only be used when no
+ * request-line mapping exists at all.
+ */
 CROSS APPLY
 (
     SELECT
         CASE
+            WHEN ISNULL(M.RequestLineID, 0) > 0
+                THEN Q.CacheReceivedQty
+
             WHEN
                 V.LocalReceiveValid = 1
                 AND ISNULL(
@@ -2445,12 +2472,34 @@ $showingTo = min(
             color: #4b5563;
         }
 
-        /* Partial receipt = blue */
+        /* Partial receipt / partial SAP posting = blue */
         .status-scanplus_partial,
         .status-sap_partial,
-        .status-partial_received {
+        .status-partial_received,
+        .status-partial_posted {
             background: #dbeafe;
             color: #1d4ed8;
+        }
+
+        .status-group_partial_posted,
+        .status-partial_sap_row_pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-scanned_not_posted,
+        .status-scanned_not_posted_in_sap,
+        .status-partial_lot_mismatch,
+        .status-partial_posted_lot_mismatch {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-scan_not_allocated,
+        .status-unallocated_daily_scan,
+        .status-unverified_date {
+            background: #f3f4f6;
+            color: #4b5563;
         }
 
         /* Missing / failed receipt = red */
@@ -2623,7 +2672,7 @@ $showingTo = min(
 
                 <div class="page-subtitle">
                     Request timeline: created, issued and received.
-                    ScanPlus receipts older than the current issuance/request event are ignored.
+                    Received quantity is confirmed from SAP posting allocation; ScanPlus-only scans remain visible as not posted.
                 </div>
 
             </div>
@@ -2775,7 +2824,7 @@ $showingTo = min(
                     <strong>Timeline:</strong> Request Created At &rarr; Issued At &rarr; Received At.
                     <strong>PARTIAL</strong> under Issue Status means only part of the requested quantity was issued;
                     it does not mean the issued quantity was only partially received.
-                    ScanPlus receipts are matched by ITR document, line, item, GRPO lot, quantity, and issuance timing.
+                    ScanPlus scans are FIFO-allocated per request line, while Received Qty is shown only from verified SAP posting allocation.
                 </div>
 
                 <div class="report-table-wrap">
