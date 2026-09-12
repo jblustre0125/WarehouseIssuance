@@ -1495,7 +1495,16 @@ function sync_lookup_transfer_rows_by_itr_lines($erp, array $refs, int $lookback
  */
 function sync_lookup_sap_posted_rows_by_itr_lines($erp, array $refs, int $lookbackDays = 45): array
 {
-    $tuples = [];
+    /*
+     * V4 optimization:
+     * - Build the exact recent issuance keys in PHP.
+     * - Query SAP by recent OWTR date + BaseEntry only (usually one monthly ITR).
+     * - Filter BaseLine + ItemCode against the recent issuance keys in PHP.
+     *
+     * This avoids hundreds of expensive dynamic UNION queries against WTR1/IBT1.
+     */
+    $validKeys = [];
+    $docEntries = [];
 
     foreach ($refs as $ref) {
         $docEntry = (int)($ref['doc_entry'] ?? 0);
@@ -1509,36 +1518,38 @@ function sync_lookup_sap_posted_rows_by_itr_lines($erp, array $refs, int $lookba
         $lineNum = (int)$lineRaw;
         $key = scanplus_key($docEntry, $lineNum, $itemCode);
         if ($key !== '') {
-            $tuples[$key] = [$docEntry, $lineNum, $itemCode];
+            $validKeys[$key] = true;
+            $docEntries[$docEntry] = true;
         }
     }
 
-    if (empty($tuples)) {
+    if (empty($validKeys) || empty($docEntries)) {
         return [];
     }
 
     $lookbackDays = max(1, min(180, $lookbackDays));
     $result = [];
+    $docEntryChunks = array_chunk(array_keys($docEntries), 25);
+    $chunkTotal = count($docEntryChunks);
 
-    foreach (array_chunk(array_values($tuples), 20) as $tupleChunk) {
-        $refRows = [];
-        $params = [];
-
-        foreach ($tupleChunk as $tuple) {
-            $refRows[] = 'SELECT ? AS DocEntry, ? AS LineNum, ? AS ItemCode';
-            array_push($params, $tuple[0], $tuple[1], $tuple[2]);
-        }
+    foreach ($docEntryChunks as $chunkIndex => $docChunk) {
+        $placeholders = implode(',', array_fill(0, count($docChunk), '?'));
+        $params = array_values($docChunk);
         $params[] = $lookbackDays;
+
+        sync_log(sprintf(
+            'SAP posting lookup chunk %d/%d: ITR DocEntries=%s',
+            $chunkIndex + 1,
+            $chunkTotal,
+            implode(',', $docChunk)
+        ));
 
         $rows = sync_fetch_all(
             $erp,
-            "WITH Ref AS (
-                " . implode("\nUNION ALL\n", $refRows) . "
-             )
-             SELECT
-                Ref.DocEntry AS ITRDocEntry,
-                Ref.LineNum AS ITRLineNum,
-                Ref.ItemCode,
+            "SELECT
+                L.BaseEntry AS ITRDocEntry,
+                L.BaseLine AS ITRLineNum,
+                L.ItemCode,
                 H.DocEntry AS TransferDocEntry,
                 H.DocNum AS TransferDocNum,
                 L.LineNum AS TransferLineNum,
@@ -1570,13 +1581,9 @@ function sync_lookup_sap_posted_rows_by_itr_lines($erp, array $refs, int $lookba
                     0
                 ) AS ReceivedQty
 
-             FROM Ref
+             FROM OWTR H
              INNER JOIN WTR1 L
-                ON L.BaseEntry = Ref.DocEntry
-               AND L.BaseLine = Ref.LineNum
-               AND L.ItemCode = Ref.ItemCode
-             INNER JOIN OWTR H
-                ON H.DocEntry = L.DocEntry
+                ON L.DocEntry = H.DocEntry
              LEFT JOIN IBT1 B
                 ON B.BaseType = 67
                AND B.BaseEntry = L.DocEntry
@@ -1587,12 +1594,13 @@ function sync_lookup_sap_posted_rows_by_itr_lines($erp, array $refs, int $lookba
              WHERE ISNULL(H.CANCELED, 'N') = 'N'
                AND L.FromWhsCod = '01'
                AND L.WhsCode = 'CNC'
+               AND L.BaseEntry IN ({$placeholders})
                AND COALESCE(H.U_ScanDateTime, H.DocDate, H.CreateDate) >= DATEADD(DAY, -?, CAST(GETDATE() AS DATE))
 
              GROUP BY
-                Ref.DocEntry,
-                Ref.LineNum,
-                Ref.ItemCode,
+                L.BaseEntry,
+                L.BaseLine,
+                L.ItemCode,
                 H.DocEntry,
                 H.DocNum,
                 L.LineNum,
@@ -1614,6 +1622,15 @@ function sync_lookup_sap_posted_rows_by_itr_lines($erp, array $refs, int $lookba
         );
 
         foreach ($rows as $row) {
+            $docEntry = (int)($row['ITRDocEntry'] ?? 0);
+            $lineNum = (int)($row['ITRLineNum'] ?? 0);
+            $itemCode = trim((string)($row['ItemCode'] ?? ''));
+            $key = scanplus_key($docEntry, $lineNum, $itemCode);
+
+            if ($key === '' || !isset($validKeys[$key])) {
+                continue;
+            }
+
             $qty = is_numeric($row['ReceivedQty'] ?? null) ? abs((float)$row['ReceivedQty']) : 0.0;
             $receivedAt = sync_datetime_sort_key($row['ReceivedAt'] ?? '');
             if ($qty <= 0.0005 || $receivedAt === '') {
@@ -1626,9 +1643,9 @@ function sync_lookup_sap_posted_rows_by_itr_lines($erp, array $refs, int $lookba
                 'transfer_line_num' => (int)($row['TransferLineNum'] ?? 0),
                 'source_document_key' => trim((string)($row['SourceDocumentKey'] ?? '')),
                 'linked_request_line_id' => null,
-                'doc_entry' => (int)($row['ITRDocEntry'] ?? 0),
-                'line_num' => (int)($row['ITRLineNum'] ?? 0),
-                'item_code' => trim((string)($row['ItemCode'] ?? '')),
+                'doc_entry' => $docEntry,
+                'line_num' => $lineNum,
+                'item_code' => $itemCode,
                 'received_lot_no' => trim((string)($row['ReceivedLotNo'] ?? '')),
                 'received_qty' => $qty,
                 'barcode_user' => 'SAP OWTR',
@@ -1640,6 +1657,37 @@ function sync_lookup_sap_posted_rows_by_itr_lines($erp, array $refs, int $lookba
     }
 
     return $result;
+}
+
+function sync_refs_from_issue_rows(array $issueRows): array
+{
+    $refs = [];
+    $seen = [];
+
+    foreach ($issueRows as $row) {
+        $docEntry = (int)($row['ITRDocEntry'] ?? 0);
+        $lineRaw = $row['ITRLineNum'] ?? null;
+        $itemCode = trim((string)($row['ItemCode'] ?? ''));
+
+        if ($docEntry <= 0 || $lineRaw === null || trim((string)$lineRaw) === '' || $itemCode === '') {
+            continue;
+        }
+
+        $lineNum = (int)$lineRaw;
+        $key = scanplus_key($docEntry, $lineNum, $itemCode);
+        if ($key === '' || isset($seen[$key])) {
+            continue;
+        }
+
+        $seen[$key] = true;
+        $refs[] = [
+            'doc_entry' => $docEntry,
+            'line_num' => $lineNum,
+            'item_code' => $itemCode,
+        ];
+    }
+
+    return $refs;
 }
 
 /**
@@ -3116,8 +3164,11 @@ try {
      * Layer 2: actual SAP posting allocation. Only OWTR/WTR1/IBT1 can make a
      * request line MATCHED/PARTIAL/LOT_MISMATCH in the user-facing cache.
      */
+    $sapLookupRefs = sync_refs_from_issue_rows($issueRows);
+    sync_log('SAP verification references from recent issuance: ' . count($sapLookupRefs));
+
     $sapLookupStarted = microtime(true);
-    $sapPostedRows = sync_lookup_sap_posted_rows_by_itr_lines($erp, $refs, $lookbackDays);
+    $sapPostedRows = sync_lookup_sap_posted_rows_by_itr_lines($erp, $sapLookupRefs, $lookbackDays);
     sync_log('Actual SAP OWTR/WTR1 posted batch rows found: ' . count($sapPostedRows)
         . ', lookup=' . round(microtime(true) - $sapLookupStarted, 3) . ' sec');
 
