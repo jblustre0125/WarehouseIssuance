@@ -693,9 +693,12 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
         }
 
         $issueQty = is_numeric($row['Quantity'] ?? null) ? (float)$row['Quantity'] : 0.0;
-        $row['ScanStatus'] = ($issueQty > 0 && $allocatedQty + 0.0005 >= $issueQty)
-            ? 'SCANPLUS_RECEIVED'
-            : 'SCANPLUS_PARTIAL';
+        $mappedScanStatus = trim((string)($mapped['ScanStatus'] ?? ''));
+        $row['ScanStatus'] = $mappedScanStatus !== ''
+            ? $mappedScanStatus
+            : (($issueQty > 0 && $allocatedQty + 0.0005 >= $issueQty)
+                ? 'SAP_POSTED'
+                : 'SAP_POSTED_PARTIAL');
         $row['ReceivedLotNo'] = $mapped['ReceivedLotNo'] ?? '';
         $row['ReceivedQty'] = rtrim(rtrim(number_format($allocatedQty, 3, '.', ''), '0'), '.');
         $row['BarcodeUser'] = $mapped['BarcodeUser'] ?? '';
@@ -738,14 +741,31 @@ function issuer_report_received_status($status): bool
 {
     $status = strtoupper(trim((string)$status));
     return in_array($status, [
-        'SCANPLUS_RECEIVED',
-        'SCANPLUS_PARTIAL',
+        'SAP_POSTED',
+        'SAP_POSTED_PARTIAL',
+        'SCANPLUS_RECEIVED', // legacy compatibility
+        'SCANPLUS_PARTIAL',  // legacy compatibility
         'SAP_RECEIVED',      // legacy compatibility
         'SAP PARTIAL',       // legacy compatibility
         'RECEIVED',
         'CLOSED',
         'COMPLETED',
         'MATCHED'
+    ], true);
+}
+
+function issuer_report_cache_status(array $row): string
+{
+    return strtoupper(trim((string)($row['CacheMatchStatus'] ?? '')));
+}
+
+function issuer_report_cache_blocks_received(array $row): bool
+{
+    return in_array(issuer_report_cache_status($row), [
+        'SCANNED_NOT_POSTED',
+        'PENDING_RECEIVE',
+        'NOT_RECEIVED_IN_SCANPLUS',
+        'NOT_ISSUED_REQUEST_LINE'
     ], true);
 }
 
@@ -757,7 +777,12 @@ function issuer_report_has_authoritative_line_allocation(array $row): bool
 
 function issuer_row_is_received($row): bool
 {
-    // For a mapped request line, the FIFO allocation is authoritative per transaction.
+    /* A same-day ScanPlus scan is not a receipt until SAP OWTR/WTR1 is posted. */
+    if (issuer_report_cache_blocks_received($row)) {
+        return false;
+    }
+
+    // For a mapped request line, the SAP-posted FIFO allocation is authoritative per transaction.
     if (issuer_report_has_authoritative_line_allocation($row)) {
         return ((float)($row['ReceivedQty'] ?? 0) > 0);
     }
@@ -927,10 +952,26 @@ function report_received_value($row, $field)
 
 function issuer_report_receive_verification(array $row): array
 {
+    $cacheStatus = issuer_report_cache_status($row);
+
+    if ($cacheStatus === 'SCANNED_NOT_POSTED') {
+        return [
+            'status' => 'SCANNED_NOT_POSTED',
+            'note' => 'ScanPlus has a same-day scan, but no matching SAP OWTR/WTR1 posting was found.'
+        ];
+    }
+
+    if ($cacheStatus === 'NOT_ISSUED_REQUEST_LINE') {
+        return [
+            'status' => 'NOT_ISSUED',
+            'note' => 'No issued quantity is available for SAP posting verification.'
+        ];
+    }
+
     if (!issuer_row_is_received($row)) {
         return [
             'status' => 'PENDING_RECEIVE',
-            'note' => 'No requestor receipt has been allocated to this issuance transaction yet.'
+            'note' => 'No matching SAP Inventory Transfer posting has been allocated to this issuance transaction yet.'
         ];
     }
 
@@ -962,7 +1003,7 @@ function issuer_report_receive_verification(array $row): array
 
     if ($isPartial) {
         $status = (!$hasComparableLot || $lotMatches)
-            ? 'PARTIAL_RECEIVED'
+            ? ($cacheStatus === 'PARTIAL_POSTED' ? 'PARTIAL_POSTED' : 'PARTIAL_RECEIVED')
             : 'LOT_AND_QTY_VARIANCE';
     } elseif ($qtyMatches && $lotMatches) {
         $status = 'MATCHED';
@@ -993,8 +1034,8 @@ function issuer_report_receive_verification(array $row): array
     ];
 }
 
-// Show received values only when receiving is confirmed locally or the request-line
-// ScanPlus cache has a valid receipt. Ignore placeholder/invalid 1900 timestamps.
+// Show received values only when the request-line cache confirms an SAP posting.
+// A ScanPlus-only staging scan is intentionally not displayed as received.
 foreach ($rows as &$issuerReportRow) {
     if (issuer_report_scanplus_before_issue($issuerReportRow)) {
         $issuerReportRow['ScanStatus'] = '';
@@ -1602,6 +1643,8 @@ if ($export) {
         .status-open,
         .status-pending,
         .status-pending_receive,
+        .status-scanned_not_posted,
+        .status-partial_posted,
         .status-qty_match,
         .status-returned_no_stock {
             background: #fef3c7;
