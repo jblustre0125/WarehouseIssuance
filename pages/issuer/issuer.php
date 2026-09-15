@@ -5,8 +5,7 @@ require_role([ROLE_ISSUER, ROLE_ADMIN]);
 
 $currentUser = current_user();
 $currentRole = strtolower($currentUser['role'] ?? '');
-$defaultIssuePrinter = strtolower(trim((string)(defined('PICK_TAG_DEFAULT_PRINTER') ? PICK_TAG_DEFAULT_PRINTER : 'nitto')));
-$defaultIssuePrinter = $defaultIssuePrinter === 'zebra' ? 'zebra' : 'nitto';
+$defaultIssuePrinter = 'zebra';
 
 $currentUserWarehouse = '';
 foreach ([
@@ -1222,7 +1221,7 @@ function fmtQty(v) {
 }
 
 function selectedIssuePrinter() {
-    return document.querySelector('input[name="issuePrinter"]:checked')?.value || 'nitto';
+    return document.querySelector('input[name="issuePrinter"]:checked')?.value || 'zebra';
 }
 
 function lotKey(itemCode, lotNo, whsCode = '01') {
