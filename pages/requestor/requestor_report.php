@@ -169,24 +169,20 @@ function request_report_has_column(
     );
 }
 
-function request_report_url(array $changes = []): string
+function request_report_url(array $query = []): string
 {
-    $query = $_GET;
-
-    unset($query['export']);
-
-    foreach ($changes as $key => $value) {
+    foreach ($query as $key => $value) {
         if ($value === null || $value === '') {
             unset($query[$key]);
-            continue;
         }
-
-        $query[$key] = $value;
     }
 
-    return
-        'pages/requestor/requestor_report.php?' .
-        http_build_query($query);
+    $url = app_path('pages/requestor/requestor_report.php');
+    $queryString = http_build_query($query);
+
+    return $queryString === ''
+        ? $url
+        : $url . '?' . $queryString;
 }
 
 /*
@@ -213,13 +209,7 @@ if ($dateFrom > $dateTo) {
 
 $search = trim((string)($_GET['q'] ?? ''));
 
-$allowedPageSizes = [50, 100, 200];
-
-$pageSize = (int)($_GET['page_size'] ?? 100);
-
-if (!in_array($pageSize, $allowedPageSizes, true)) {
-    $pageSize = 100;
-}
+$pageSize = 25;
 
 $page = filter_input(
     INPUT_GET,
@@ -1222,17 +1212,21 @@ if ($hasLineReceiveCache) {
 |--------------------------------------------------------------------------
 */
 
-$pageFilterSql = '';
+$pageLimitSql = '';
 
 $queryParams = $params;
 
 if (!$export) {
-    $pageFilterSql = "
-        WHERE RowNo BETWEEN ? AND ?
+    $pageLimitSql = "
+        ORDER BY
+            H.RequestedAt DESC,
+            H.RequestID DESC,
+            L.RequestLineID ASC
+        OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
     ";
 
-    $queryParams[] = $firstRow;
-    $queryParams[] = $lastRow;
+    $queryParams[] = $offset;
+    $queryParams[] = $pageSize;
 }
 
 $sql = "
@@ -1278,12 +1272,13 @@ WITH FilteredRows AS
         ON L.RequestID = H.RequestID
 
     WHERE {$whereSql}
+
+    {$pageLimitSql}
 ),
 PagedRows AS
 (
     SELECT *
     FROM FilteredRows
-    {$pageFilterSql}
 )
 SELECT
     B.RowNo,
@@ -2210,17 +2205,18 @@ if ($export) {
 |--------------------------------------------------------------------------
 */
 
-$exportQuery = [
+$baseQuery = [
     'date_from' => $dateFrom,
-    'date_to' => $dateTo,
-    'q' => $search,
-    'page_size' => $pageSize,
-    'export' => 'excel'
+    'date_to' => $dateTo
 ];
 
-$exportUrl =
-    'pages/requestor/requestor_report.php?' .
-    http_build_query($exportQuery);
+if ($search !== '') {
+    $baseQuery['q'] = $search;
+}
+
+$exportUrl = request_report_url(
+    $baseQuery + ['export' => 'excel']
+);
 
 $showingFrom = $totalRows > 0
     ? $firstRow
@@ -2744,6 +2740,7 @@ $showingTo = min(
                 <form
                     class="filter-box"
                     method="get"
+                    action="<?= h(request_report_url()) ?>"
                 >
                     <div class="row g-2 align-items-end">
 
@@ -2781,7 +2778,7 @@ $showingTo = min(
                             >
                         </div>
 
-                        <div class="col-sm-8 col-lg-4">
+                        <div class="col-sm-8 col-lg-5">
                             <label
                                 class="form-label"
                                 for="q"
@@ -2797,34 +2794,6 @@ $showingTo = min(
                                 value="<?= h($search) ?>"
                                 placeholder="Request, ITR, item, part name or status"
                             >
-                        </div>
-
-                        <div class="col-sm-4 col-lg-1">
-                            <label
-                                class="form-label"
-                                for="page_size"
-                            >
-                                Rows
-                            </label>
-
-                            <select
-                                class="form-select"
-                                id="page_size"
-                                name="page_size"
-                            >
-                                <?php foreach (
-                                    $allowedPageSizes as $size
-                                ): ?>
-                                    <option
-                                        value="<?= $size ?>"
-                                        <?= $pageSize === $size
-                                            ? 'selected'
-                                            : '' ?>
-                                    >
-                                        <?= $size ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
                         </div>
 
                         <div class="col-sm-6 col-lg-1 d-grid">
@@ -3126,7 +3095,7 @@ $showingTo = min(
                                     <a
                                         class="page-link"
                                         href="<?= h(
-                                            request_report_url([
+                                            request_report_url($baseQuery + [
                                                 'page' => max(
                                                     1,
                                                     $page - 1
@@ -3165,7 +3134,7 @@ $showingTo = min(
                                         <a
                                             class="page-link"
                                             href="<?= h(
-                                                request_report_url([
+                                                request_report_url($baseQuery + [
                                                     'page' => $pageNumber
                                                 ])
                                             ) ?>"
@@ -3184,7 +3153,7 @@ $showingTo = min(
                                     <a
                                         class="page-link"
                                         href="<?= h(
-                                            request_report_url([
+                                            request_report_url($baseQuery + [
                                                 'page' => min(
                                                     $totalPages,
                                                     $page + 1

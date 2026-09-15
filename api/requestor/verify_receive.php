@@ -50,23 +50,63 @@ function verify_receive_qty($value)
     return is_numeric($value) ? (float)$value : 0.0;
 }
 
-function verify_receive_status(array $line)
+function verify_receive_status(array $line): string
 {
     $issuedQty = verify_receive_qty($line['IssuedQty'] ?? 0);
     $receivedQty = verify_receive_qty($line['CacheReceivedQty'] ?? 0);
+    $cacheStatus = strtoupper(trim((string)($line['CacheStatus'] ?? '')));
 
     /*
-     * User-facing report status is intentionally limited to three values:
-     * RECEIVED, PARTIAL_RECEIVED, or ISSUED.
-     * Internal allocation/debug statuses remain stored in the cache but are
-     * not exposed in the Requestor report.
+     * A request line with no issued quantity is still not issued.
      */
-    if ($receivedQty > 0 && $issuedQty > 0 && $receivedQty + 0.0005 >= $issuedQty) {
+    if ($issuedQty <= 0.0005) {
+        return 'NOT_ISSUED';
+    }
+
+    /*
+     * Actual SAP-posted quantity is authoritative for received status.
+     */
+    if ($receivedQty > 0.0005 && $receivedQty + 0.0005 >= $issuedQty) {
         return 'RECEIVED';
     }
 
-    if ($receivedQty > 0) {
+    if ($receivedQty > 0.0005) {
         return 'PARTIAL_RECEIVED';
+    }
+
+    /*
+     * ScanPlus staged the transaction, but no same-day SAP OWTR/WTR1
+     * posting was allocated to this request line.
+     */
+    if (in_array($cacheStatus, [
+        'SCANNED_NOT_POSTED',
+        'SCANPLUS_SCANNED_NOT_POSTED'
+    ], true)) {
+        return 'SCANNED_NOT_POSTED';
+    }
+
+    /*
+     * SAP activity can exist for the same daily ITR/item group while this
+     * particular request line remains unposted/unallocated. Keep it pending.
+     */
+    if (in_array($cacheStatus, [
+        'GROUP_PARTIAL_POSTED',
+        'UNALLOCATED_DAILY_SCAN',
+        'NOT_ALLOCATED_TO_REQUEST_LINE',
+        'NOT_RECEIVED_IN_SCANPLUS',
+        'PENDING_RECEIVE',
+        'NOT_CONFIRMED',
+        'CACHE_MISSING',
+        'NOT_RECEIVED_IN_SAP_CACHE',
+        'OLD_CACHE_RECEIVE',
+        'LOT_REQUIRED_FOR_ALLOCATION',
+        'GRPO_LOT_REQUIRED',
+        'AMBIGUOUS_REQUEST_MATCH',
+        'ISSUED_AFTER_SAP_RECEIPT',
+        'ISSUED_AFTER_SCANPLUS_RECEIPT',
+        'UNVERIFIED_DATE'
+    ], true)) {
+        return 'PENDING_RECEIVE';
     }
 
     return 'ISSUED';
@@ -479,7 +519,10 @@ $lines = [];
 $summary = [
     'received' => 0,
     'partial_received' => 0,
+    'scanned_not_posted' => 0,
+    'pending_receive' => 0,
     'issued' => 0,
+    'not_issued' => 0,
 ];
 
 foreach ($rows as $row) {
