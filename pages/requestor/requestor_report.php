@@ -271,15 +271,60 @@ if (
 |--------------------------------------------------------------------------
 */
 
-$where = [
-    'H.RequestedAt >= ?',
-    'H.RequestedAt < DATEADD(day, 1, ?)'
-];
+$dateWhereSql = "
+    (
+        H.RequestedAt >= ?
+        AND H.RequestedAt < DATEADD(day, 1, ?)
+    )
+";
 
-$params = [
-    $dateFrom,
-    $dateTo
-];
+$params = [$dateFrom, $dateTo];
+
+$dateIssuedConditions = [];
+
+if (
+    request_report_has_table($schema, 'IssuanceTransactions') &&
+    request_report_has_column($schema, 'IssuanceTransactions', 'IssuedAt') &&
+    request_report_has_column($schema, 'IssuanceTransactions', 'ItemCode')
+) {
+    if (request_report_has_column($schema, 'IssuanceTransactions', 'IssueRequestLineID')) {
+        $dateIssuedConditions[] = 'ITD.IssueRequestLineID = L.RequestLineID';
+    }
+
+    if (request_report_has_column($schema, 'IssuanceTransactions', 'IssueRequestID')) {
+        $dateIssuedConditions[] = 'ITD.IssueRequestID = H.RequestID';
+    }
+
+    /*
+     * Date filtering may include issued rows, but only when the issuance
+     * transaction is explicitly linked to this local request/request line.
+     * SAP ITR doc/line and trace matching are intentionally excluded here:
+     * the same monthly ITR/item can be reused across many request dates, and
+     * using those fuzzy matches makes a 09/15 filter pull older rows.
+     */
+}
+
+if ($dateIssuedConditions !== []) {
+    $dateWhereSql = "
+        (
+            {$dateWhereSql}
+            OR EXISTS
+            (
+                SELECT 1
+                FROM dbo.IssuanceTransactions ITD
+                WHERE ITD.IssuedAt >= ?
+                  AND ITD.IssuedAt < DATEADD(day, 1, ?)
+                  AND ITD.ItemCode = L.ItemCode
+                  AND (" . implode(' OR ', $dateIssuedConditions) . ")
+            )
+        )
+    ";
+
+    $params[] = $dateFrom;
+    $params[] = $dateTo;
+}
+
+$where = [$dateWhereSql];
 
 if ($currentRole !== strtolower((string)ROLE_ADMIN)) {
     $where[] = 'H.RequestedByUsername = ?';
@@ -711,10 +756,6 @@ if ($hasIssuanceTransactions) {
             ? 'MAX(IT1.IssuedAt)'
             : 'CAST(NULL AS DATETIME)';
 
-        $sumDateCondition = $txHasIssuedAt
-            ? 'AND IT1.IssuedAt >= B.RequestedAt'
-            : '';
-
         $issuanceSumApply = "
             OUTER APPLY
             (
@@ -724,7 +765,6 @@ if ($hasIssuanceTransactions) {
                 FROM dbo.IssuanceTransactions IT1
                 WHERE IT1.IssueRequestLineID = B.RequestLineID
                   AND IT1.ItemCode = B.ItemCode
-                  {$sumDateCondition}
             ) ITXSUM
         ";
     }
@@ -835,9 +875,31 @@ if ($hasIssuanceTransactions) {
          * current request was created. The same monthly ITR line can appear in
          * older local transactions, so DocEntry/LineNum alone is not enough.
          */
-        $transactionDateCondition = $txHasIssuedAt
-            ? 'AND IT0.IssuedAt >= B.RequestedAt'
-            : '';
+        $transactionDateBypass = [];
+
+        if ($txHasRequestLineID) {
+            $transactionDateBypass[] =
+                'IT0.IssueRequestLineID = B.RequestLineID';
+        }
+
+        if ($txHasRequestID) {
+            $transactionDateBypass[] =
+                'IT0.IssueRequestID = B.RequestID';
+        }
+
+        if ($txHasIssuedAt && !empty($transactionDateBypass)) {
+            $transactionDateCondition = "
+                AND
+                (
+                    IT0.IssuedAt >= B.RequestedAt
+                    OR " . implode(' OR ', $transactionDateBypass) . "
+                )
+            ";
+        } else {
+            $transactionDateCondition = $txHasIssuedAt
+                ? 'AND IT0.IssuedAt >= B.RequestedAt'
+                : '';
+        }
 
         if ($txHasIssuedAt) {
             $transactionOrder[] = 'IT0.IssuedAt DESC';
@@ -1459,7 +1521,7 @@ SELECT
                     WHEN 'PARTIAL_POSTED_LOT_MISMATCH' THEN 'PARTIAL + LOT MISMATCH'
                     WHEN 'GROUP_PARTIAL_POSTED' THEN 'PARTIAL SAP - ROW PENDING'
                     WHEN 'SCANNED_NOT_POSTED' THEN 'SCANNED - NOT POSTED'
-                    WHEN 'UNALLOCATED_DAILY_SCAN' THEN 'ISSUED'
+                    WHEN 'UNALLOCATED_DAILY_SCAN' THEN 'PENDING RECEIVE'
                     WHEN 'UNVERIFIED_DATE' THEN 'UNVERIFIED DATE'
                     WHEN 'PENDING_RECEIVE' THEN 'PENDING RECEIVE'
                     WHEN 'SAP_RECEIVED' THEN 'RECEIVED'

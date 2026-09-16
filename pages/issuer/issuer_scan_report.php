@@ -161,6 +161,13 @@ $requestLineIdSelect = issuer_report_has_column(
 )
     ? 'IT.IssueRequestLineID'
     : 'CAST(NULL AS INT) AS IssueRequestLineID';
+$requestIdSelect = issuer_report_has_column(
+    $conn,
+    'IssuanceTransactions',
+    'IssueRequestID'
+)
+    ? 'IT.IssueRequestID'
+    : 'CAST(NULL AS INT) AS IssueRequestID';
 $warehouseLotSearchSql = $warehouseLotColumn !== ''
     ? "
         OR IT.[" . str_replace(']', ']]', $warehouseLotColumn) . "] LIKE ?"
@@ -228,6 +235,7 @@ $itSourceSelect = '
             IT.ITRDocEntry,
             IT.ITRLineNum,
             ' . $requestLineIdSelect . ',
+            ' . $requestIdSelect . ',
             IT.IssuedByUsername,
             IT.DeviceHostname,
             IT.DeviceIPAddress,
@@ -297,22 +305,38 @@ $sql = '
                     AND L.RequestLineID = IT.IssueRequestLineID
                 )
                 OR (
-                    H.IssuedTraceNo = IT.TraceNo
-                    OR (
-                        ISNULL(COALESCE(NULLIF(L.SAP_IT_DocEntry, 0), H.SAP_IT_DocEntry), 0) = ISNULL(IT.ITRDocEntry, 0)
-                        AND L.SAP_IT_LineNum = IT.ITRLineNum
+                    IT.IssueRequestID IS NOT NULL
+                    AND H.RequestID = IT.IssueRequestID
+                )
+                OR (
+                    H.RequestedAt <= IT.IssuedAt
+                    AND (
+                        H.IssuedTraceNo = IT.TraceNo
+                        OR (
+                            ISNULL(COALESCE(NULLIF(L.SAP_IT_DocEntry, 0), H.SAP_IT_DocEntry), 0) = ISNULL(IT.ITRDocEntry, 0)
+                            AND L.SAP_IT_LineNum = IT.ITRLineNum
+                        )
                     )
                 )
             )
             AND L.ItemCode = IT.ItemCode
             AND (
-                ISNULL(L.LotNo, NCHAR(0)) = ISNULL(IT.LotNo, NCHAR(0))
+                (
+                    IT.IssueRequestLineID IS NOT NULL
+                    AND L.RequestLineID = IT.IssueRequestLineID
+                )
+                OR (
+                    IT.IssueRequestID IS NOT NULL
+                    AND H.RequestID = IT.IssueRequestID
+                )
+                OR ISNULL(L.LotNo, NCHAR(0)) = ISNULL(IT.LotNo, NCHAR(0))
                 OR LEN(LTRIM(RTRIM(ISNULL(L.LotNo, NCHAR(0))))) = 0
                 OR LEN(LTRIM(RTRIM(ISNULL(IT.LotNo, NCHAR(0))))) = 0
             )
         ORDER BY
             CASE
                 WHEN IT.IssueRequestLineID IS NOT NULL AND L.RequestLineID = IT.IssueRequestLineID THEN 0
+                WHEN IT.IssueRequestID IS NOT NULL AND H.RequestID = IT.IssueRequestID THEN 1
                 ELSE 1
             END,
             CASE WHEN H.IssuedTraceNo = IT.TraceNo THEN 0 ELSE 1 END,
