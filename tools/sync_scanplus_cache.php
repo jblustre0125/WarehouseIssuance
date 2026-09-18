@@ -18,6 +18,12 @@ require_once $projectRoot . '/includes/scanplus_lookup.php';
 $lookbackDays = max(1, min(180, (int)($argv[1] ?? 45)));
 $chunkSize = max(20, min(250, (int)($argv[2] ?? 100)));
 $maxRefs = max(100, min(20000, (int)($argv[3] ?? 5000)));
+/*
+ * Exact-lot receipts may legitimately be scanned/posted after the issuance date.
+ * Keep this small so an old monthly ITR/lot cannot absorb unrelated future receipts.
+ * Optional CLI arg #4 overrides the default.
+ */
+$delayedExactLotDays = max(1, min(14, (int)($argv[4] ?? 3)));
 
 $logDir = $projectRoot . '/storage/logs';
 if (!is_dir($logDir) && !mkdir($logDir, 0775, true) && !is_dir($logDir)) {
@@ -196,10 +202,12 @@ function sync_add_refs(array &$refs, array &$seen, array $rows): void
                 $incomingIsBlank = $incomingValue === null
                     || (is_string($incomingValue) && trim($incomingValue) === '');
 
-                if ($isCanonicalRequestLineRow
+                if (
+                    $isCanonicalRequestLineRow
                     && $incomingIsBlank
                     && in_array($field, ['local_issued_at', 'local_warehouse_lot_no'], true)
-                    && array_key_exists($field, $refs[$existingIndex])) {
+                    && array_key_exists($field, $refs[$existingIndex])
+                ) {
                     continue;
                 }
 
@@ -226,9 +234,11 @@ function sync_add_refs(array &$refs, array &$seen, array $rows): void
  */
 function sync_canonicalize_request_line_refs($conn, array $refs): array
 {
-    if (empty($refs)
+    if (
+        empty($refs)
         || !sync_has_table($conn, 'WarehouseIssueRequestHeader')
-        || !sync_has_table($conn, 'WarehouseIssueRequestLines')) {
+        || !sync_has_table($conn, 'WarehouseIssueRequestLines')
+    ) {
         return $refs;
     }
 
@@ -259,9 +269,11 @@ function sync_canonicalize_request_line_refs($conn, array $refs): array
     $issueApply = '';
     $latestIssuedAtExpr = 'CAST(NULL AS DATETIME)';
 
-    if (sync_has_table($conn, 'IssuanceTransactions')
+    if (
+        sync_has_table($conn, 'IssuanceTransactions')
         && sync_has_column($conn, 'IssuanceTransactions', 'IssueRequestLineID')
-        && sync_has_column($conn, 'IssuanceTransactions', 'IssuedAt')) {
+        && sync_has_column($conn, 'IssuanceTransactions', 'IssuedAt')
+    ) {
         $issueItemCondition = sync_has_column($conn, 'IssuanceTransactions', 'ItemCode')
             ? 'AND (ITX.ItemCode = L.ItemCode OR ITX.ItemCode IS NULL)'
             : '';
@@ -349,8 +361,10 @@ function sync_canonicalize_request_line_refs($conn, array $refs): array
 
             $canonical = $metadataById[$requestLineId] ?? $ref;
 
-            if ((int)($canonical['doc_entry'] ?? 0) <= 0
-                || trim((string)($canonical['item_code'] ?? '')) === '') {
+            if (
+                (int)($canonical['doc_entry'] ?? 0) <= 0
+                || trim((string)($canonical['item_code'] ?? '')) === ''
+            ) {
                 continue;
             }
 
@@ -426,19 +440,21 @@ function sync_ensure_request_line_receive_cache($conn): bool
          END"
     );
 
-    foreach ([
-        'RequestNo NVARCHAR(80) NULL',
-        'WarehouseLotNo NVARCHAR(80) NULL',
-        'ReceivedLotNo NVARCHAR(80) NULL',
-        'ScanStatus NVARCHAR(50) NULL',
-        "MatchStatus NVARCHAR(50) NOT NULL CONSTRAINT DF_WIRLC_MatchStatus DEFAULT 'NOT_CONFIRMED'",
-        'IsCurrentMatch BIT NOT NULL CONSTRAINT DF_WIRLC_IsCurrentMatch DEFAULT 0',
-        'RawReceivedQty DECIMAL(18,3) NULL',
-        'ReceivedQty DECIMAL(18,3) NULL',
-        'BarcodeUser NVARCHAR(120) NULL',
-        'ReceivedAt DATETIME NULL',
-        'LastSyncedAt DATETIME NOT NULL CONSTRAINT DF_WIRLC_LastSyncedAt DEFAULT GETDATE()',
-    ] as $definition) {
+    foreach (
+        [
+            'RequestNo NVARCHAR(80) NULL',
+            'WarehouseLotNo NVARCHAR(80) NULL',
+            'ReceivedLotNo NVARCHAR(80) NULL',
+            'ScanStatus NVARCHAR(50) NULL',
+            "MatchStatus NVARCHAR(50) NOT NULL CONSTRAINT DF_WIRLC_MatchStatus DEFAULT 'NOT_CONFIRMED'",
+            'IsCurrentMatch BIT NOT NULL CONSTRAINT DF_WIRLC_IsCurrentMatch DEFAULT 0',
+            'RawReceivedQty DECIMAL(18,3) NULL',
+            'ReceivedQty DECIMAL(18,3) NULL',
+            'BarcodeUser NVARCHAR(120) NULL',
+            'ReceivedAt DATETIME NULL',
+            'LastSyncedAt DATETIME NOT NULL CONSTRAINT DF_WIRLC_LastSyncedAt DEFAULT GETDATE()',
+        ] as $definition
+    ) {
         $column = trim(strtok($definition, ' '));
 
         if ($column !== '' && !sync_has_column($conn, 'WarehouseIssueRequestLineReceiveCache', $column)) {
@@ -626,8 +642,10 @@ function sync_replace_request_line_receive_allocations(
 ): void {
     $requestLineId = (int)($ref['local_request_line_id'] ?? 0);
 
-    if ($requestLineId <= 0
-        || !sync_has_table($conn, 'WarehouseIssueRequestLineReceiveAllocation')) {
+    if (
+        $requestLineId <= 0
+        || !sync_has_table($conn, 'WarehouseIssueRequestLineReceiveAllocation')
+    ) {
         return;
     }
 
@@ -637,9 +655,11 @@ function sync_replace_request_line_receive_allocations(
             : 0.0;
         $grpoLot = trim((string)($source['issued_lot_no'] ?? $ref['lot_no'] ?? ''));
 
-        if ($allocatedQty <= 0.0005
+        if (
+            $allocatedQty <= 0.0005
             || (int)($source['transfer_doc_entry'] ?? 0) <= 0
-            || $grpoLot === '') {
+            || $grpoLot === ''
+        ) {
             continue;
         }
 
@@ -781,9 +801,11 @@ function sync_allocate_request_line_scan(array $ref, ?array $scan, string $alloc
     $localIssuedAtText = sync_datetime_sort_key($ref['local_issued_at'] ?? '');
     $receivedAtText = sync_datetime_sort_key($scan['received_at'] ?? '');
 
-    if ($localIssuedAtText !== ''
+    if (
+        $localIssuedAtText !== ''
         && $receivedAtText !== ''
-        && strcmp($localIssuedAtText, $receivedAtText) > 0) {
+        && strcmp($localIssuedAtText, $receivedAtText) > 0
+    ) {
         $lineScan['received_qty'] = 0.0;
         $lineScan['scan_status'] = 'ISSUED_AFTER_SAP_RECEIPT';
         return $lineScan;
@@ -819,7 +841,7 @@ function sync_allocate_request_line_scan(array $ref, ?array $scan, string $alloc
     $remainingQty = max(
         0.0,
         (float)$allocationByScanKey[$allocationKey]['total'] -
-        (float)$allocationByScanKey[$allocationKey]['used']
+            (float)$allocationByScanKey[$allocationKey]['used']
     );
     $allocatedQty = min($allocationQty, $remainingQty);
 
@@ -1025,11 +1047,25 @@ function sync_upsert_cache($conn, array $ref, ?array $scan): void
          )
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE());",
         [
-            $ref['doc_entry'], $ref['line_num'], $ref['item_code'], $ref['lot_no'],
+            $ref['doc_entry'],
+            $ref['line_num'],
+            $ref['item_code'],
+            $ref['lot_no'],
             $hasScan ? 1 : 0,
-            $receivedLotNo, $scanStatus, $receivedQty, $barcodeUser, $receivedAt,
-            $ref['doc_entry'], $ref['line_num'], $ref['item_code'], $ref['lot_no'],
-            $receivedLotNo, $scanStatus, $receivedQty, $barcodeUser, $receivedAt,
+            $receivedLotNo,
+            $scanStatus,
+            $receivedQty,
+            $barcodeUser,
+            $receivedAt,
+            $ref['doc_entry'],
+            $ref['line_num'],
+            $ref['item_code'],
+            $ref['lot_no'],
+            $receivedLotNo,
+            $scanStatus,
+            $receivedQty,
+            $barcodeUser,
+            $receivedAt,
         ]
     );
 }
@@ -1169,8 +1205,10 @@ function sync_apply_transfer_allocation(
 
     $receivedAt = trim((string)($transfer['received_at'] ?? ''));
 
-    if ($receivedAt !== ''
-        && strcmp($receivedAt, (string)$lineAllocations[$requestLineId]['received_at']) >= 0) {
+    if (
+        $receivedAt !== ''
+        && strcmp($receivedAt, (string)$lineAllocations[$requestLineId]['received_at']) >= 0
+    ) {
         $lineAllocations[$requestLineId]['received_at'] = $receivedAt;
         $lineAllocations[$requestLineId]['barcode_user'] = trim(
             (string)($transfer['barcode_user'] ?? '')
@@ -1222,9 +1260,11 @@ function sync_allocate_transfer_rows_by_daily_match(
                 continue;
             }
 
-            if ($transferTimestamp > 0
+            if (
+                $transferTimestamp > 0
                 && $eventTimestamp > 0
-                && $eventTimestamp > $transferTimestamp) {
+                && $eventTimestamp > $transferTimestamp
+            ) {
                 continue;
             }
 
@@ -1261,7 +1301,7 @@ function sync_allocate_transfer_rows_by_daily_match(
         $topCandidates = array_filter(
             $candidates,
             static fn(array $candidate): bool =>
-                sync_transfer_candidate_score($candidate) === $topScore
+            sync_transfer_candidate_score($candidate) === $topScore
         );
 
         if (count($topCandidates) !== 1) {
@@ -1321,10 +1361,12 @@ function sync_lookup_transfer_rows_by_itr_lines($erp, array $refs, int $lookback
         $lineRaw = $ref['line_num'] ?? null;
         $itemCode = trim((string)($ref['item_code'] ?? ''));
 
-        if ($docEntry <= 0
+        if (
+            $docEntry <= 0
             || $lineRaw === null
             || trim((string)$lineRaw) === ''
-            || $itemCode === '') {
+            || $itemCode === ''
+        ) {
             continue;
         }
 
@@ -1441,11 +1483,13 @@ function sync_lookup_transfer_rows_by_itr_lines($erp, array $refs, int $lookback
             : 0.0;
         $receivedAt = sync_datetime_sort_key($row['ReceivedAt'] ?? '');
 
-        if ($transferDocEntry <= 0
+        if (
+            $transferDocEntry <= 0
             || $sourceDocumentKey === ''
             || $itemCode === ''
             || $qty <= 0.0005
-            || $receivedAt === '') {
+            || $receivedAt === ''
+        ) {
             continue;
         }
 
@@ -1483,8 +1527,10 @@ function sync_lookup_transfer_rows_by_itr_lines($erp, array $refs, int $lookback
 
         $result[$key]['received_qty'] += $qty;
 
-        if ($receivedAt !== ''
-            && strcmp($receivedAt, (string)$result[$key]['received_at']) >= 0) {
+        if (
+            $receivedAt !== ''
+            && strcmp($receivedAt, (string)$result[$key]['received_at']) >= 0
+        ) {
             $result[$key]['received_at'] = $receivedAt;
             $result[$key]['barcode_user'] = trim((string)($row['BarcodeUser'] ?? ''));
         }
@@ -1796,8 +1842,10 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
 
         $receivedAt = trim((string)($transfer['received_at'] ?? ''));
 
-        if ($receivedAt !== ''
-            && strcmp($receivedAt, (string)$groupScans[$groupKey]['received_at']) >= 0) {
+        if (
+            $receivedAt !== ''
+            && strcmp($receivedAt, (string)$groupScans[$groupKey]['received_at']) >= 0
+        ) {
             $groupScans[$groupKey]['received_at'] = $receivedAt;
             $groupScans[$groupKey]['barcode_user'] = trim((string)($transfer['barcode_user'] ?? ''));
         }
@@ -1816,8 +1864,8 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
             $transferDocKey = $transferDocEntry > 0
                 ? 'DOC|' . $transferDocEntry
                 : 'FALLBACK|'
-                    . (int)($transfer['transfer_doc_num'] ?? 0) . '|'
-                    . $receivedAt;
+                . (int)($transfer['transfer_doc_num'] ?? 0) . '|'
+                . $receivedAt;
         }
 
         if (!isset($transferDocuments[$transferDocKey])) {
@@ -1834,8 +1882,10 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
 
         $transferDocuments[$transferDocKey]['rows'][] = $transfer;
 
-        if ($receivedAt !== ''
-            && strcmp($receivedAt, (string)$transferDocuments[$transferDocKey]['received_at']) > 0) {
+        if (
+            $receivedAt !== ''
+            && strcmp($receivedAt, (string)$transferDocuments[$transferDocKey]['received_at']) > 0
+        ) {
             $transferDocuments[$transferDocKey]['received_at'] = $receivedAt;
         }
     }
@@ -1958,8 +2008,10 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
         foreach ($documentRows as $transfer) {
             $linkedRequestLineId = (int)($transfer['linked_request_line_id'] ?? 0);
 
-            if ($linkedRequestLineId > 0
-                && isset($requestKeyByLineId[$linkedRequestLineId])) {
+            if (
+                $linkedRequestLineId > 0
+                && isset($requestKeyByLineId[$linkedRequestLineId])
+            ) {
                 $linkedRequestKeys[$requestKeyByLineId[$linkedRequestLineId]] = true;
             }
         }
@@ -2036,9 +2088,11 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
                         continue;
                     }
 
-                    if ($transferTimestamp > 0
+                    if (
+                        $transferTimestamp > 0
                         && $eventTimestamp > 0
-                        && $eventTimestamp > $transferTimestamp) {
+                        && $eventTimestamp > $transferTimestamp
+                    ) {
                         continue;
                     }
 
@@ -2062,8 +2116,10 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
 
                 $selectedLine = null;
 
-                if ($linkedRequestLineId > 0
-                    && isset($eligibleLines[$linkedRequestLineId])) {
+                if (
+                    $linkedRequestLineId > 0
+                    && isset($eligibleLines[$linkedRequestLineId])
+                ) {
                     $selectedLine = $eligibleLines[$linkedRequestLineId];
                 } elseif (count($eligibleLines) === 1) {
                     $selectedLine = array_values($eligibleLines)[0];
@@ -2091,7 +2147,7 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
                     $exactLines = $selectedLine === null ? array_filter(
                         $eligibleLines,
                         static fn(array $line): bool =>
-                            abs((float)$line['remaining'] - $transferQty) <= 0.0005
+                        abs((float)$line['remaining'] - $transferQty) <= 0.0005
                     ) : [];
 
                     if ($selectedLine === null && count($exactLines) === 1) {
@@ -2206,13 +2262,15 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
         }
 
         uasort($candidatePlans, static function (array $a, array $b): int {
-            foreach ([
-                ['linked_priority', true],
-                ['exact_document_set', true],
-                ['same_issued_date_matches', true],
-                ['same_requested_date_matches', true],
-                ['exact_qty_matches', true],
-            ] as [$field, $descending]) {
+            foreach (
+                [
+                    ['linked_priority', true],
+                    ['exact_document_set', true],
+                    ['same_issued_date_matches', true],
+                    ['same_requested_date_matches', true],
+                    ['exact_qty_matches', true],
+                ] as [$field, $descending]
+            ) {
                 $comparison = (int)$a[$field] <=> (int)$b[$field];
 
                 if ($comparison !== 0) {
@@ -2324,8 +2382,10 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
 
             $receivedAt = trim((string)($transfer['received_at'] ?? ''));
 
-            if ($receivedAt !== ''
-                && strcmp($receivedAt, (string)$lineAllocations[$requestLineId]['received_at']) >= 0) {
+            if (
+                $receivedAt !== ''
+                && strcmp($receivedAt, (string)$lineAllocations[$requestLineId]['received_at']) >= 0
+            ) {
                 $lineAllocations[$requestLineId]['received_at'] = $receivedAt;
                 $lineAllocations[$requestLineId]['barcode_user'] = trim(
                     (string)($transfer['barcode_user'] ?? '')
@@ -2409,13 +2469,15 @@ function sync_ensure_issue_transaction_receive_allocation($conn): bool
 
 function sync_load_issue_transactions_for_daily_allocation($conn, array $refs, int $lookbackDays): array
 {
-    if (!sync_has_table($conn, 'IssuanceTransactions')
+    if (
+        !sync_has_table($conn, 'IssuanceTransactions')
         || !sync_has_column($conn, 'IssuanceTransactions', 'TransactionID')
         || !sync_has_column($conn, 'IssuanceTransactions', 'ITRDocEntry')
         || !sync_has_column($conn, 'IssuanceTransactions', 'ITRLineNum')
         || !sync_has_column($conn, 'IssuanceTransactions', 'ItemCode')
         || !sync_has_column($conn, 'IssuanceTransactions', 'Quantity')
-        || !sync_has_column($conn, 'IssuanceTransactions', 'IssuedAt')) {
+        || !sync_has_column($conn, 'IssuanceTransactions', 'IssuedAt')
+    ) {
         return [];
     }
 
@@ -2503,6 +2565,26 @@ function sync_daily_base_key($dateKey, $docEntry, $lineNum, $itemCode): string
 function sync_daily_lot_key(string $baseKey, $lotNo): string
 {
     return $baseKey === '' ? '' : $baseKey . '|LOT|' . sync_normalize_lot($lotNo);
+}
+
+/**
+ * Exact-lot identity without the calendar date.
+ *
+ * This key is used only for the delayed-receive pass.  Cross-day matching is
+ * intentionally stricter than same-day matching: DocEntry + line + item + lot
+ * must all match, the issuance must exist before the receipt, and the delay must
+ * remain inside the configured grace window.
+ */
+function sync_delayed_exact_lot_key($docEntry, $lineNum, $itemCode, $lotNo): string
+{
+    $baseKey = scanplus_key($docEntry, $lineNum, $itemCode);
+    $normalizedLot = sync_normalize_lot($lotNo);
+
+    if ($baseKey === '' || $normalizedLot === '') {
+        return '';
+    }
+
+    return $baseKey . '|LOT|' . $normalizedLot;
 }
 
 function sync_build_raw_group_scans(array $transferRows): array
@@ -2646,21 +2728,42 @@ function sync_add_daily_allocation_chunk(
 }
 
 /**
- * Business rule:
- *   1) Same calendar date is mandatory.
- *   2) Same ITR DocEntry + line + item is mandatory.
- *   3) Exact lot is allocated first.
- *   4) Remaining same-day quantity is allocated as LOT_MISMATCH.
- *   5) Nothing crosses to another date even if the monthly ITR/lot is reused.
+ * Reconcile local issuance transactions against ScanPlus/SAP receipt rows.
+ *
+ * Matching order:
+ *   1) Same-day + exact ITR DocEntry/line/item/lot.
+ *   2) Delayed exact-lot receipt within $delayedExactLotDays.
+ *      - Same ITR DocEntry + line + item + exact normalized lot is mandatory.
+ *      - Receipt must be at/after the issuance timestamp.
+ *      - Cross-day LOT_MISMATCH is never allowed.
+ *   3) Remaining quantity may be allocated as LOT_MISMATCH only on the same day
+ *      and only for the same ITR DocEntry + line + item.
+ *
+ * The delayed pass is what allows, for example, a 2026-09-17 warehouse issuance
+ * to be received in ScanPlus/SAP on 2026-09-18 without making old monthly ITR
+ * rows broadly reusable across dates.
  */
-function sync_allocate_daily_issue_receipts(array $issueRows, array $transferRows, string $matchPrefix = 'SAME_DAY'): array
-{
+function sync_allocate_daily_issue_receipts(
+    array $issueRows,
+    array $transferRows,
+    string $matchPrefix = 'SAME_DAY',
+    int $delayedExactLotDays = 3
+): array {
+    $delayedExactLotDays = max(1, min(14, $delayedExactLotDays));
+
     $issueState = [];
     $receiptState = [];
+
+    /* Same-day groups. */
     $issuesByBase = [];
     $issuesByLot = [];
     $receiptsByBase = [];
     $receiptsByLot = [];
+
+    /* Cross-day exact-lot groups. Date is intentionally excluded from this key. */
+    $issuesByDelayedExactLot = [];
+    $receiptsByDelayedExactLot = [];
+
     $lineAllocations = [];
     $transactionAllocations = [];
     $dailyTotals = [];
@@ -2668,7 +2771,12 @@ function sync_allocate_daily_issue_receipts(array $issueRows, array $transferRow
     foreach ($issueRows as $row) {
         $qty = max(0.0, (float)($row['Quantity'] ?? 0));
         $dateKey = sync_datetime_date_key($row['IssuedAt'] ?? '');
-        $baseKey = sync_daily_base_key($dateKey, $row['ITRDocEntry'] ?? 0, $row['ITRLineNum'] ?? null, $row['ItemCode'] ?? '');
+        $baseKey = sync_daily_base_key(
+            $dateKey,
+            $row['ITRDocEntry'] ?? 0,
+            $row['ITRLineNum'] ?? null,
+            $row['ItemCode'] ?? ''
+        );
 
         if ($qty <= 0.0005 || $baseKey === '') {
             continue;
@@ -2676,8 +2784,24 @@ function sync_allocate_daily_issue_receipts(array $issueRows, array $transferRow
 
         $index = count($issueState);
         $issueState[] = ['row' => $row, 'remaining' => $qty];
+
         $issuesByBase[$baseKey][] = $index;
-        $issuesByLot[sync_daily_lot_key($baseKey, $row['LotNo'] ?? '')][] = $index;
+
+        $sameDayLotKey = sync_daily_lot_key($baseKey, $row['LotNo'] ?? '');
+        if ($sameDayLotKey !== '') {
+            $issuesByLot[$sameDayLotKey][] = $index;
+        }
+
+        $delayedLotKey = sync_delayed_exact_lot_key(
+            $row['ITRDocEntry'] ?? 0,
+            $row['ITRLineNum'] ?? null,
+            $row['ItemCode'] ?? '',
+            $row['LotNo'] ?? ''
+        );
+        if ($delayedLotKey !== '') {
+            $issuesByDelayedExactLot[$delayedLotKey][] = $index;
+        }
+
         $dailyTotals[$baseKey]['issued'] = (float)($dailyTotals[$baseKey]['issued'] ?? 0) + $qty;
         $dailyTotals[$baseKey]['received'] = (float)($dailyTotals[$baseKey]['received'] ?? 0);
 
@@ -2697,6 +2821,7 @@ function sync_allocate_daily_issue_receipts(array $issueRows, array $transferRow
                     'daily_base_keys' => [],
                 ];
             }
+
             $lineAllocations[$requestLineId]['issued_qty'] += $qty;
             $lineAllocations[$requestLineId]['daily_base_keys'][$baseKey] = true;
         }
@@ -2705,7 +2830,12 @@ function sync_allocate_daily_issue_receipts(array $issueRows, array $transferRow
     foreach ($transferRows as $row) {
         $qty = max(0.0, (float)($row['received_qty'] ?? 0));
         $dateKey = sync_datetime_date_key($row['received_at'] ?? '');
-        $baseKey = sync_daily_base_key($dateKey, $row['doc_entry'] ?? 0, $row['line_num'] ?? null, $row['item_code'] ?? '');
+        $baseKey = sync_daily_base_key(
+            $dateKey,
+            $row['doc_entry'] ?? 0,
+            $row['line_num'] ?? null,
+            $row['item_code'] ?? ''
+        );
 
         if ($qty <= 0.0005 || $baseKey === '') {
             continue;
@@ -2713,45 +2843,76 @@ function sync_allocate_daily_issue_receipts(array $issueRows, array $transferRow
 
         $index = count($receiptState);
         $receiptState[] = ['row' => $row, 'remaining' => $qty];
+
         $receiptsByBase[$baseKey][] = $index;
-        $receiptsByLot[sync_daily_lot_key($baseKey, $row['received_lot_no'] ?? '')][] = $index;
+
+        $sameDayLotKey = sync_daily_lot_key($baseKey, $row['received_lot_no'] ?? '');
+        if ($sameDayLotKey !== '') {
+            $receiptsByLot[$sameDayLotKey][] = $index;
+        }
+
+        $delayedLotKey = sync_delayed_exact_lot_key(
+            $row['doc_entry'] ?? 0,
+            $row['line_num'] ?? null,
+            $row['item_code'] ?? '',
+            $row['received_lot_no'] ?? ''
+        );
+        if ($delayedLotKey !== '') {
+            $receiptsByDelayedExactLot[$delayedLotKey][] = $index;
+        }
+
         $dailyTotals[$baseKey]['issued'] = (float)($dailyTotals[$baseKey]['issued'] ?? 0);
         $dailyTotals[$baseKey]['received'] = (float)($dailyTotals[$baseKey]['received'] ?? 0) + $qty;
     }
 
+    /*
+     * Newest eligible issuance first.
+     * This is important for delayed receipts when the same monthly ITR/lot has
+     * been used on several dates: today's receipt should attach to the most
+     * recent still-pending issuance that existed before the receipt.
+     */
     $sortIssueIndices = static function (array &$indices) use (&$issueState): void {
         usort($indices, static function (int $a, int $b) use (&$issueState): int {
             $aTime = sync_datetime_timestamp($issueState[$a]['row']['IssuedAt'] ?? '');
             $bTime = sync_datetime_timestamp($issueState[$b]['row']['IssuedAt'] ?? '');
+
             if ($aTime !== $bTime) {
                 return $bTime <=> $aTime;
             }
+
             return (int)($issueState[$b]['row']['TransactionID'] ?? 0)
                 <=> (int)($issueState[$a]['row']['TransactionID'] ?? 0);
         });
     };
 
+    /* Oldest receipt first for deterministic FIFO consumption. */
     $sortReceiptIndices = static function (array &$indices) use (&$receiptState): void {
         usort($indices, static function (int $a, int $b) use (&$receiptState): int {
             $aTime = sync_datetime_timestamp($receiptState[$a]['row']['received_at'] ?? '');
             $bTime = sync_datetime_timestamp($receiptState[$b]['row']['received_at'] ?? '');
+
             if ($aTime !== $bTime) {
                 return $aTime <=> $bTime;
             }
+
             $docCompare = (int)($receiptState[$a]['row']['transfer_doc_entry'] ?? 0)
                 <=> (int)($receiptState[$b]['row']['transfer_doc_entry'] ?? 0);
+
             if ($docCompare !== 0) {
                 return $docCompare;
             }
+
             return (int)($receiptState[$a]['row']['transfer_line_num'] ?? 0)
                 <=> (int)($receiptState[$b]['row']['transfer_line_num'] ?? 0);
         });
     };
 
+    /* Basic chronological protection used by every pass. */
     $issueCanUseReceipt = static function (int $issueIndex, int $receiptIndex) use (&$issueState, &$receiptState): bool {
         $issueTime = sync_datetime_timestamp($issueState[$issueIndex]['row']['IssuedAt'] ?? '');
         $receiptTime = sync_datetime_timestamp($receiptState[$receiptIndex]['row']['received_at'] ?? '');
 
+        /* Same-day grouping already protects unknown timestamps; keep legacy behavior there. */
         if ($issueTime <= 0 || $receiptTime <= 0) {
             return true;
         }
@@ -2759,11 +2920,45 @@ function sync_allocate_daily_issue_receipts(array $issueRows, array $transferRow
         return $issueTime <= $receiptTime;
     };
 
+    /*
+     * Stricter delayed eligibility:
+     * - both timestamps are required;
+     * - receipt cannot precede issuance;
+     * - receipt must be on a later calendar date;
+     * - delay cannot exceed the configured grace window.
+     */
+    $issueCanUseDelayedReceipt = static function (int $issueIndex, int $receiptIndex) use (
+        &$issueState,
+        &$receiptState,
+        $delayedExactLotDays
+    ): bool {
+        $issueAt = $issueState[$issueIndex]['row']['IssuedAt'] ?? '';
+        $receiptAt = $receiptState[$receiptIndex]['row']['received_at'] ?? '';
+
+        $issueTime = sync_datetime_timestamp($issueAt);
+        $receiptTime = sync_datetime_timestamp($receiptAt);
+
+        if ($issueTime <= 0 || $receiptTime <= 0 || $receiptTime < $issueTime) {
+            return false;
+        }
+
+        $issueDate = sync_datetime_date_key($issueAt);
+        $receiptDate = sync_datetime_date_key($receiptAt);
+
+        if ($issueDate === '' || $receiptDate === '' || $issueDate === $receiptDate) {
+            return false;
+        }
+
+        $maxDelaySeconds = $delayedExactLotDays * 86400;
+        return ($receiptTime - $issueTime) <= $maxDelaySeconds;
+    };
+
     $allocateReceiptsToIssues = static function (
         array $issueIndices,
         array $receiptIndices,
         callable $lotMatchFor,
-        string $matchPrefix
+        string $allocationMatchPrefix,
+        ?callable $extraEligibility = null
     ) use (
         &$lineAllocations,
         &$transactionAllocations,
@@ -2794,7 +2989,15 @@ function sync_allocate_daily_issue_receipts(array $issueRows, array $transferRow
                     continue;
                 }
 
-                $qty = min($issueState[$ii]['remaining'], $receiptState[$ri]['remaining']);
+                if ($extraEligibility !== null && !$extraEligibility($ii, $ri)) {
+                    continue;
+                }
+
+                $qty = min(
+                    $issueState[$ii]['remaining'],
+                    $receiptState[$ri]['remaining']
+                );
+
                 sync_add_daily_allocation_chunk(
                     $lineAllocations,
                     $transactionAllocations,
@@ -2804,48 +3007,112 @@ function sync_allocate_daily_issue_receipts(array $issueRows, array $transferRow
                     $ri,
                     $qty,
                     (bool)$lotMatchFor($ii, $ri),
-                    $matchPrefix
+                    $allocationMatchPrefix
                 );
             }
         }
     };
 
-    /* Pass 1: exact lot. */
+    /* Pass 1: same-day exact lot. Preserve the original safest match first. */
     foreach ($issuesByLot as $lotKey => $issueIndices) {
         $receiptIndices = $receiptsByLot[$lotKey] ?? [];
+
         if (empty($receiptIndices)) {
             continue;
         }
 
-        $allocateReceiptsToIssues($issueIndices, $receiptIndices, static fn(): bool => true, $matchPrefix);
+        $allocateReceiptsToIssues(
+            $issueIndices,
+            $receiptIndices,
+            static fn(): bool => true,
+            $matchPrefix
+        );
     }
 
-    /* Pass 2: same-day quantity is present, but under another lot. */
-    foreach ($issuesByBase as $baseKey => $issueIndices) {
-        $receiptIndices = $receiptsByBase[$baseKey] ?? [];
+    /*
+     * Pass 2: delayed exact lot only.
+     * Example: issued 2026-09-17, scanned/posted 2026-09-18.
+     * No different-lot receipt can enter this pass because the normalized lot is
+     * part of the grouping key.
+     */
+    $delayedMatchPrefix = str_ends_with($matchPrefix, '_SAME_DAY')
+        ? substr($matchPrefix, 0, -strlen('_SAME_DAY')) . '_DELAYED'
+        : $matchPrefix . '_DELAYED';
+
+    foreach ($issuesByDelayedExactLot as $lotKey => $issueIndices) {
+        $receiptIndices = $receiptsByDelayedExactLot[$lotKey] ?? [];
+
         if (empty($receiptIndices)) {
             continue;
         }
 
-        $issueIndices = array_values(array_filter($issueIndices, static fn(int $idx): bool => $issueState[$idx]['remaining'] > 0.0005));
-        $receiptIndices = array_values(array_filter($receiptIndices, static fn(int $idx): bool => $receiptState[$idx]['remaining'] > 0.0005));
+        $issueIndices = array_values(array_filter(
+            $issueIndices,
+            static fn(int $idx): bool => $issueState[$idx]['remaining'] > 0.0005
+        ));
+        $receiptIndices = array_values(array_filter(
+            $receiptIndices,
+            static fn(int $idx): bool => $receiptState[$idx]['remaining'] > 0.0005
+        ));
 
         if (empty($issueIndices) || empty($receiptIndices)) {
             continue;
         }
 
-        $allocateReceiptsToIssues($issueIndices, $receiptIndices, static function (int $ii, int $ri) use (&$issueState, &$receiptState): bool {
-            $issueLot = sync_normalize_lot($issueState[$ii]['row']['LotNo'] ?? '');
-            $receiptLot = sync_normalize_lot($receiptState[$ri]['row']['received_lot_no'] ?? '');
-            return $issueLot !== '' && $issueLot === $receiptLot;
-        }, $matchPrefix);
+        $allocateReceiptsToIssues(
+            $issueIndices,
+            $receiptIndices,
+            static fn(): bool => true,
+            $delayedMatchPrefix,
+            $issueCanUseDelayedReceipt
+        );
+    }
+
+    /*
+     * Pass 3: same-day quantity under another lot.
+     * IMPORTANT: this remains date-bound. A lot mismatch is never allowed to
+     * cross into a different day automatically.
+     */
+    foreach ($issuesByBase as $baseKey => $issueIndices) {
+        $receiptIndices = $receiptsByBase[$baseKey] ?? [];
+
+        if (empty($receiptIndices)) {
+            continue;
+        }
+
+        $issueIndices = array_values(array_filter(
+            $issueIndices,
+            static fn(int $idx): bool => $issueState[$idx]['remaining'] > 0.0005
+        ));
+        $receiptIndices = array_values(array_filter(
+            $receiptIndices,
+            static fn(int $idx): bool => $receiptState[$idx]['remaining'] > 0.0005
+        ));
+
+        if (empty($issueIndices) || empty($receiptIndices)) {
+            continue;
+        }
+
+        $allocateReceiptsToIssues(
+            $issueIndices,
+            $receiptIndices,
+            static function (int $ii, int $ri) use (&$issueState, &$receiptState): bool {
+                $issueLot = sync_normalize_lot($issueState[$ii]['row']['LotNo'] ?? '');
+                $receiptLot = sync_normalize_lot($receiptState[$ri]['row']['received_lot_no'] ?? '');
+
+                return $issueLot !== '' && $issueLot === $receiptLot;
+            },
+            $matchPrefix
+        );
     }
 
     foreach ($lineAllocations as &$allocation) {
         $rawDaily = 0.0;
+
         foreach (array_keys($allocation['daily_base_keys'] ?? []) as $baseKey) {
             $rawDaily += (float)($dailyTotals[$baseKey]['received'] ?? 0);
         }
+
         $allocation['raw_daily_received_qty'] = $rawDaily;
         $allocation['received_lot_no'] = implode(', ', array_values($allocation['received_lots'] ?? []));
         $allocation['daily_base_keys'] = array_values(array_keys($allocation['daily_base_keys'] ?? []));
@@ -3093,14 +3360,16 @@ try {
     sync_ensure_issue_transaction_sap_posting_allocation($whp);
 
     $syncId = sync_begin_log($whp);
-    sync_log("Starting ScanPlus cache refresh. Lookback={$lookbackDays} days, chunk={$chunkSize}, maxRefs={$maxRefs}.");
+    sync_log("Starting ScanPlus cache refresh. Lookback={$lookbackDays} days, chunk={$chunkSize}, maxRefs={$maxRefs}, delayedExactLotDays={$delayedExactLotDays}.");
 
     $refs = [];
     $seen = [];
 
-    if (sync_has_table($whp, 'IssuanceTransactions')
+    if (
+        sync_has_table($whp, 'IssuanceTransactions')
         && sync_has_column($whp, 'IssuanceTransactions', 'ITRDocEntry')
-        && sync_has_column($whp, 'IssuanceTransactions', 'ItemCode')) {
+        && sync_has_column($whp, 'IssuanceTransactions', 'ItemCode')
+    ) {
         $dateColumn = sync_has_column($whp, 'IssuanceTransactions', 'IssuedAt') ? 'IssuedAt' : null;
         $lineExpr = sync_has_column($whp, 'IssuanceTransactions', 'ITRLineNum') ? 'IT.ITRLineNum' : 'NULL';
         $lotExpr = sync_has_column($whp, 'IssuanceTransactions', 'LotNo') ? 'IT.LotNo' : "N''";
@@ -3146,9 +3415,11 @@ try {
         ));
     }
 
-    if (count($refs) < $maxRefs
+    if (
+        count($refs) < $maxRefs
         && sync_has_table($whp, 'WarehouseIssueRequestHeader')
-        && sync_has_table($whp, 'WarehouseIssueRequestLines')) {
+        && sync_has_table($whp, 'WarehouseIssueRequestLines')
+    ) {
         $remaining = $maxRefs - count($refs);
 
         /*
@@ -3169,9 +3440,11 @@ try {
         $requestIssueApply = '';
         $requestIssuedAtExpr = 'CAST(NULL AS DATETIME)';
 
-        if (sync_has_table($whp, 'IssuanceTransactions')
+        if (
+            sync_has_table($whp, 'IssuanceTransactions')
             && sync_has_column($whp, 'IssuanceTransactions', 'IssueRequestLineID')
-            && sync_has_column($whp, 'IssuanceTransactions', 'IssuedAt')) {
+            && sync_has_column($whp, 'IssuanceTransactions', 'IssuedAt')
+        ) {
             $requestIssueItemCondition = sync_has_column($whp, 'IssuanceTransactions', 'ItemCode')
                 ? 'AND (ITX.ItemCode = L.ItemCode OR ITX.ItemCode IS NULL)'
                 : '';
@@ -3223,9 +3496,11 @@ try {
         ));
     }
 
-    if (count($refs) < $maxRefs
+    if (
+        count($refs) < $maxRefs
         && sync_has_table($whp, 'RawmatTraceHeader')
-        && sync_has_table($whp, 'RawmatTraceLines')) {
+        && sync_has_table($whp, 'RawmatTraceLines')
+    ) {
         $remaining = $maxRefs - count($refs);
         $traceRequestLineExpr = sync_has_column($whp, 'RawmatTraceLines', 'IssueRequestLineID')
             ? 'L.IssueRequestLineID'
@@ -3310,9 +3585,11 @@ try {
     sync_log('Individual ScanPlus FT_INVT receipt rows found: ' . count($transferRows)
         . ', lookup=' . round(microtime(true) - $transferLookupStarted, 3) . ' sec');
     /*
-     * Business rule: reconcile against what was issued on the SAME calendar day.
-     * The monthly ITR and lot may be reused while balance remains, so a ScanPlus
-     * receipt must never borrow an issuance from a different date.
+     * Reconciliation rule:
+     * - same-day receipts are matched first;
+     * - a later-day receipt may match only an exact ITR line/item/lot within the
+     *   configured delayed-receive window;
+     * - lot-mismatch allocation never crosses calendar dates.
      */
     $issueRows = sync_load_issue_transactions_for_daily_allocation($whp, $refs, $lookbackDays);
     sync_log('Local issuance transactions for daily allocation: ' . count($issueRows));
@@ -3320,7 +3597,12 @@ try {
     /*
      * Layer 1: ScanPlus staging allocation. This answers "was it scanned?" only.
      */
-    $scanAllocationResult = sync_allocate_daily_issue_receipts($issueRows, $transferRows, 'SCANPLUS_SAME_DAY');
+    $scanAllocationResult = sync_allocate_daily_issue_receipts(
+        $issueRows,
+        $transferRows,
+        'SCANPLUS_SAME_DAY',
+        $delayedExactLotDays
+    );
     $scanLineAllocations = $scanAllocationResult['line_allocations'] ?? [];
     $transactionAllocations = $scanAllocationResult['transaction_allocations'] ?? [];
     $dailyTotals = $scanAllocationResult['daily_totals'] ?? [];
@@ -3339,7 +3621,12 @@ try {
     sync_log('Actual SAP OWTR/WTR1 posted batch rows found: ' . count($sapPostedRows)
         . ', lookup=' . round(microtime(true) - $sapLookupStarted, 3) . ' sec');
 
-    $sapAllocationResult = sync_allocate_daily_issue_receipts($issueRows, $sapPostedRows, 'SAP_SAME_DAY');
+    $sapAllocationResult = sync_allocate_daily_issue_receipts(
+        $issueRows,
+        $sapPostedRows,
+        'SAP_SAME_DAY',
+        $delayedExactLotDays
+    );
     $sapLineAllocations = $sapAllocationResult['line_allocations'] ?? [];
     $sapTransactionAllocations = $sapAllocationResult['transaction_allocations'] ?? [];
     $sapDailyTotals = $sapAllocationResult['daily_totals'] ?? [];
@@ -3492,7 +3779,7 @@ try {
                 ];
             } elseif ($groupSapQty > 0.0005) {
                 /*
-                 * Same-day SAP posting exists for this ITR line/item, but FIFO
+                 * SAP posting activity exists for this ITR line/item, but FIFO
                  * allocated it to other issuance transactions/request lines.
                  * Do not falsely copy that SAP quantity onto this line.
                  */
@@ -3506,7 +3793,7 @@ try {
                     'match_status' => 'GROUP_PARTIAL_POSTED',
                 ];
             } else {
-                /* Scanned/staged in ScanPlus, but no same-day OWTR/WTR1 posting exists. */
+                /* Scanned/staged in ScanPlus, but no eligible OWTR/WTR1 posting exists. */
                 $lineScan = [
                     'raw_received_qty' => min($scanAllocatedQty, $issuedQty),
                     'received_qty' => 0.0,
@@ -3519,7 +3806,7 @@ try {
             }
         } elseif ($groupScanQty > 0.0005 || $rawDailyScannedQty > 0.0005) {
             /*
-             * Same-day ScanPlus activity exists, but none was allocated to this
+             * ScanPlus activity exists for the diagnostic group, but none was allocated to this
              * request line. For user-facing verification this is still pending:
              * the scan may belong to another request line or may have happened
              * before this line was issued.
