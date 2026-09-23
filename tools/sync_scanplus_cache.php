@@ -2670,11 +2670,11 @@ function sync_add_daily_allocation_chunk(
  *
  * Matching order:
  *   1) Same-day exact lot.
- *   2) Same-day remaining quantity as LOT_MISMATCH.
- *   3) Delayed receipt within $delayedReceiveDays using the same ITR DocEntry +
- *      line + item. The latest eligible previous issuance date is selected, exact
- *      lot is consumed first on that date, then remaining quantity may be applied
- *      as LOT_MISMATCH on that same selected date only.
+ *   2) Delayed exact lot within $delayedReceiveDays using the same ITR DocEntry +
+ *      line + item.
+ *   3) Same-day remaining quantity as LOT_MISMATCH.
+ *   4) Delayed remaining quantity as LOT_MISMATCH on the selected previous
+ *      issuance date only.
  *
  * A delayed receipt never spills into an older issuance date. This prevents an old
  * monthly ITR transaction from borrowing a new receipt while still supporting
@@ -2815,6 +2815,21 @@ function sync_allocate_daily_issue_receipts(
         });
     };
 
+    /* Oldest eligible issuance first for exact-lot FIFO allocation. */
+    $sortIssueIndicesOldest = static function (array &$indices) use (&$issueState): void {
+        usort($indices, static function (int $a, int $b) use (&$issueState): int {
+            $aTime = sync_datetime_timestamp($issueState[$a]['row']['IssuedAt'] ?? '');
+            $bTime = sync_datetime_timestamp($issueState[$b]['row']['IssuedAt'] ?? '');
+
+            if ($aTime !== $bTime) {
+                return $aTime <=> $bTime;
+            }
+
+            return (int)($issueState[$a]['row']['TransactionID'] ?? 0)
+                <=> (int)($issueState[$b]['row']['TransactionID'] ?? 0);
+        });
+    };
+
     /* Oldest receipt first for deterministic FIFO consumption. */
     $sortReceiptIndices = static function (array &$indices) use (&$receiptState): void {
         usort($indices, static function (int $a, int $b) use (&$receiptState): int {
@@ -2852,17 +2867,23 @@ function sync_allocate_daily_issue_receipts(
         array $issueIndices,
         array $receiptIndices,
         callable $lotMatchFor,
-        string $allocationMatchPrefix
+        string $allocationMatchPrefix,
+        bool $oldestIssueFirst = false
     ) use (
         &$lineAllocations,
         &$transactionAllocations,
         &$issueState,
         &$receiptState,
         $sortIssueIndices,
+        $sortIssueIndicesOldest,
         $sortReceiptIndices,
         $issueCanUseReceipt
     ): void {
-        $sortIssueIndices($issueIndices);
+        if ($oldestIssueFirst) {
+            $sortIssueIndicesOldest($issueIndices);
+        } else {
+            $sortIssueIndices($issueIndices);
+        }
         $sortReceiptIndices($receiptIndices);
 
         foreach ($receiptIndices as $ri) {
@@ -2903,6 +2924,91 @@ function sync_allocate_daily_issue_receipts(
         }
     };
 
+    $delayedMatchPrefix = str_ends_with($matchPrefix, '_SAME_DAY')
+        ? substr($matchPrefix, 0, -strlen('_SAME_DAY')) . '_DELAYED'
+        : $matchPrefix . '_DELAYED';
+
+    $selectDelayedIssueGroups = static function (
+        int $receiptIndex,
+        array $issueIndicesForBase
+    ) use (
+        &$issueState,
+        &$receiptState,
+        $sortIssueIndicesOldest,
+        $delayedReceiveDays
+    ): array {
+        if ($receiptState[$receiptIndex]['remaining'] <= 0.0005) {
+            return [[], []];
+        }
+
+        $receiptRow = $receiptState[$receiptIndex]['row'];
+        $receiptAt = $receiptRow['received_at'] ?? '';
+        $receiptTime = sync_datetime_timestamp($receiptAt);
+        $receiptDate = sync_datetime_date_key($receiptAt);
+
+        if ($receiptTime <= 0 || $receiptDate === '') {
+            return [[], []];
+        }
+
+        $eligibleByDate = [];
+
+        foreach ($issueIndicesForBase as $issueIndex) {
+            if ($issueState[$issueIndex]['remaining'] <= 0.0005) {
+                continue;
+            }
+
+            $issueAt = $issueState[$issueIndex]['row']['IssuedAt'] ?? '';
+            $issueTime = sync_datetime_timestamp($issueAt);
+            $issueDate = sync_datetime_date_key($issueAt);
+
+            if ($issueTime <= 0 || $issueDate === '') {
+                continue;
+            }
+
+            /* Delayed matching is cross-day only and can never look forward in time. */
+            if ($issueDate >= $receiptDate || $issueTime > $receiptTime) {
+                continue;
+            }
+
+            if (($receiptTime - $issueTime) > ($delayedReceiveDays * 86400)) {
+                continue;
+            }
+
+            $eligibleByDate[$issueDate][] = $issueIndex;
+        }
+
+        if (empty($eligibleByDate)) {
+            return [[], []];
+        }
+
+        /* YYYY-MM-DD sorts lexicographically, so the last key is the latest date. */
+        ksort($eligibleByDate, SORT_STRING);
+        $selectedIssueDate = array_key_last($eligibleByDate);
+        $selectedIssueIndices = $eligibleByDate[$selectedIssueDate] ?? [];
+
+        if (empty($selectedIssueIndices)) {
+            return [[], []];
+        }
+
+        $sortIssueIndicesOldest($selectedIssueIndices);
+
+        $receiptLot = sync_normalize_lot($receiptRow['received_lot_no'] ?? '');
+        $exactIssueIndices = [];
+        $mismatchIssueIndices = [];
+
+        foreach ($selectedIssueIndices as $issueIndex) {
+            $issueLot = sync_normalize_lot($issueState[$issueIndex]['row']['LotNo'] ?? '');
+
+            if ($receiptLot !== '' && $issueLot !== '' && $issueLot === $receiptLot) {
+                $exactIssueIndices[] = $issueIndex;
+            } else {
+                $mismatchIssueIndices[] = $issueIndex;
+            }
+        }
+
+        return [$exactIssueIndices, $mismatchIssueIndices];
+    };
+
     /*
      * PASS 1: same-day exact lot.
      * This remains the highest-confidence match and must always be consumed first.
@@ -2918,14 +3024,60 @@ function sync_allocate_daily_issue_receipts(
             $issueIndices,
             $receiptIndices,
             static fn(): bool => true,
-            $matchPrefix
+            $matchPrefix,
+            true
         );
     }
 
     /*
-     * PASS 2: same-day remaining quantity under another lot.
-     * Date + ITR DocEntry + line + item are still mandatory. This preserves the
-     * original same-day LOT_MISMATCH behavior before any delayed matching occurs.
+     * PASS 2: delayed exact lot.
+     * An exact-lot receipt from the next allowed day should not be stolen by a
+     * newer same-day issuance under a different lot.
+     */
+    foreach ($receiptsByCrossDayBase as $crossDayBaseKey => $receiptIndices) {
+        $issueIndicesForBase = $issuesByCrossDayBase[$crossDayBaseKey] ?? [];
+
+        if (empty($issueIndicesForBase) || empty($receiptIndices)) {
+            continue;
+        }
+
+        $sortReceiptIndices($receiptIndices);
+
+        foreach ($receiptIndices as $receiptIndex) {
+            [$exactIssueIndices] = $selectDelayedIssueGroups($receiptIndex, $issueIndicesForBase);
+
+            foreach ($exactIssueIndices as $issueIndex) {
+                if ($receiptState[$receiptIndex]['remaining'] <= 0.0005) {
+                    break;
+                }
+
+                if ($issueState[$issueIndex]['remaining'] <= 0.0005) {
+                    continue;
+                }
+
+                $qty = min(
+                    $issueState[$issueIndex]['remaining'],
+                    $receiptState[$receiptIndex]['remaining']
+                );
+
+                sync_add_daily_allocation_chunk(
+                    $lineAllocations,
+                    $transactionAllocations,
+                    $issueState,
+                    $receiptState,
+                    $issueIndex,
+                    $receiptIndex,
+                    $qty,
+                    true,
+                    $delayedMatchPrefix
+                );
+            }
+        }
+    }
+
+    /*
+     * PASS 3: same-day remaining quantity under another lot.
+     * Date + ITR DocEntry + line + item are still mandatory.
      */
     foreach ($issuesByBase as $baseKey => $issueIndices) {
         $receiptIndices = $receiptsByBase[$baseKey] ?? [];
@@ -2961,17 +3113,15 @@ function sync_allocate_daily_issue_receipts(
     }
 
     /*
-     * PASS 3: delayed receipt reconciliation.
+     * PASS 4: delayed lot-mismatch reconciliation.
      *
      * Rules for EACH remaining receipt row:
      *   1) ITR DocEntry + line + item must match.
      *   2) Issuance must be earlier than the receipt and on an earlier date.
      *   3) Issuance must be within $delayedReceiveDays.
      *   4) Find the LATEST previous issuance date that still has pending qty.
-     *   5) On that one date only, consume exact-lot rows first.
-     *   6) If receipt qty remains, consume different-lot rows on that SAME date
-     *      and record them as LOT_MISMATCH.
-     *   7) Never spill the leftover receipt into an older issuance date.
+     *   5) Consume different-lot rows on that SAME date only.
+     *   6) Never spill the leftover receipt into an older issuance date.
      *
      * This handles cases such as:
      *   - Item 209: 325500 issued, 186000 received same day, remaining 139500
@@ -2980,10 +3130,6 @@ function sync_allocate_daily_issue_receipts(
      *   - Item 228: 16000 lot A + 24000 lot B issued yesterday, one 40000 receipt
      *     today under lot B -> 24000 exact lot first, then 16000 lot mismatch.
      */
-    $delayedMatchPrefix = str_ends_with($matchPrefix, '_SAME_DAY')
-        ? substr($matchPrefix, 0, -strlen('_SAME_DAY')) . '_DELAYED'
-        : $matchPrefix . '_DELAYED';
-
     foreach ($receiptsByCrossDayBase as $crossDayBaseKey => $receiptIndices) {
         $issueIndicesForBase = $issuesByCrossDayBase[$crossDayBaseKey] ?? [];
 
@@ -2993,120 +3139,30 @@ function sync_allocate_daily_issue_receipts(
 
         $sortReceiptIndices($receiptIndices);
 
-        foreach ($receiptIndices as $ri) {
-            if ($receiptState[$ri]['remaining'] <= 0.0005) {
-                continue;
-            }
+        foreach ($receiptIndices as $receiptIndex) {
+            [, $mismatchIssueIndices] = $selectDelayedIssueGroups($receiptIndex, $issueIndicesForBase);
 
-            $receiptRow = $receiptState[$ri]['row'];
-            $receiptAt = $receiptRow['received_at'] ?? '';
-            $receiptTime = sync_datetime_timestamp($receiptAt);
-            $receiptDate = sync_datetime_date_key($receiptAt);
-
-            if ($receiptTime <= 0 || $receiptDate === '') {
-                continue;
-            }
-
-            $eligibleByDate = [];
-
-            foreach ($issueIndicesForBase as $ii) {
-                if ($issueState[$ii]['remaining'] <= 0.0005) {
-                    continue;
-                }
-
-                $issueAt = $issueState[$ii]['row']['IssuedAt'] ?? '';
-                $issueTime = sync_datetime_timestamp($issueAt);
-                $issueDate = sync_datetime_date_key($issueAt);
-
-                if ($issueTime <= 0 || $issueDate === '') {
-                    continue;
-                }
-
-                /* Delayed pass is cross-day only and can never look forward in time. */
-                if ($issueDate >= $receiptDate || $issueTime > $receiptTime) {
-                    continue;
-                }
-
-                if (($receiptTime - $issueTime) > ($delayedReceiveDays * 86400)) {
-                    continue;
-                }
-
-                $eligibleByDate[$issueDate][] = $ii;
-            }
-
-            if (empty($eligibleByDate)) {
-                continue;
-            }
-
-            /* YYYY-MM-DD sorts lexicographically, so the last key is the latest date. */
-            ksort($eligibleByDate, SORT_STRING);
-            $selectedIssueDate = array_key_last($eligibleByDate);
-            $selectedIssueIndices = $eligibleByDate[$selectedIssueDate] ?? [];
-
-            if (empty($selectedIssueIndices)) {
-                continue;
-            }
-
-            $sortIssueIndices($selectedIssueIndices);
-
-            $receiptLot = sync_normalize_lot($receiptRow['received_lot_no'] ?? '');
-            $exactIssueIndices = [];
-            $mismatchIssueIndices = [];
-
-            foreach ($selectedIssueIndices as $ii) {
-                $issueLot = sync_normalize_lot($issueState[$ii]['row']['LotNo'] ?? '');
-
-                if ($receiptLot !== '' && $issueLot !== '' && $issueLot === $receiptLot) {
-                    $exactIssueIndices[] = $ii;
-                } else {
-                    $mismatchIssueIndices[] = $ii;
-                }
-            }
-
-            /* 3A: exact lot on the selected latest issuance date. */
-            foreach ($exactIssueIndices as $ii) {
-                if ($receiptState[$ri]['remaining'] <= 0.0005) {
+            foreach ($mismatchIssueIndices as $issueIndex) {
+                if ($receiptState[$receiptIndex]['remaining'] <= 0.0005) {
                     break;
                 }
 
-                if ($issueState[$ii]['remaining'] <= 0.0005) {
+                if ($issueState[$issueIndex]['remaining'] <= 0.0005) {
                     continue;
                 }
 
-                $qty = min($issueState[$ii]['remaining'], $receiptState[$ri]['remaining']);
-
-                sync_add_daily_allocation_chunk(
-                    $lineAllocations,
-                    $transactionAllocations,
-                    $issueState,
-                    $receiptState,
-                    $ii,
-                    $ri,
-                    $qty,
-                    true,
-                    $delayedMatchPrefix
+                $qty = min(
+                    $issueState[$issueIndex]['remaining'],
+                    $receiptState[$receiptIndex]['remaining']
                 );
-            }
-
-            /* 3B: same selected date, different lot -> explicit LOT_MISMATCH. */
-            foreach ($mismatchIssueIndices as $ii) {
-                if ($receiptState[$ri]['remaining'] <= 0.0005) {
-                    break;
-                }
-
-                if ($issueState[$ii]['remaining'] <= 0.0005) {
-                    continue;
-                }
-
-                $qty = min($issueState[$ii]['remaining'], $receiptState[$ri]['remaining']);
 
                 sync_add_daily_allocation_chunk(
                     $lineAllocations,
                     $transactionAllocations,
                     $issueState,
                     $receiptState,
-                    $ii,
-                    $ri,
+                    $issueIndex,
+                    $receiptIndex,
                     $qty,
                     false,
                     $delayedMatchPrefix
@@ -3178,20 +3234,62 @@ function sync_replace_issue_transaction_receive_allocations($conn, array $issueR
         sync_exec($conn, "DELETE FROM dbo.WarehouseIssueTransactionReceiveAllocation WHERE TransactionID IN ({$placeholders})", array_values($idChunk));
     }
 
-    foreach ($allocations as $a) {
+    foreach (sync_merge_transaction_allocations_by_source($allocations) as $a) {
         if ((int)($a['transaction_id'] ?? 0) <= 0 || (float)($a['allocated_qty'] ?? 0) <= 0.0005) {
             continue;
         }
 
         sync_exec(
             $conn,
-            "INSERT INTO dbo.WarehouseIssueTransactionReceiveAllocation
-            (
+            "MERGE dbo.WarehouseIssueTransactionReceiveAllocation WITH (HOLDLOCK) AS T
+             USING (
+                SELECT
+                    ? AS TransactionID,
+                    ? AS RequestLineID,
+                    ? AS ITRDocEntry,
+                    ? AS ITRLineNum,
+                    ? AS ItemCode,
+                    ? AS IssuedLotNo,
+                    ? AS ReceivedLotNo,
+                    ? AS AllocatedQty,
+                    ? AS LotMatch,
+                    ? AS FTDocEntry,
+                    ? AS FTLineId,
+                    ? AS SourceDocumentKey,
+                    ? AS ReceivedAt,
+                    ? AS BarcodeUser,
+                    ? AS MatchMethod
+             ) AS S
+             ON T.TransactionID = S.TransactionID
+                AND T.FTDocEntry = S.FTDocEntry
+                AND T.FTLineId = S.FTLineId
+                AND ISNULL(T.ReceivedLotNo, N'') = ISNULL(S.ReceivedLotNo, N'')
+             WHEN MATCHED THEN UPDATE SET
+                RequestLineID = S.RequestLineID,
+                ITRDocEntry = S.ITRDocEntry,
+                ITRLineNum = S.ITRLineNum,
+                ItemCode = S.ItemCode,
+                IssuedLotNo = S.IssuedLotNo,
+                AllocatedQty = T.AllocatedQty + S.AllocatedQty,
+                LotMatch = S.LotMatch,
+                SourceDocumentKey = S.SourceDocumentKey,
+                ReceivedAt = S.ReceivedAt,
+                BarcodeUser = S.BarcodeUser,
+                MatchMethod = S.MatchMethod,
+                LastSyncedAt = GETDATE()
+             WHEN NOT MATCHED THEN INSERT
+             (
                 TransactionID, RequestLineID, ITRDocEntry, ITRLineNum, ItemCode,
                 IssuedLotNo, ReceivedLotNo, AllocatedQty, LotMatch,
                 FTDocEntry, FTLineId, SourceDocumentKey, ReceivedAt,
                 BarcodeUser, MatchMethod, LastSyncedAt
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE())",
+             )
+             VALUES (
+                S.TransactionID, S.RequestLineID, S.ITRDocEntry, S.ITRLineNum, S.ItemCode,
+                S.IssuedLotNo, S.ReceivedLotNo, S.AllocatedQty, S.LotMatch,
+                S.FTDocEntry, S.FTLineId, S.SourceDocumentKey, S.ReceivedAt,
+                S.BarcodeUser, S.MatchMethod, GETDATE()
+             );",
             [
                 (int)$a['transaction_id'],
                 $a['request_line_id'] ?? null,
@@ -3211,6 +3309,35 @@ function sync_replace_issue_transaction_receive_allocations($conn, array $issueR
             ]
         );
     }
+}
+
+function sync_merge_transaction_allocations_by_source(array $allocations): array
+{
+    $merged = [];
+
+    foreach ($allocations as $allocation) {
+        $transactionId = (int)($allocation['transaction_id'] ?? 0);
+        $sourceDocEntry = (int)($allocation['ft_doc_entry'] ?? 0);
+        $sourceLineId = (int)($allocation['ft_line_id'] ?? 0);
+        $sourceLot = strtoupper(trim((string)($allocation['received_lot_no'] ?? '')));
+        $qty = (float)($allocation['allocated_qty'] ?? 0);
+
+        if ($transactionId <= 0 || $sourceDocEntry <= 0 || $qty <= 0.0005) {
+            continue;
+        }
+
+        $key = implode('|', [$transactionId, $sourceDocEntry, $sourceLineId, $sourceLot]);
+
+        if (!isset($merged[$key])) {
+            $allocation['allocated_qty'] = $qty;
+            $merged[$key] = $allocation;
+            continue;
+        }
+
+        $merged[$key]['allocated_qty'] = (float)($merged[$key]['allocated_qty'] ?? 0) + $qty;
+    }
+
+    return array_values($merged);
 }
 
 
@@ -3302,20 +3429,60 @@ function sync_replace_issue_transaction_sap_posting_allocations($conn, array $is
         );
     }
 
-    foreach ($allocations as $a) {
+    foreach (sync_merge_transaction_allocations_by_source($allocations) as $a) {
         if ((int)($a['transaction_id'] ?? 0) <= 0 || (float)($a['allocated_qty'] ?? 0) <= 0.0005) {
             continue;
         }
 
         sync_exec(
             $conn,
-            "INSERT INTO dbo.WarehouseIssueTransactionSapPostingAllocation
-            (
+            "MERGE dbo.WarehouseIssueTransactionSapPostingAllocation WITH (HOLDLOCK) AS T
+             USING (
+                SELECT
+                    ? AS TransactionID,
+                    ? AS RequestLineID,
+                    ? AS ITRDocEntry,
+                    ? AS ITRLineNum,
+                    ? AS ItemCode,
+                    ? AS IssuedLotNo,
+                    ? AS SAPBatchNo,
+                    ? AS AllocatedQty,
+                    ? AS LotMatch,
+                    ? AS SAPTransferDocEntry,
+                    ? AS SAPTransferLineNum,
+                    ? AS SourceDocumentKey,
+                    ? AS PostedAt,
+                    ? AS MatchMethod
+             ) AS S
+             ON T.TransactionID = S.TransactionID
+                AND T.SAPTransferDocEntry = S.SAPTransferDocEntry
+                AND T.SAPTransferLineNum = S.SAPTransferLineNum
+                AND ISNULL(T.SAPBatchNo, N'') = ISNULL(S.SAPBatchNo, N'')
+             WHEN MATCHED THEN UPDATE SET
+                RequestLineID = S.RequestLineID,
+                ITRDocEntry = S.ITRDocEntry,
+                ITRLineNum = S.ITRLineNum,
+                ItemCode = S.ItemCode,
+                IssuedLotNo = S.IssuedLotNo,
+                AllocatedQty = T.AllocatedQty + S.AllocatedQty,
+                LotMatch = S.LotMatch,
+                SourceDocumentKey = S.SourceDocumentKey,
+                PostedAt = S.PostedAt,
+                MatchMethod = S.MatchMethod,
+                LastSyncedAt = GETDATE()
+             WHEN NOT MATCHED THEN INSERT
+             (
                 TransactionID, RequestLineID, ITRDocEntry, ITRLineNum, ItemCode,
                 IssuedLotNo, SAPBatchNo, AllocatedQty, LotMatch,
                 SAPTransferDocEntry, SAPTransferLineNum, SourceDocumentKey,
                 PostedAt, MatchMethod, LastSyncedAt
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE())",
+             )
+             VALUES (
+                S.TransactionID, S.RequestLineID, S.ITRDocEntry, S.ITRLineNum, S.ItemCode,
+                S.IssuedLotNo, S.SAPBatchNo, S.AllocatedQty, S.LotMatch,
+                S.SAPTransferDocEntry, S.SAPTransferLineNum, S.SourceDocumentKey,
+                S.PostedAt, S.MatchMethod, GETDATE()
+             );",
             [
                 (int)$a['transaction_id'],
                 $a['request_line_id'] ?? null,
