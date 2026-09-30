@@ -1507,6 +1507,13 @@ SELECT
     END AS ScannedAt,
 
     CASE
+        WHEN COALESCE(
+                R.BaseIssuedQty,
+                TRY_CONVERT(DECIMAL(18, 3), B.LineIssuedQty),
+                0
+             ) <= 0
+            THEN 'NOT ISSUED'
+
         /*
          * V6: the request-line cache is authoritative when present.  Do not
          * convert ScanPlus-only activity into RECEIVED and do not allow a

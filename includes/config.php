@@ -10,7 +10,7 @@ declare(strict_types=1);
 | on the server, or replace CHANGE_ME only in the private local config.php.
 */
 
-define('DB_HOST_WHP', '192.168.20.230');
+define('DB_HOST_WHP', '192.168.20.10');
 define('DB_USER_WHP', 'sa');
 define('DB_PASS_WHP', 'Nbc12#');
 define('DB_NAME_WHP', 'WHPOKAYOKE');
