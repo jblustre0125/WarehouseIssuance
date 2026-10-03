@@ -237,8 +237,6 @@ $itSourceSelect = '
             ' . $requestLineIdSelect . ',
             ' . $requestIdSelect . ',
             IT.IssuedByUsername,
-            IT.DeviceHostname,
-            IT.DeviceIPAddress,
             IT.IssuedAt,
             ' . $warehouseLotSelect;
 
@@ -283,8 +281,6 @@ $sql = '
         IT.ITRDocEntry,
         IT.ITRLineNum,
         IT.IssuedByUsername,
-        IT.DeviceHostname,
-        IT.DeviceIPAddress,
         IT.IssuedAt
     FROM ' . $itSourceSql . '
     OUTER APPLY (
@@ -734,8 +730,8 @@ function enrich_issuer_rows_with_request_line_receive_cache(&$rows, $conn)
         $row['ScanStatus'] = $mappedScanStatus !== ''
             ? $mappedScanStatus
             : (($issueQty > 0 && $allocatedQty + 0.0005 >= $issueQty)
-                ? 'SAP_POSTED'
-                : 'SAP_POSTED_PARTIAL');
+                ? 'SCANPLUS_RECEIVED'
+                : 'SCANPLUS_PARTIAL');
         $row['ReceivedLotNo'] = $mapped['ReceivedLotNo'] ?? '';
         $row['ReceivedQty'] = rtrim(rtrim(number_format($allocatedQty, 3, '.', ''), '0'), '.');
         $row['BarcodeUser'] = $mapped['BarcodeUser'] ?? '';
@@ -835,8 +831,8 @@ function issuer_report_cache_blocks_received(array $row): bool
     }
 
     return in_array($status, [
-        'SCANNED_NOT_POSTED',
         'GROUP_PARTIAL_POSTED',
+        'UNALLOCATED_SCANPLUS_SCAN',
         'UNALLOCATED_DAILY_SCAN',
         'UNVERIFIED_DATE',
         'PENDING_RECEIVE',
@@ -1078,59 +1074,48 @@ function issuer_report_receive_verification(array $row): array
 {
     $cacheStatus = issuer_report_cache_status($row);
 
-    if ($cacheStatus === 'SCANNED_NOT_POSTED') {
-        return [
-            'status' => 'SCANNED_NOT_POSTED',
-            'note' => 'ScanPlus quantity was FIFO-allocated to this request line, but no same-day SAP OWTR/WTR1 posting was found.'
-        ];
+    /*
+     * Warehouse receive verification is now based on the scheduled ScanPlus
+     * FT_INVT allocation written to WarehouseIssueRequestLineReceiveCache.
+     * SAP posting is diagnostic only and must not downgrade a valid ScanPlus
+     * receipt to pending.
+     */
+    if ($cacheStatus === 'NOT_ISSUED_REQUEST_LINE') {
+        if (!issuer_report_actual_issue_exists($row)) {
+            return [
+                'status' => 'NOT_ISSUED',
+                'note' => 'No issued quantity is available for receive verification.'
+            ];
+        }
+
+        $cacheStatus = '';
     }
 
-    if ($cacheStatus === 'GROUP_PARTIAL_POSTED') {
-        return [
-            'status' => 'GROUP_PARTIAL_POSTED',
-            'note' => 'A same-day SAP posting exists for this ITR line/item, but its FIFO quantity was allocated to other issuance transactions. No SAP quantity was copied onto this row.'
-        ];
-    }
-
-    if ($cacheStatus === 'UNALLOCATED_DAILY_SCAN') {
+    if (in_array($cacheStatus, ['UNALLOCATED_SCANPLUS_SCAN', 'UNALLOCATED_DAILY_SCAN'], true)) {
         return [
             'status' => 'PENDING_RECEIVE',
-            'note' => 'Same-day ScanPlus activity exists for this ITR line/item, but no valid receipt has been allocated to this issuance transaction.'
+            'note' => 'ScanPlus activity exists for this ITR line/item, but no receipt was safely allocated to this issuance transaction.'
         ];
     }
 
     if ($cacheStatus === 'UNVERIFIED_DATE') {
         return [
             'status' => 'UNVERIFIED_DATE',
-            'note' => 'The ScanPlus allocation has no valid receive date, so same-day SAP verification cannot be trusted.'
+            'note' => 'A ScanPlus allocation exists but the receive date is not valid enough for request-line verification.'
         ];
     }
 
-    if ($cacheStatus === 'NOT_ISSUED_REQUEST_LINE') {
-        /*
-         * The cache can still say NOT_ISSUED_REQUEST_LINE when it was synced
-         * before the issuer completed the transaction. Trust the actual
-         * issuance quantity / IssuedAt on the row first.
-         */
-        if (!issuer_report_actual_issue_exists($row)) {
-            return [
-                'status' => 'NOT_ISSUED',
-                'note' => 'No issued quantity is available for SAP posting verification.'
-            ];
-        }
-
-        /*
-         * This is a real issued row. Ignore the stale cache status and allow
-         * the normal verification flow below to resolve it as PENDING RECEIVE,
-         * SCANNED - NOT POSTED, PARTIAL, MATCHED, etc.
-         */
-        $cacheStatus = '';
+    if (in_array($cacheStatus, ['PENDING_RECEIVE', 'NOT_RECEIVED_IN_SCANPLUS'], true)) {
+        return [
+            'status' => 'PENDING_RECEIVE',
+            'note' => 'No matching ScanPlus FT_INVT receipt has been allocated to this issuance transaction yet.'
+        ];
     }
 
     if (!issuer_row_is_received($row)) {
         return [
             'status' => 'PENDING_RECEIVE',
-            'note' => 'No matching SAP Inventory Transfer posting has been allocated to this issuance transaction yet.'
+            'note' => 'No positive ScanPlus received quantity has been allocated to this issuance transaction yet.'
         ];
     }
 
@@ -1142,12 +1127,9 @@ function issuer_report_receive_verification(array $row): array
     if ($issuedQty === null || $receivedQty === null || $receivedQty <= $tolerance) {
         return [
             'status' => 'PENDING_RECEIVE',
-            'note' => 'No requestor receipt has been allocated to this issuance transaction yet.'
+            'note' => 'No positive ScanPlus received quantity has been allocated to this issuance transaction yet.'
         ];
     }
-
-    $qtyMatches = abs($issuedQty - $receivedQty) <= $tolerance;
-    $isPartial = $receivedQty > $tolerance && $receivedQty < ($issuedQty - $tolerance);
 
     $receivedLot = trim((string)($row['DisplayReceivedLotNo'] ?? ''));
     $issuedLots = array_filter([
@@ -1159,15 +1141,22 @@ function issuer_report_receive_verification(array $row): array
 
     $hasComparableLot = $receivedLot !== '' && !empty($issuedLots);
     $lotMatches = $hasComparableLot && issuer_report_lot_matches_any($receivedLot, $issuedLots);
+    $qtyMatches = abs($issuedQty - $receivedQty) <= $tolerance;
+    $isPartial = $receivedQty > $tolerance && $receivedQty < ($issuedQty - $tolerance);
 
-    if ($isPartial) {
-        if ($cacheStatus === 'PARTIAL_POSTED_LOT_MISMATCH') {
-            $status = 'PARTIAL_POSTED_LOT_MISMATCH';
-        } else {
-            $status = (!$hasComparableLot || $lotMatches)
-                ? ($cacheStatus === 'PARTIAL_POSTED' ? 'PARTIAL_POSTED' : 'PARTIAL_RECEIVED')
-                : 'LOT_AND_QTY_VARIANCE';
-        }
+    /* Prefer the explicit status written by the ScanPlus sync. */
+    if ($cacheStatus === 'LOT_MISMATCH') {
+        $status = 'LOT_MISMATCH';
+    } elseif ($cacheStatus === 'PARTIAL_LOT_MISMATCH') {
+        $status = 'PARTIAL_LOT_MISMATCH';
+    } elseif ($cacheStatus === 'PARTIAL') {
+        $status = 'PARTIAL';
+    } elseif ($cacheStatus === 'MATCHED') {
+        $status = 'MATCHED';
+    } elseif ($isPartial) {
+        $status = (!$hasComparableLot || $lotMatches)
+            ? 'PARTIAL'
+            : 'PARTIAL_LOT_MISMATCH';
     } elseif ($qtyMatches && $lotMatches) {
         $status = 'MATCHED';
     } elseif ($qtyMatches && !$hasComparableLot) {
@@ -1183,7 +1172,7 @@ function issuer_report_receive_verification(array $row): array
     $issuedLotText = implode(' / ', $issuedLots);
     $noteParts = [
         'Issued qty: ' . report_cell($row['Quantity'] ?? ''),
-        'Allocated received qty: ' . report_cell($row['DisplayReceivedQty'] ?? '')
+        'ScanPlus received qty: ' . report_cell($row['DisplayReceivedQty'] ?? '')
     ];
 
     if ($issuedLotText !== '' || $receivedLot !== '') {
@@ -1204,10 +1193,13 @@ function issuer_report_verification_label($status): string
     $labels = [
         'MATCHED' => 'MATCHED',
         'LOT_MISMATCH' => 'LOT MISMATCH',
-        'PARTIAL_POSTED' => 'PARTIAL POSTED',
-        'PARTIAL_POSTED_LOT_MISMATCH' => 'PARTIAL + LOT MISMATCH',
-        'GROUP_PARTIAL_POSTED' => 'PARTIAL SAP - ROW PENDING',
-        'SCANNED_NOT_POSTED' => 'SCANNED - NOT POSTED',
+        'PARTIAL' => 'PARTIAL',
+        'PARTIAL_LOT_MISMATCH' => 'PARTIAL + LOT MISMATCH',
+        'PARTIAL_POSTED' => 'PARTIAL', // legacy cache compatibility
+        'PARTIAL_POSTED_LOT_MISMATCH' => 'PARTIAL + LOT MISMATCH', // legacy
+        'GROUP_PARTIAL_POSTED' => 'PENDING RECEIVE', // legacy
+        'SCANNED_NOT_POSTED' => 'RECEIVED - SAP PENDING', // legacy
+        'UNALLOCATED_SCANPLUS_SCAN' => 'PENDING RECEIVE',
         'UNALLOCATED_DAILY_SCAN' => 'PENDING RECEIVE',
         'UNVERIFIED_DATE' => 'UNVERIFIED DATE',
         'NOT_ISSUED' => 'NOT ISSUED',
@@ -1223,8 +1215,8 @@ function issuer_report_verification_label($status): string
     return $labels[$status] ?? str_replace('_', ' ', $status);
 }
 
-// Show received values only when the request-line cache confirms an SAP posting.
-// A ScanPlus-only staging scan is intentionally not displayed as received.
+// Show received values when the request-line cache confirms a ScanPlus FT_INVT allocation.
+// SAP posting is retained only as a separate audit/diagnostic source.
 foreach ($rows as &$issuerReportRow) {
     if (issuer_report_scanplus_before_issue($issuerReportRow)) {
         $issuerReportRow['ScanStatus'] = '';
@@ -1306,8 +1298,6 @@ if (issuer_report_has_column($conn, 'IssuerNoStockReturns', 'ReturnID')) {
             R.StockQty,
             R.ReturnReason,
             R.ReturnedByUsername,
-            R.DeviceHostname,
-            R.DeviceIPAddress,
             R.ReturnedAt
          FROM IssuerNoStockReturns R
          WHERE {$noStockWhereSql}
@@ -1347,8 +1337,6 @@ $columns = [
     'Issue Status',
     'Received By',
     'Received At',
-    'Hostname',
-    'IP Address',
     'Issued At'
 ];
 
@@ -1366,8 +1354,6 @@ $noStockColumns = [
     'Returned By',
     'Issue Status',
     'Reason',
-    'Hostname',
-    'IP Address',
     'Returned At'
 ];
 
@@ -1397,86 +1383,88 @@ if ($export) {
     header('Pragma: no-cache');
     header('Expires: 0');
     echo '<?xml version="1.0"?>' . "\n";
-    echo '<?mso-application progid="Excel.Sheet"?>' . "\n";
-    ?>
-<Workbook
-    xmlns="urn:schemas-microsoft-com:office:spreadsheet"
-    xmlns:o="urn:schemas-microsoft-com:office:office"
-    xmlns:x="urn:schemas-microsoft-com:office:excel"
-    xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
-    xmlns:html="http://www.w3.org/TR/REC-html40">
-    <Styles>
-        <Style ss:ID="Text"><Alignment ss:Vertical="Center"/><NumberFormat ss:Format="@"/></Style>
-        <Style ss:ID="Header"><Font ss:Bold="1"/><Interior ss:Color="#D9EAF7" ss:Pattern="Solid"/><NumberFormat ss:Format="@"/></Style>
-    </Styles>
-    <Worksheet ss:Name="Issuer Scans">
-        <Table>
-            <?= excel_xml_row($columns, 'Header') . "\n" ?>
-            <?php if (empty($rows)): ?>
-                <?= excel_xml_row(['No records found.']) . "\n" ?>
-            <?php else: ?>
-                <?php foreach ($rows as $r): ?>
-                    <?= excel_xml_row([
-                        $r['RequestNo'] ?? '',
-                        $r['ItemCode'] ?? '',
-                        $r['PartName'] ?? '',
-                        $r['RequestedQty'] ?? '',
-                        $r['Quantity'] ?? '',
-                        $r['DisplayReceivedQty'] ?? '',
-                        $r['QtyVariance'] ?? '',
-                        $r['DisplayReceivedLotNo'] ?? '',
-                        $r['ReceiveVerificationLabel'] ?? ($r['ReceiveVerification'] ?? ''),
-                        $r['LotNo'] ?? '',
-                        $r['WarehouseLotNo'] ?? '',
-                        $r['ITRNumber'] ?? '',
-                        $r['IssuedByUsername'] ?? '',
-                        $r['IssueStatus'] ?? 'ISSUED',
-                        $r['DisplayBarcodeUser'] ?? '',
-                        $r['DisplayReceivedAt'] ?? '',
-                        $r['DeviceHostname'] ?? '',
-                        $r['DeviceIPAddress'] ?? '',
-                        $r['IssuedAt'] ?? ''
-                    ]) . "\n" ?>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </Table>
-    </Worksheet>
-    <Worksheet ss:Name="No Stocks Item">
-        <Table>
-            <?= excel_xml_row($noStockColumns, 'Header') . "\n" ?>
-            <?php if (empty($noStockRows)): ?>
-                <?= excel_xml_row(['No no-stock items found.']) . "\n" ?>
-            <?php else: ?>
-                <?php foreach ($noStockRows as $r): ?>
-                    <?= excel_xml_row([
-                        $r['RequestNo'] ?? '',
-                        $r['ItemCode'] ?? '',
-                        $r['PartName'] ?? '',
-                        $r['RequestedQty'] ?? '',
-                        $r['IssuedQty'] ?? '',
-                        $r['RemainingQty'] ?? '',
-                        $r['StockQty'] ?? '',
-                        $r['StockWhsCode'] ?? '',
-                        $r['ITRNumber'] ?? '',
-                        $r['SAP_IT_LineNum'] ?? '',
-                        $r['ReturnedByUsername'] ?? '',
-                        'RETURNED_NO_STOCK',
-                        $r['ReturnReason'] ?? '',
-                        $r['DeviceHostname'] ?? '',
-                        $r['DeviceIPAddress'] ?? '',
-                        $r['ReturnedAt'] ?? ''
-                    ]) . "\n" ?>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        </Table>
-    </Worksheet>
-</Workbook>
-    <?php
+    echo '
+<?mso-application progid="Excel.Sheet"?>' . "\n";
+?>
+    <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office"
+        xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+        xmlns:html="http://www.w3.org/TR/REC-html40">
+        <?php
+        /*
+     * Emit SpreadsheetML style tags from PHP strings instead of writing literal
+     * <Style> tags in the PHP/HTML source. VS Code treats XML <Style> tags as
+     * HTML <style> elements and incorrectly parses their contents as CSS.
+     */
+        echo '<Styles>' . "\n";
+        echo '  <Style ss:ID="Text"><Alignment ss:Vertical="Center"/><NumberFormat ss:Format="@"/></Style>' . "\n";
+        echo '  <Style ss:ID="Header"><Font ss:Bold="1"/><Interior ss:Color="#D9EAF7" ss:Pattern="Solid"/><NumberFormat ss:Format="@"/></Style>' . "\n";
+        echo '</Styles>' . "\n";
+        ?>
+        <Worksheet ss:Name="Issuer Scans">
+            <Table>
+                <?= excel_xml_row($columns, 'Header') . "\n" ?>
+                <?php if (empty($rows)): ?>
+                    <?= excel_xml_row(['No records found.']) . "\n" ?>
+                <?php else: ?>
+                    <?php foreach ($rows as $r): ?>
+                        <?= excel_xml_row([
+                            $r['RequestNo'] ?? '',
+                            $r['ItemCode'] ?? '',
+                            $r['PartName'] ?? '',
+                            $r['RequestedQty'] ?? '',
+                            $r['Quantity'] ?? '',
+                            $r['DisplayReceivedQty'] ?? '',
+                            $r['QtyVariance'] ?? '',
+                            $r['DisplayReceivedLotNo'] ?? '',
+                            $r['ReceiveVerificationLabel'] ?? ($r['ReceiveVerification'] ?? ''),
+                            $r['LotNo'] ?? '',
+                            $r['WarehouseLotNo'] ?? '',
+                            $r['ITRNumber'] ?? '',
+                            $r['IssuedByUsername'] ?? '',
+                            $r['IssueStatus'] ?? 'ISSUED',
+                            $r['DisplayBarcodeUser'] ?? '',
+                            $r['DisplayReceivedAt'] ?? '',
+                            $r['IssuedAt'] ?? ''
+                        ]) . "\n" ?>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </Table>
+        </Worksheet>
+        <Worksheet ss:Name="No Stocks Item">
+            <Table>
+                <?= excel_xml_row($noStockColumns, 'Header') . "\n" ?>
+                <?php if (empty($noStockRows)): ?>
+                    <?= excel_xml_row(['No no-stock items found.']) . "\n" ?>
+                <?php else: ?>
+                    <?php foreach ($noStockRows as $r): ?>
+                        <?= excel_xml_row([
+                            $r['RequestNo'] ?? '',
+                            $r['ItemCode'] ?? '',
+                            $r['PartName'] ?? '',
+                            $r['RequestedQty'] ?? '',
+                            $r['IssuedQty'] ?? '',
+                            $r['RemainingQty'] ?? '',
+                            $r['StockQty'] ?? '',
+                            $r['StockWhsCode'] ?? '',
+                            $r['ITRNumber'] ?? '',
+                            $r['SAP_IT_LineNum'] ?? '',
+                            $r['ReturnedByUsername'] ?? '',
+                            'RETURNED_NO_STOCK',
+                            $r['ReturnReason'] ?? '',
+                            $r['ReturnedAt'] ?? ''
+                        ]) . "\n" ?>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </Table>
+        </Worksheet>
+    </Workbook>
+<?php
     exit;
 }
 ?>
 <!doctype html>
 <html lang="en">
+
 <head>
     <title>Issuer Scan Report</title>
     <meta charset="utf-8">
@@ -1489,9 +1477,6 @@ if ($export) {
     <style>
         :root {
             --sidebar-width: 250px;
-            --sidebar-bg: #111827;
-            --sidebar-hover: #1f2937;
-            --sidebar-active: #2563eb;
             --body-bg: #f4f7fb;
             --border-soft: #e5eaf2;
             --text-dark: #1f2937;
@@ -1511,204 +1496,66 @@ if ($export) {
             min-height: 100vh;
         }
 
-        .sidebar {
-            width: var(--sidebar-width);
-            background: var(--sidebar-bg);
-            color: #ffffff;
-            position: fixed;
-            inset: 0 auto 0 0;
-            z-index: 1030;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 8px 0 30px rgba(15, 23, 42, 0.12);
-        }
-
-        .sidebar-brand {
-            padding: 20px 18px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .sidebar-logo {
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            background: #ffffff;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-        }
-
-        .sidebar-logo img {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-            display: block;
-        }
-
-        .sidebar-title {
-            font-size: 15px;
-            font-weight: 800;
-            line-height: 1.2;
-        }
-
-        .sidebar-subtitle {
-            font-size: 12px;
-            color: #9ca3af;
-            margin-top: 2px;
-        }
-
-        .sidebar-menu {
-            padding: 14px 10px;
-            flex: 1;
-            overflow-y: auto;
-        }
-
-        .sidebar-section {
-            color: #6b7280;
-            font-size: 11px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .06em;
-            padding: 12px 12px 6px;
-        }
-
-        .sidebar-link {
-            color: #d1d5db;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 12px;
-            border-radius: 11px;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 5px;
-        }
-
-        .sidebar-link:hover {
-            background: var(--sidebar-hover);
-            color: #ffffff;
-        }
-
-        .sidebar-link.active {
-            background: var(--sidebar-active);
-            color: #ffffff;
-        }
-
-        .sidebar-icon {
-            width: 22px;
-            text-align: center;
-            flex-shrink: 0;
-        }
-
-        .sidebar-footer {
-            padding: 14px 16px;
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
-        }
-
-        .user-box {
-            background: rgba(255, 255, 255, 0.06);
-            border-radius: 14px;
-            padding: 11px;
-            margin-bottom: 10px;
-        }
-
-        .user-name {
-            font-size: 14px;
-            font-weight: 700;
-            color: #ffffff;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .user-role {
-            font-size: 12px;
-            color: #9ca3af;
-            text-transform: uppercase;
-        }
-
-        .logout-link {
-            display: block;
-            text-align: center;
-            color: #fecaca;
-            text-decoration: none;
-            font-size: 13px;
-            font-weight: 700;
-            padding: 9px 10px;
-            border-radius: 10px;
-        }
-
-        .logout-link:hover {
-            background: rgba(239, 68, 68, 0.14);
-            color: #ffffff;
-        }
-
         .main-content {
-            margin-left: var(--sidebar-width);
             width: calc(100% - var(--sidebar-width));
-            padding: 18px;
+            margin-left: var(--sidebar-width);
+            padding: 20px;
             overflow-x: hidden;
         }
 
-        .mobile-topbar {
-            display: none;
-        }
-
+        .mobile-topbar,
         .sidebar-backdrop {
             display: none;
         }
 
         .page-header {
             display: flex;
+            align-items: flex-start;
             justify-content: space-between;
-            align-items: start;
             gap: 16px;
             margin-bottom: 18px;
         }
 
         .page-title {
+            margin: 0 0 4px;
             color: var(--text-dark);
+            font-size: 24px;
             font-weight: 800;
-            margin-bottom: 4px;
-            letter-spacing: -0.03em;
+            letter-spacing: -0.02em;
         }
 
         .page-subtitle {
+            max-width: 940px;
             color: var(--text-muted);
             font-size: 14px;
+            line-height: 1.5;
         }
 
         .content-card {
-            background: #ffffff;
+            overflow: hidden;
+            background: #fff;
             border: 1px solid var(--border-soft);
             border-radius: 16px;
-            box-shadow: 0 12px 35px rgba(15, 23, 42, 0.06);
-            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, .06);
         }
 
         .content-card-header {
             padding: 16px 18px;
+            background: #fff;
             border-bottom: 1px solid var(--border-soft);
-            background: #ffffff;
         }
 
         .content-card-title {
+            margin: 0;
+            color: var(--text-dark);
             font-size: 16px;
             font-weight: 800;
-            color: var(--text-dark);
-            margin: 0;
         }
 
         .content-card-subtitle {
-            font-size: 13px;
-            color: var(--text-muted);
             margin-top: 3px;
+            color: var(--text-muted);
+            font-size: 13px;
         }
 
         .content-card-body {
@@ -1716,31 +1563,33 @@ if ($export) {
         }
 
         .filter-box {
-            background: #f8fafc;
-            border: 1px solid #e5eaf2;
-            border-radius: 14px;
             padding: 14px;
             margin-bottom: 14px;
+            background: #f8fafc;
+            border: 1px solid var(--border-soft);
+            border-radius: 14px;
         }
 
         .form-label {
+            margin-bottom: 6px;
+            color: #374151;
             font-size: 13px;
             font-weight: 700;
-            color: #374151;
-            margin-bottom: 6px;
         }
 
-        .form-control {
-            border-radius: 11px;
-            border: 1px solid #d9e2ef;
+        .form-control,
+        .form-select {
             min-height: 42px;
+            background: #fff;
+            border: 1px solid #d9e2ef;
+            border-radius: 10px;
             font-size: 14px;
-            background-color: #ffffff;
         }
 
-        .form-control:focus {
+        .form-control:focus,
+        .form-select:focus {
             border-color: #0d6efd;
-            box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.12);
+            box-shadow: 0 0 0 3px rgba(13, 110, 253, .12);
         }
 
         .btn {
@@ -1750,50 +1599,92 @@ if ($export) {
 
         .report-table-wrap {
             max-height: 68vh;
-            overflow-y: auto;
-            overflow-x: auto;
+            overflow: auto;
+            background: #fff;
             border: 1px solid var(--border-soft);
             border-radius: 14px;
-            background: #ffffff;
         }
 
         .report-table {
             width: 100%;
-            min-width: 1720px;
-            table-layout: fixed;
-            font-size: 10px;
+            min-width: 1560px;
             margin-bottom: 0;
+            table-layout: auto;
+            font-size: 11px;
         }
 
         .report-table thead th {
             position: sticky;
             top: 0;
             z-index: 5;
-            background: #f8fafc;
-            color: #374151;
-            font-size: 8px;
+            padding: 9px 7px;
+            background: #f1f5f9;
+            color: #334155;
+            border-bottom: 1px solid #cbd5e1;
+            font-size: 9px;
             font-weight: 800;
             text-transform: uppercase;
-            border-bottom: 1px solid #d8e0eb;
-            padding: 8px 5px;
             white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
 
         .report-table td {
-            padding: 7px 5px;
-            vertical-align: middle;
+            padding: 8px 7px;
             color: #111827;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            vertical-align: middle;
+            white-space: nowrap;
         }
 
         .report-table tbody tr:hover {
-            background: #eef6ff;
+            background: #f8fbff;
         }
 
-        .col-trace { width: 9%; white-space: nowrap; }
+        .col-trace {
+            min-width: 125px;
+        }
+
+        .col-item {
+            min-width: 115px;
+        }
+
+        .col-part {
+            min-width: 220px;
+            max-width: 300px;
+            white-space: normal !important;
+            line-height: 1.3;
+        }
+
+        .col-qty,
+        .col-variance,
+        .col-stock {
+            min-width: 80px;
+            text-align: right;
+        }
+
+        .col-lot,
+        .col-received-lot,
+        .col-wh-lot {
+            min-width: 115px;
+        }
+
+        .col-itr {
+            min-width: 100px;
+        }
+
+        .col-user {
+            min-width: 115px;
+        }
+
+        .col-status {
+            min-width: 110px;
+        }
+
+        .col-verification {
+            min-width: 135px;
+        }
+
+        .col-date {
+            min-width: 155px;
+        }
 
         .request-verify-link {
             border: 0;
@@ -1812,37 +1703,99 @@ if ($export) {
             color: #0a58ca;
         }
 
-        .verify-summary {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
+        .empty-row {
+            padding: 32px !important;
+            color: #6b7280 !important;
+            text-align: center;
         }
 
-        .verify-summary .status-pill {
-            max-width: none;
-            font-size: 11px;
-            padding: 5px 9px;
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            max-width: 180px;
+            padding: 4px 8px;
+            overflow: hidden;
+            border-radius: 999px;
+            font-size: 9px;
+            font-weight: 800;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .status-open,
+        .status-pending,
+        .status-pending_receive,
+        .status-unallocated_scanplus_scan,
+        .status-unallocated_daily_scan,
+        .status-unverified_date,
+        .status-returned_no_stock {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-issued {
+            background: #ffedd5;
+            color: #9a3412;
+        }
+
+        .status-scanplus_partial,
+        .status-partial,
+        .status-partial_received,
+        .status-partial_posted {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .status-scanplus_received,
+        .status-received,
+        .status-closed,
+        .status-completed,
+        .status-matched,
+        .status-verified {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .status-cancelled,
+        .status-rejected,
+        .status-lot_mismatch,
+        .status-partial_lot_mismatch,
+        .status-partial_posted_lot_mismatch,
+        .status-qty_variance,
+        .status-lot_and_qty_variance {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-scanned_not_posted,
+        .status-group_partial_posted {
+            background: #f3f4f6;
+            color: #4b5563;
+        }
+
+        .verify-summary,
+        .verify-overall {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
         }
 
         .verify-overall {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
             margin-bottom: 12px;
         }
 
+        .verify-summary .status-pill,
         .verify-overall .status-pill {
             max-width: none;
-            font-size: 12px;
-            padding: 6px 10px;
         }
 
         .verify-table-wrap {
             max-height: 58vh;
             overflow: auto;
             border: 1px solid #d8e0eb;
-            border-radius: 8px;
+            border-radius: 10px;
         }
 
         .verify-table {
@@ -1858,129 +1811,30 @@ if ($export) {
             white-space: nowrap;
         }
 
+        .verify-table td {
+            vertical-align: middle;
+        }
+
         .source-transfer-cell {
-            min-width: 180px;
+            min-width: 220px;
+            max-width: 420px;
             white-space: normal;
+            line-height: 1.35;
         }
-        .col-item { width: 8%; white-space: nowrap; }
-        .col-part { width: 14%; white-space: normal; line-height: 1.25; }
-        .col-qty { width: 5%; text-align: right; white-space: nowrap; }
-        .col-variance { width: 5%; text-align: right; white-space: nowrap; }
-        .col-stock { width: 6%; text-align: right; white-space: nowrap; }
-        .col-lot { width: 7%; white-space: nowrap; }
-        .col-received-lot { width: 7%; white-space: nowrap; }
-        .col-wh-lot { width: 7%; white-space: nowrap; }
-        .col-itr { width: 6%; white-space: nowrap; }
-        .col-user { width: 8%; white-space: nowrap; }
-        .col-status { width: 7%; white-space: nowrap; }
-        .col-verification { width: 9%; white-space: nowrap; }
-        .col-host { width: 8%; white-space: nowrap; }
-        .col-ip { width: 8%; white-space: nowrap; }
-        .col-date { width: 10%; white-space: nowrap; }
 
-        .empty-row {
-            padding: 34px !important;
+        .pagination {
+            margin-bottom: 0;
+        }
+
+        .page-link {
+            min-width: 38px;
             text-align: center;
-            color: #6b7280 !important;
-        }
-
-        .status-pill {
-            display: inline-flex;
-            max-width: 100%;
-            align-items: center;
-            justify-content: center;
-            padding: 3px 6px;
-            border-radius: 999px;
-            font-size: 8px;
-            font-weight: 800;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .status-open,
-        .status-pending,
-        .status-pending_receive,
-        .status-scanned_not_posted,
-        .status-group_partial_posted,
-        .status-unallocated_daily_scan,
-        .status-unverified_date,
-        .status-partial_posted,
-        .status-qty_match,
-        .status-returned_no_stock {
-            background: #fef3c7;
-            color: #92400e;
-        }
-
-        /* Issued but not yet received = amber/orange */
-        .status-issued {
-            background: #ffedd5;
-            color: #9a3412;
-        }
-
-        /* Partial receipt = blue */
-        .status-scanplus_partial,
-        .status-sap_partial,
-        .status-partial_received {
-            background: #dbeafe;
-            color: #1d4ed8;
-        }
-
-        /* Successfully received / completed = green */
-        .status-scanplus_received,
-        .status-sap_received,
-        .status-received,
-        .status-closed,
-        .status-completed,
-        .status-matched,
-        .status-verified {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        .status-cancelled,
-        .status-rejected,
-        .status-lot_mismatch,
-        .status-partial_posted_lot_mismatch,
-        .status-qty_variance,
-        .status-lot_and_qty_variance {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        @media (max-width: 1300px) {
-            .report-table {
-                font-size: 10px;
-            }
-
-            .report-table thead th {
-                font-size: 8px;
-                padding: 7px 4px;
-            }
-
-            .report-table td {
-                padding: 6px 4px;
-            }
-
-            .status-pill {
-                font-size: 7.5px;
-                padding: 3px 5px;
-            }
         }
 
         @media (max-width: 900px) {
-            .sidebar {
-                transform: translateX(-100%);
-                transition: transform 0.2s ease;
-            }
-
-            .sidebar.show {
-                transform: translateX(0);
-            }
-
             .main-content {
-                margin-left: 0;
                 width: 100%;
+                margin-left: 0;
                 padding: 14px;
             }
 
@@ -1988,20 +1842,19 @@ if ($export) {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                background: #ffffff;
-                border: 1px solid var(--border-soft);
-                border-radius: 14px;
                 padding: 12px 14px;
                 margin-bottom: 14px;
-                box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+                background: #fff;
+                border: 1px solid var(--border-soft);
+                border-radius: 12px;
             }
 
             .sidebar-backdrop {
-                display: none;
                 position: fixed;
                 inset: 0;
-                background: rgba(15, 23, 42, 0.45);
                 z-index: 1029;
+                display: none;
+                background: rgba(15, 23, 42, .45);
             }
 
             .sidebar-backdrop.show {
@@ -2012,744 +1865,678 @@ if ($export) {
                 flex-direction: column;
             }
 
-            .report-table-wrap {
-                overflow: auto;
-            }
-
             .report-table {
-                min-width: 1750px;
-                table-layout: auto;
-                font-size: 12px;
+                min-width: 1560px;
+                font-size: 11px;
             }
 
             .report-table thead th {
-                font-size: 10px;
-                padding: 8px 6px;
-            }
-
-            .report-table td {
-                padding: 7px 6px;
-                white-space: nowrap;
-            }
-
-            .col-trace,
-            .col-item,
-            .col-part,
-            .col-qty,
-            .col-stock,
-            .col-lot,
-            .col-wh-lot,
-            .col-itr,
-            .col-user,
-            .col-status,
-            .col-host,
-            .col-ip,
-            .col-date {
-                width: auto;
-                min-width: 100px;
-            }
-
-            .col-part {
-                min-width: 240px;
-            }
-
-            .col-lot,
-            .col-wh-lot {
-                min-width: 150px;
-            }
-
-            .col-date {
-                min-width: 160px;
+                font-size: 9px;
             }
         }
     </style>
 </head>
 
 <body>
-<header class="sap-shellbar">
-    <button class="shell-menu-btn" type="button" id="sidebarToggle" aria-label="Open navigation">&#9776;</button>
-    <div class="shell-logo" aria-hidden="true">
-        <img src="image/nbc-bg-dashboard.jpg" alt="NBC Logo">
-    </div>
-    <div class="shell-title-wrap">
-        <div class="shell-title">NBC Rawmats Traceability</div>
-        <div class="shell-subtitle">Issuer reporting</div>
-    </div>
-</header>
-
-<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
-
-<div class="app-layout">
-
-    <?php app_sidebar('issuer_report'); ?>
-
-    <main class="main-content">
-
-        <div class="mobile-topbar">
-            <strong>Issuer Scan Report</strong>
-            <button class="btn btn-sm btn-primary" type="button" id="sidebarToggle">
-                Menu
-            </button>
+    <header class="sap-shellbar">
+        <button class="shell-menu-btn" type="button" id="sidebarToggle" aria-label="Open navigation">&#9776;</button>
+        <div class="shell-logo" aria-hidden="true">
+            <img src="image/nbc-bg-dashboard.jpg" alt="NBC Logo">
         </div>
+        <div class="shell-title-wrap">
+            <div class="shell-title">NBC Rawmats Traceability</div>
+            <div class="shell-subtitle">Issuer reporting</div>
+        </div>
+    </header>
 
-        <div class="page-header">
-            <div>
-                <h4 class="page-title">Issuer Scan Report</h4>
-                <div class="page-subtitle">
-                    Issued transaction history by date range. Issue status remains ISSUED; receiver details are shown separately when available.
-                </div>
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <div class="app-layout">
+
+        <?php app_sidebar('issuer_report'); ?>
+
+        <main class="main-content">
+
+            <div class="mobile-topbar">
+                <strong>Issuer Scan Report</strong>
+                <button class="btn btn-sm btn-primary" type="button" id="sidebarToggle">
+                    Menu
+                </button>
             </div>
 
-            <span class="badge bg-primary rounded-pill px-3 py-2">
-                <?= number_format($totalRows) ?> line(s)
-            </span>
-        </div>
-
-        <div class="content-card">
-            <div class="content-card-header">
-                <h5 class="content-card-title">Report Filters</h5>
-                <div class="content-card-subtitle">
-                    Filter issued transactions and export the result to Excel.
-                </div>
-            </div>
-
-            <div class="content-card-body">
-
-                <form class="filter-box" method="get">
-                    <div class="row g-2 align-items-end">
-                        <div class="col-sm-6 col-md-3">
-                            <label class="form-label" for="date_from">Date From</label>
-                            <input
-                                class="form-control"
-                                type="date"
-                                id="date_from"
-                                name="date_from"
-                                value="<?= h($dateFrom) ?>"
-                            >
-                        </div>
-
-                        <div class="col-sm-6 col-md-3">
-                            <label class="form-label" for="date_to">Date To</label>
-                            <input
-                                class="form-control"
-                                type="date"
-                                id="date_to"
-                                name="date_to"
-                                value="<?= h($dateTo) ?>"
-                            >
-                        </div>
-
-                        <div class="col-sm-6 col-md-3 d-grid">
-                            <button class="btn btn-primary" type="submit">
-                                Filter
-                            </button>
-                        </div>
-
-                        <div class="col-sm-6 col-md-3 d-grid">
-                            <a class="btn btn-success" href="<?= h(issuer_scan_report_url($baseQuery + ['export' => 'excel'])) ?>">
-                                Export Excel
-                            </a>
-                        </div>
+            <div class="page-header">
+                <div>
+                    <h4 class="page-title">Issuer Scan Report</h4>
+                    <div class="page-subtitle">
+                        Issued transaction history with ScanPlus staging verification. Receiving status is based on
+                        FT_INVT allocation; SAP posting remains an audit check.
                     </div>
+                </div>
 
-                    <div class="row g-2 mt-2">
-                        <div class="col-12">
-                            <label class="form-label" for="searchReport">Search Item / Report</label>
-                            <input
-                                class="form-control form-control-sm"
-                                type="search"
-                                id="searchReport"
-                                name="q"
-                                value="<?= h($q) ?>"
-                                placeholder="Search SAP code, part name, GRPO lot, WH lot, ITR, issuer..."
-                            >
-                            <div class="form-text">
-                                Use SAP ItemCode or Part Name to search items. Press Enter or click Filter to search all records.
+                <span class="badge bg-primary rounded-pill px-3 py-2">
+                    <?= number_format($totalRows) ?> line(s)
+                </span>
+            </div>
+
+            <div class="content-card">
+                <div class="content-card-header">
+                    <h5 class="content-card-title">Report Filters</h5>
+                    <div class="content-card-subtitle">
+                        Filter issued transactions and export the result to Excel.
+                    </div>
+                </div>
+
+                <div class="content-card-body">
+
+                    <form class="filter-box" method="get">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-sm-6 col-md-3">
+                                <label class="form-label" for="date_from">Date From</label>
+                                <input class="form-control" type="date" id="date_from" name="date_from"
+                                    value="<?= h($dateFrom) ?>">
+                            </div>
+
+                            <div class="col-sm-6 col-md-3">
+                                <label class="form-label" for="date_to">Date To</label>
+                                <input class="form-control" type="date" id="date_to" name="date_to"
+                                    value="<?= h($dateTo) ?>">
+                            </div>
+
+                            <div class="col-sm-6 col-md-3 d-grid">
+                                <button class="btn btn-primary" type="submit">
+                                    Filter
+                                </button>
+                            </div>
+
+                            <div class="col-sm-6 col-md-3 d-grid">
+                                <a class="btn btn-success"
+                                    href="<?= h(issuer_scan_report_url($baseQuery + ['export' => 'excel'])) ?>">
+                                    Export Excel
+                                </a>
                             </div>
                         </div>
-                    </div>
-                </form>
 
-                <div class="report-table-wrap">
-                    <table class="table table-bordered table-striped align-middle report-table" id="reportTable">
-                        <thead>
-                            <tr>
-                                <th class="col-trace">Request No</th>
-                                <th class="col-item">Part No</th>
-                                <th class="col-part">Part Name</th>
-                                <th class="col-qty">Req Qty</th>
-                                <th class="col-qty">Iss Qty</th>
-                                <th class="col-qty">Received Qty</th>
-                                <th class="col-variance">Variance</th>
-                                <th class="col-received-lot">Received Lot</th>
-                                <th class="col-verification">Verification</th>
-                                <th class="col-lot">GRPO Lot No</th>
-                                <th class="col-wh-lot">WH Lot No</th>
-                                <th class="col-itr">ITR/IT</th>
-                                <th class="col-user">Iss By</th>
-                                <th class="col-status">Issue Status</th>
-                                <th class="col-user">Received By</th>
-                                <th class="col-date">Received At</th>
-                                <th class="col-host">Hostname</th>
-                                <th class="col-ip">IP Address</th>
-                                <th class="col-date">Issued At</th>
-                            </tr>
-                        </thead>
+                        <div class="row g-2 mt-2">
+                            <div class="col-12">
+                                <label class="form-label" for="searchReport">Search Item / Report</label>
+                                <input class="form-control form-control-sm" type="search" id="searchReport" name="q"
+                                    value="<?= h($q) ?>"
+                                    placeholder="Search SAP code, part name, GRPO lot, WH lot, ITR, issuer...">
+                                <div class="form-text">
+                                    Use SAP ItemCode or Part Name to search items. Press Enter or click Filter to search
+                                    all records.
+                                </div>
+                            </div>
+                        </div>
+                    </form>
 
-                        <tbody>
-                            <?php if (empty($rows)): ?>
+                    <div class="report-table-wrap">
+                        <table class="table table-bordered table-striped align-middle report-table" id="reportTable">
+                            <thead>
                                 <tr>
-                                    <td colspan="<?= count($columns) ?>" class="empty-row">
-                                        No records found for the selected date range.
-                                    </td>
+                                    <th class="col-trace">Request No</th>
+                                    <th class="col-item">Part No</th>
+                                    <th class="col-part">Part Name</th>
+                                    <th class="col-qty">Req Qty</th>
+                                    <th class="col-qty">Iss Qty</th>
+                                    <th class="col-qty">Received Qty</th>
+                                    <th class="col-variance">Variance</th>
+                                    <th class="col-received-lot">Received Lot</th>
+                                    <th class="col-verification">Verification</th>
+                                    <th class="col-lot">GRPO Lot No</th>
+                                    <th class="col-wh-lot">WH Lot No</th>
+                                    <th class="col-itr">ITR/IT</th>
+                                    <th class="col-user">Iss By</th>
+                                    <th class="col-status">Issue Status</th>
+                                    <th class="col-user">Received By</th>
+                                    <th class="col-date">Received At</th>
+                                    <th class="col-date">Issued At</th>
                                 </tr>
-                            <?php else: ?>
-                                <?php foreach ($rows as $r): ?>
-                                    <?php
+                            </thead>
+
+                            <tbody>
+                                <?php if (empty($rows)): ?>
+                                    <tr>
+                                        <td colspan="<?= count($columns) ?>" class="empty-row">
+                                            No records found for the selected date range.
+                                        </td>
+                                    </tr>
+                                <?php else: ?>
+                                    <?php foreach ($rows as $r): ?>
+                                        <?php
                                         $scanStatus = strtolower((string)($r['IssueStatus'] ?? 'ISSUED'));
                                         $requestNo = trim((string)($r['RequestNo'] ?? ''));
-                                    ?>
-                                    <tr>
-                                        <td class="col-trace" title="<?= h($requestNo) ?>">
-                                            <?php if ($requestNo !== ''): ?>
-                                                <button
-                                                    class="request-verify-link"
-                                                    type="button"
-                                                    data-request-no="<?= h($requestNo) ?>"
-                                                    title="Open receive verification for <?= h($requestNo) ?>"
-                                                >
-                                                    <?= h($requestNo) ?>
-                                                </button>
-                                            <?php endif; ?>
-                                        </td>
+                                        ?>
+                                        <tr>
+                                            <td class="col-trace" title="<?= h($requestNo) ?>">
+                                                <?php if ($requestNo !== ''): ?>
+                                                    <button class="request-verify-link" type="button"
+                                                        data-request-no="<?= h($requestNo) ?>"
+                                                        title="Open receive verification for <?= h($requestNo) ?>">
+                                                        <?= h($requestNo) ?>
+                                                    </button>
+                                                <?php endif; ?>
+                                            </td>
 
-                                        <td class="col-item" title="<?= h(report_cell($r['ItemCode'] ?? '')) ?>">
-                                            <?= h(report_cell($r['ItemCode'] ?? '')) ?>
-                                        </td>
+                                            <td class="col-item" title="<?= h(report_cell($r['ItemCode'] ?? '')) ?>">
+                                                <?= h(report_cell($r['ItemCode'] ?? '')) ?>
+                                            </td>
 
-                                        <td class="col-part" title="<?= h(report_cell($r['PartName'] ?? '')) ?>">
-                                            <?= h(report_cell($r['PartName'] ?? '')) ?>
-                                        </td>
+                                            <td class="col-part" title="<?= h(report_cell($r['PartName'] ?? '')) ?>">
+                                                <?= h(report_cell($r['PartName'] ?? '')) ?>
+                                            </td>
 
-                                        <td class="col-qty" title="<?= h(report_cell($r['RequestedQty'] ?? '')) ?>">
-                                            <?= h(report_cell($r['RequestedQty'] ?? '')) ?>
-                                        </td>
+                                            <td class="col-qty" title="<?= h(report_cell($r['RequestedQty'] ?? '')) ?>">
+                                                <?= h(report_cell($r['RequestedQty'] ?? '')) ?>
+                                            </td>
 
-                                        <td class="col-qty" title="<?= h(report_cell($r['Quantity'] ?? '')) ?>">
-                                            <?= h(report_cell($r['Quantity'] ?? '')) ?>
-                                        </td>
+                                            <td class="col-qty" title="<?= h(report_cell($r['Quantity'] ?? '')) ?>">
+                                                <?= h(report_cell($r['Quantity'] ?? '')) ?>
+                                            </td>
 
-                                        <td class="col-qty" title="Received qty: <?= h(report_cell($r['DisplayReceivedQty'] ?? '')) ?>">
-                                            <?= h(report_cell($r['DisplayReceivedQty'] ?? '')) ?>
-                                        </td>
+                                            <td class="col-qty"
+                                                title="Received qty: <?= h(report_cell($r['DisplayReceivedQty'] ?? '')) ?>">
+                                                <?= h(report_cell($r['DisplayReceivedQty'] ?? '')) ?>
+                                            </td>
 
-                                        <td class="col-variance" title="Issued minus received: <?= h(report_cell($r['QtyVariance'] ?? '')) ?>">
-                                            <?= h(report_cell($r['QtyVariance'] ?? '')) ?>
-                                        </td>
+                                            <td class="col-variance"
+                                                title="Issued minus received: <?= h(report_cell($r['QtyVariance'] ?? '')) ?>">
+                                                <?= h(report_cell($r['QtyVariance'] ?? '')) ?>
+                                            </td>
 
-                                        <td class="col-received-lot" title="<?= h(report_cell($r['DisplayReceivedLotNo'] ?? '')) ?>">
-                                            <?= h(report_cell($r['DisplayReceivedLotNo'] ?? '')) ?>
-                                        </td>
+                                            <td class="col-received-lot"
+                                                title="<?= h(report_cell($r['DisplayReceivedLotNo'] ?? '')) ?>">
+                                                <?= h(report_cell($r['DisplayReceivedLotNo'] ?? '')) ?>
+                                            </td>
 
-                                        <td class="col-verification" title="<?= h(report_cell($r['ReceiveVerificationNote'] ?? '')) ?>">
-                                            <span class="status-pill status-<?= h(strtolower((string)($r['ReceiveVerification'] ?? 'pending_receive'))) ?>">
-                                                <?= h(report_cell($r['ReceiveVerificationLabel'] ?? ($r['ReceiveVerification'] ?? 'PENDING RECEIVE'))) ?>
-                                            </span>
-                                        </td>
+                                            <td class="col-verification"
+                                                title="<?= h(report_cell($r['ReceiveVerificationNote'] ?? '')) ?>">
+                                                <span
+                                                    class="status-pill status-<?= h(strtolower((string)($r['ReceiveVerification'] ?? 'pending_receive'))) ?>">
+                                                    <?= h(report_cell($r['ReceiveVerificationLabel'] ?? ($r['ReceiveVerification'] ?? 'PENDING RECEIVE'))) ?>
+                                                </span>
+                                            </td>
 
-                                        <td class="col-lot" title="<?= h(report_cell($r['LotNo'] ?? '')) ?>">
-                                            <?= h(report_cell($r['LotNo'] ?? '')) ?>
-                                        </td>
+                                            <td class="col-lot" title="<?= h(report_cell($r['LotNo'] ?? '')) ?>">
+                                                <?= h(report_cell($r['LotNo'] ?? '')) ?>
+                                            </td>
 
-                                        <td class="col-wh-lot" title="<?= h(report_cell($r['WarehouseLotNo'] ?? '')) ?>">
-                                            <?= h(report_cell($r['WarehouseLotNo'] ?? '')) ?>
-                                        </td>
+                                            <td class="col-wh-lot" title="<?= h(report_cell($r['WarehouseLotNo'] ?? '')) ?>">
+                                                <?= h(report_cell($r['WarehouseLotNo'] ?? '')) ?>
+                                            </td>
 
-                                        <td class="col-itr" title="<?= h(report_cell($r['ITRNumber'] ?? '')) ?>">
-                                            <?= h(report_cell($r['ITRNumber'] ?? '')) ?>
-                                        </td>
+                                            <td class="col-itr" title="<?= h(report_cell($r['ITRNumber'] ?? '')) ?>">
+                                                <?= h(report_cell($r['ITRNumber'] ?? '')) ?>
+                                            </td>
 
-                                        <td class="col-user" title="<?= h(report_cell($r['IssuedByUsername'] ?? '')) ?>">
-                                            <?= h(report_cell($r['IssuedByUsername'] ?? '')) ?>
-                                        </td>
+                                            <td class="col-user" title="<?= h(report_cell($r['IssuedByUsername'] ?? '')) ?>">
+                                                <?= h(report_cell($r['IssuedByUsername'] ?? '')) ?>
+                                            </td>
 
-                                        <td class="col-status" title="<?= h(report_cell($r['IssueStatus'] ?? 'ISSUED')) ?>">
-                                            <span class="status-pill status-issued">
-                                                <?= h(report_cell($r['IssueStatus'] ?? 'ISSUED')) ?>
-                                            </span>
-                                        </td>
+                                            <td class="col-status" title="<?= h(report_cell($r['IssueStatus'] ?? 'ISSUED')) ?>">
+                                                <span class="status-pill status-issued">
+                                                    <?= h(report_cell($r['IssueStatus'] ?? 'ISSUED')) ?>
+                                                </span>
+                                            </td>
 
-                                        <td class="col-user" title="ScanPlus receiver: <?= h(report_cell($r['DisplayBarcodeUser'] ?? '')) ?>">
-                                            <?= h(report_cell($r['DisplayBarcodeUser'] ?? '')) ?>
-                                        </td>
+                                            <td class="col-user"
+                                                title="ScanPlus receiver: <?= h(report_cell($r['DisplayBarcodeUser'] ?? '')) ?>">
+                                                <?= h(report_cell($r['DisplayBarcodeUser'] ?? '')) ?>
+                                            </td>
 
-                                        <td class="col-date" title="<?= h(report_cell($r['DisplayReceivedAt'] ?? '')) ?>">
-                                            <?= h(report_cell($r['DisplayReceivedAt'] ?? '')) ?>
-                                        </td>
+                                            <td class="col-date" title="<?= h(report_cell($r['DisplayReceivedAt'] ?? '')) ?>">
+                                                <?= h(report_cell($r['DisplayReceivedAt'] ?? '')) ?>
+                                            </td>
 
-                                        <td class="col-host" title="<?= h(report_cell($r['DeviceHostname'] ?? '')) ?>">
-                                            <?= h(report_cell($r['DeviceHostname'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-ip" title="<?= h(report_cell($r['DeviceIPAddress'] ?? '')) ?>">
-                                            <?= h(report_cell($r['DeviceIPAddress'] ?? '')) ?>
-                                        </td>
-
-                                        <td class="col-date" title="<?= h(report_cell($r['IssuedAt'] ?? '')) ?>">
-                                            <?= h(report_cell($r['IssuedAt'] ?? '')) ?>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="small text-muted mt-2">
-                    Showing page <?= number_format($page) ?> of <?= number_format($totalPages) ?>.
-                    Issue status shows the issuer transaction state. Receiver quantity uses local receiving first, then the request-specific ScanPlus cache when available.
-                </div>
-
-                <?php if (!$export && $totalPages > 1): ?>
-                    <nav class="mt-3" aria-label="Issuer scan report pages">
-                        <ul class="pagination pagination-sm justify-content-end mb-0">
-                            <li class="page-item <?= $page <= 1 ? 'disabled' : '' ?>">
-                                <a class="page-link" href="<?= h(issuer_scan_report_url($baseQuery + ['page' => max(1, $page - 1)])) ?>">Previous</a>
-                            </li>
-
-                            <?php
-                            $startPage = max(1, $page - 2);
-                            $endPage = min($totalPages, $page + 2);
-                            for ($p = $startPage; $p <= $endPage; $p++):
-                            ?>
-                                <li class="page-item <?= $p === $page ? 'active' : '' ?>">
-                                    <a class="page-link" href="<?= h(issuer_scan_report_url($baseQuery + ['page' => $p])) ?>"><?= $p ?></a>
-                                </li>
-                            <?php endfor; ?>
-
-                            <li class="page-item <?= $page >= $totalPages ? 'disabled' : '' ?>">
-                                <a class="page-link" href="<?= h(issuer_scan_report_url($baseQuery + ['page' => min($totalPages, $page + 1)])) ?>">Next</a>
-                            </li>
-                        </ul>
-                    </nav>
-                <?php endif; ?>
-
-            </div>
-        </div>
-
-        <div class="content-card mt-3">
-            <div class="content-card-header">
-                <div class="d-flex justify-content-between align-items-start gap-2">
-                    <div>
-                        <h5 class="content-card-title">No Stocks Item</h5>
-                        <div class="content-card-subtitle">
-                            Request lines returned by issuer because warehouse stock was unavailable.
-                        </div>
+                                            <td class="col-date" title="<?= h(report_cell($r['IssuedAt'] ?? '')) ?>">
+                                                <?= h(report_cell($r['IssuedAt'] ?? '')) ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
                     </div>
-                    <span class="badge bg-warning text-dark rounded-pill px-3 py-2">
-                        <?= number_format($noStockTotalRows) ?> line(s)
-                    </span>
+
+                    <div class="small text-muted mt-2">
+                        Showing page <?= number_format($page) ?> of <?= number_format($totalPages) ?>.
+                        Issue status shows the issuer transaction state. Receiver quantity uses local receiving first,
+                        then the request-specific ScanPlus cache when available.
+                    </div>
+
+                    <?php if (!$export && $totalPages > 1): ?>
+                        <nav class="mt-3" aria-label="Issuer scan report pages">
+                            <ul class="pagination pagination-sm justify-content-end mb-0">
+                                <li class="page-item <?= $page <= 1 ? 'disabled' : '' ?>">
+                                    <a class="page-link"
+                                        href="<?= h(issuer_scan_report_url($baseQuery + ['page' => max(1, $page - 1)])) ?>">Previous</a>
+                                </li>
+
+                                <?php
+                                $startPage = max(1, $page - 2);
+                                $endPage = min($totalPages, $page + 2);
+                                for ($p = $startPage; $p <= $endPage; $p++):
+                                ?>
+                                    <li class="page-item <?= $p === $page ? 'active' : '' ?>">
+                                        <a class="page-link"
+                                            href="<?= h(issuer_scan_report_url($baseQuery + ['page' => $p])) ?>"><?= $p ?></a>
+                                    </li>
+                                <?php endfor; ?>
+
+                                <li class="page-item <?= $page >= $totalPages ? 'disabled' : '' ?>">
+                                    <a class="page-link"
+                                        href="<?= h(issuer_scan_report_url($baseQuery + ['page' => min($totalPages, $page + 1)])) ?>">Next</a>
+                                </li>
+                            </ul>
+                        </nav>
+                    <?php endif; ?>
+
                 </div>
             </div>
 
-            <div class="content-card-body">
-                <div class="report-table-wrap">
-                    <table class="table table-bordered table-striped align-middle report-table" id="noStockReportTable">
-                        <thead>
-                            <tr>
-                                <th class="col-trace">Request No</th>
-                                <th class="col-item">Part No</th>
-                                <th class="col-part">Part Name</th>
-                                <th class="col-qty">Req Qty</th>
-                                <th class="col-qty">Issued Qty</th>
-                                <th class="col-qty">Remaining Qty</th>
-                                <th class="col-stock">WH Stock</th>
-                                <th class="col-lot">Stock WH</th>
-                                <th class="col-itr">ITR/IT</th>
-                                <th class="col-itr">Line</th>
-                                <th class="col-user">Returned By</th>
-                                <th class="col-status">Issue Status</th>
-                                <th class="col-part">Reason</th>
-                                <th class="col-host">Hostname</th>
-                                <th class="col-ip">IP Address</th>
-                                <th class="col-date">Returned At</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (empty($noStockRows)): ?>
+            <div class="content-card mt-3">
+                <div class="content-card-header">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <div>
+                            <h5 class="content-card-title">No Stocks Item</h5>
+                            <div class="content-card-subtitle">
+                                Request lines returned by issuer because warehouse stock was unavailable.
+                            </div>
+                        </div>
+                        <span class="badge bg-warning text-dark rounded-pill px-3 py-2">
+                            <?= number_format($noStockTotalRows) ?> line(s)
+                        </span>
+                    </div>
+                </div>
+
+                <div class="content-card-body">
+                    <div class="report-table-wrap">
+                        <table class="table table-bordered table-striped align-middle report-table"
+                            id="noStockReportTable">
+                            <thead>
                                 <tr>
-                                    <td colspan="<?= count($noStockColumns) ?>" class="empty-row">
-                                        No no-stock items found for the selected date range.
-                                    </td>
+                                    <th class="col-trace">Request No</th>
+                                    <th class="col-item">Part No</th>
+                                    <th class="col-part">Part Name</th>
+                                    <th class="col-qty">Req Qty</th>
+                                    <th class="col-qty">Issued Qty</th>
+                                    <th class="col-qty">Remaining Qty</th>
+                                    <th class="col-stock">WH Stock</th>
+                                    <th class="col-lot">Stock WH</th>
+                                    <th class="col-itr">ITR/IT</th>
+                                    <th class="col-itr">Line</th>
+                                    <th class="col-user">Returned By</th>
+                                    <th class="col-status">Issue Status</th>
+                                    <th class="col-part">Reason</th>
+                                    <th class="col-date">Returned At</th>
                                 </tr>
-                            <?php else: ?>
-                                <?php foreach ($noStockRows as $r): ?>
+                            </thead>
+                            <tbody>
+                                <?php if (empty($noStockRows)): ?>
                                     <tr>
-                                        <?php $noStockRequestNo = trim((string)($r['RequestNo'] ?? '')); ?>
-                                        <td class="col-trace" title="<?= h($noStockRequestNo) ?>">
-                                            <?php if ($noStockRequestNo !== ''): ?>
-                                                <button
-                                                    class="request-verify-link"
-                                                    type="button"
-                                                    data-request-no="<?= h($noStockRequestNo) ?>"
-                                                    title="Open receive verification for <?= h($noStockRequestNo) ?>"
-                                                >
-                                                    <?= h($noStockRequestNo) ?>
-                                                </button>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td class="col-item" title="<?= h(report_cell($r['ItemCode'] ?? '')) ?>">
-                                            <?= h(report_cell($r['ItemCode'] ?? '')) ?>
-                                        </td>
-                                        <td class="col-part" title="<?= h(report_cell($r['PartName'] ?? '')) ?>">
-                                            <?= h(report_cell($r['PartName'] ?? '')) ?>
-                                        </td>
-                                        <td class="col-qty" title="<?= h(report_cell($r['RequestedQty'] ?? '')) ?>">
-                                            <?= h(report_cell($r['RequestedQty'] ?? '')) ?>
-                                        </td>
-                                        <td class="col-qty" title="<?= h(report_cell($r['IssuedQty'] ?? '')) ?>">
-                                            <?= h(report_cell($r['IssuedQty'] ?? '')) ?>
-                                        </td>
-                                        <td class="col-qty" title="<?= h(report_cell($r['RemainingQty'] ?? '')) ?>">
-                                            <?= h(report_cell($r['RemainingQty'] ?? '')) ?>
-                                        </td>
-                                        <td class="col-stock" title="<?= h(report_cell($r['StockQty'] ?? '')) ?>">
-                                            <?= h(report_cell($r['StockQty'] ?? '')) ?>
-                                        </td>
-                                        <td class="col-lot" title="<?= h(report_cell($r['StockWhsCode'] ?? '')) ?>">
-                                            <?= h(report_cell($r['StockWhsCode'] ?? '')) ?>
-                                        </td>
-                                        <td class="col-itr" title="<?= h(report_cell($r['ITRNumber'] ?? '')) ?>">
-                                            <?= h(report_cell($r['ITRNumber'] ?? '')) ?>
-                                        </td>
-                                        <td class="col-itr" title="<?= h(report_cell($r['SAP_IT_LineNum'] ?? '')) ?>">
-                                            <?= h(report_cell($r['SAP_IT_LineNum'] ?? '')) ?>
-                                        </td>
-                                        <td class="col-user" title="<?= h(report_cell($r['ReturnedByUsername'] ?? '')) ?>">
-                                            <?= h(report_cell($r['ReturnedByUsername'] ?? '')) ?>
-                                        </td>
-                                        <td class="col-status" title="RETURNED_NO_STOCK">
-                                            <span class="status-pill status-returned_no_stock">RETURNED_NO_STOCK</span>
-                                        </td>
-                                        <td class="col-part" title="<?= h(report_cell($r['ReturnReason'] ?? '')) ?>">
-                                            <?= h(report_cell($r['ReturnReason'] ?? '')) ?>
-                                        </td>
-                                        <td class="col-host" title="<?= h(report_cell($r['DeviceHostname'] ?? '')) ?>">
-                                            <?= h(report_cell($r['DeviceHostname'] ?? '')) ?>
-                                        </td>
-                                        <td class="col-ip" title="<?= h(report_cell($r['DeviceIPAddress'] ?? '')) ?>">
-                                            <?= h(report_cell($r['DeviceIPAddress'] ?? '')) ?>
-                                        </td>
-                                        <td class="col-date" title="<?= h(report_cell($r['ReturnedAt'] ?? '')) ?>">
-                                            <?= h(report_cell($r['ReturnedAt'] ?? '')) ?>
+                                        <td colspan="<?= count($noStockColumns) ?>" class="empty-row">
+                                            No no-stock items found for the selected date range.
                                         </td>
                                     </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
+                                <?php else: ?>
+                                    <?php foreach ($noStockRows as $r): ?>
+                                        <tr>
+                                            <?php $noStockRequestNo = trim((string)($r['RequestNo'] ?? '')); ?>
+                                            <td class="col-trace" title="<?= h($noStockRequestNo) ?>">
+                                                <?php if ($noStockRequestNo !== ''): ?>
+                                                    <button class="request-verify-link" type="button"
+                                                        data-request-no="<?= h($noStockRequestNo) ?>"
+                                                        title="Open receive verification for <?= h($noStockRequestNo) ?>">
+                                                        <?= h($noStockRequestNo) ?>
+                                                    </button>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td class="col-item" title="<?= h(report_cell($r['ItemCode'] ?? '')) ?>">
+                                                <?= h(report_cell($r['ItemCode'] ?? '')) ?>
+                                            </td>
+                                            <td class="col-part" title="<?= h(report_cell($r['PartName'] ?? '')) ?>">
+                                                <?= h(report_cell($r['PartName'] ?? '')) ?>
+                                            </td>
+                                            <td class="col-qty" title="<?= h(report_cell($r['RequestedQty'] ?? '')) ?>">
+                                                <?= h(report_cell($r['RequestedQty'] ?? '')) ?>
+                                            </td>
+                                            <td class="col-qty" title="<?= h(report_cell($r['IssuedQty'] ?? '')) ?>">
+                                                <?= h(report_cell($r['IssuedQty'] ?? '')) ?>
+                                            </td>
+                                            <td class="col-qty" title="<?= h(report_cell($r['RemainingQty'] ?? '')) ?>">
+                                                <?= h(report_cell($r['RemainingQty'] ?? '')) ?>
+                                            </td>
+                                            <td class="col-stock" title="<?= h(report_cell($r['StockQty'] ?? '')) ?>">
+                                                <?= h(report_cell($r['StockQty'] ?? '')) ?>
+                                            </td>
+                                            <td class="col-lot" title="<?= h(report_cell($r['StockWhsCode'] ?? '')) ?>">
+                                                <?= h(report_cell($r['StockWhsCode'] ?? '')) ?>
+                                            </td>
+                                            <td class="col-itr" title="<?= h(report_cell($r['ITRNumber'] ?? '')) ?>">
+                                                <?= h(report_cell($r['ITRNumber'] ?? '')) ?>
+                                            </td>
+                                            <td class="col-itr" title="<?= h(report_cell($r['SAP_IT_LineNum'] ?? '')) ?>">
+                                                <?= h(report_cell($r['SAP_IT_LineNum'] ?? '')) ?>
+                                            </td>
+                                            <td class="col-user" title="<?= h(report_cell($r['ReturnedByUsername'] ?? '')) ?>">
+                                                <?= h(report_cell($r['ReturnedByUsername'] ?? '')) ?>
+                                            </td>
+                                            <td class="col-status" title="RETURNED_NO_STOCK">
+                                                <span class="status-pill status-returned_no_stock">RETURNED_NO_STOCK</span>
+                                            </td>
+                                            <td class="col-part" title="<?= h(report_cell($r['ReturnReason'] ?? '')) ?>">
+                                                <?= h(report_cell($r['ReturnReason'] ?? '')) ?>
+                                            </td>
+                                            <td class="col-date" title="<?= h(report_cell($r['ReturnedAt'] ?? '')) ?>">
+                                                <?= h(report_cell($r['ReturnedAt'] ?? '')) ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
 
-                <div class="small text-muted mt-2">
-                    Export Excel includes this data in a separate No Stocks Item worksheet.
-                    <?php if (!$export && $noStockTotalRows > count($noStockRows)): ?>
-                        Showing latest <?= number_format(count($noStockRows)) ?> of <?= number_format($noStockTotalRows) ?> returned no-stock line(s).
-                    <?php endif; ?>
+                    <div class="small text-muted mt-2">
+                        Export Excel includes this data in a separate No Stocks Item worksheet.
+                        <?php if (!$export && $noStockTotalRows > count($noStockRows)): ?>
+                            Showing latest <?= number_format(count($noStockRows)) ?> of
+                            <?= number_format($noStockTotalRows) ?> returned no-stock line(s).
+                        <?php endif; ?>
+                    </div>
                 </div>
             </div>
-        </div>
 
-    </main>
-</div>
+        </main>
+    </div>
 
-<div
-    class="modal fade"
-    id="receiveVerifyModal"
-    tabindex="-1"
-    aria-labelledby="receiveVerifyTitle"
-    aria-hidden="true"
->
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <div>
-                    <h5 class="modal-title" id="receiveVerifyTitle">Receive Verification</h5>
-                    <div class="text-muted small" id="receiveVerifySubtitle">Local ScanPlus / SAP verification</div>
-                </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-
-            <div class="modal-body">
-                <div id="receiveVerifyStatus" class="alert alert-light border">
-                    Select a request to verify receive status.
+    <div class="modal fade" id="receiveVerifyModal" tabindex="-1" aria-labelledby="receiveVerifyTitle"
+        aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title" id="receiveVerifyTitle">Receive Verification</h5>
+                        <div class="text-muted small" id="receiveVerifySubtitle">Local ScanPlus / SAP verification</div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
 
-                <div class="verify-overall" id="receiveVerifyOverall"></div>
-                <div class="verify-summary mb-3" id="receiveVerifySummary"></div>
+                <div class="modal-body">
+                    <div id="receiveVerifyStatus" class="alert alert-light border">
+                        Select a request to verify receive status.
+                    </div>
 
-                <div class="verify-table-wrap d-none" id="receiveVerifyTableWrap">
-                    <table class="table table-sm table-striped table-bordered verify-table">
-                        <thead>
-                        <tr>
-                            <th>Result</th>
-                            <th>Item</th>
-                            <th>Part Name</th>
-                            <th class="text-end">Issued</th>
-                            <th>Issued At</th>
-                            <th class="text-end">Received</th>
-                            <th>GRPO Lot</th>
-                            <th>WH Lot</th>
-                            <th>Received Lot</th>
-                            <th>SAP / ScanPlus Source</th>
-                            <th>Received By</th>
-                            <th>Received At</th>
-                            <th>Cache Synced</th>
-                        </tr>
-                        </thead>
-                        <tbody id="receiveVerifyRows"></tbody>
-                    </table>
+                    <div class="verify-overall" id="receiveVerifyOverall"></div>
+                    <div class="verify-summary mb-3" id="receiveVerifySummary"></div>
+
+                    <div class="verify-table-wrap d-none" id="receiveVerifyTableWrap">
+                        <table class="table table-sm table-striped table-bordered verify-table">
+                            <thead>
+                                <tr>
+                                    <th>Result</th>
+                                    <th>Item</th>
+                                    <th>Part Name</th>
+                                    <th class="text-end">Issued</th>
+                                    <th>Issued At</th>
+                                    <th class="text-end">Received</th>
+                                    <th>GRPO Lot</th>
+                                    <th>WH Lot</th>
+                                    <th>Received Lot</th>
+                                    <th>SAP / ScanPlus Source</th>
+                                    <th>Received By</th>
+                                    <th>Received At</th>
+                                    <th>Cache Synced</th>
+                                </tr>
+                            </thead>
+                            <tbody id="receiveVerifyRows"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
-<script>
-const searchInput = document.getElementById('searchReport');
+    <script>
+        const searchInput = document.getElementById('searchReport');
 
-if (searchInput) {
-    searchInput.addEventListener('input', function () {
-        const q = this.value.toLowerCase();
+        if (searchInput) {
+            searchInput.addEventListener('input', function() {
+                const q = this.value.toLowerCase();
 
-        document.querySelectorAll('#reportTable tbody tr, #noStockReportTable tbody tr').forEach(function (row) {
-            row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
-        });
-    });
-}
-
-const sidebar = document.getElementById('sidebar');
-const sidebarToggle = document.getElementById('sidebarToggle');
-const sidebarBackdrop = document.getElementById('sidebarBackdrop');
-
-if (sidebarToggle) {
-    sidebarToggle.addEventListener('click', function () {
-        sidebar.classList.add('show');
-        sidebarBackdrop.classList.add('show');
-    });
-}
-
-if (sidebarBackdrop) {
-    sidebarBackdrop.addEventListener('click', function () {
-        sidebar.classList.remove('show');
-        sidebarBackdrop.classList.remove('show');
-    });
-}
-
-const receiveVerifyModalEl = document.getElementById('receiveVerifyModal');
-const receiveVerifyModal = receiveVerifyModalEl
-    ? bootstrap.Modal.getOrCreateInstance(receiveVerifyModalEl)
-    : null;
-
-function verifyEscape(value) {
-    return String(value ?? '').replace(/[&<>"']/g, function (char) {
-        return {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#039;'
-        }[char];
-    });
-}
-
-function verifyNumber(value) {
-    const number = Number(value || 0);
-    if (!Number.isFinite(number)) {
-        return '';
-    }
-    return String(parseFloat(number.toFixed(3)));
-}
-
-function verifyStatusClass(status) {
-    return String(status || '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '');
-}
-
-function verifySetLoading(requestNo) {
-    document.getElementById('receiveVerifyTitle').textContent = 'Receive Verification';
-    document.getElementById('receiveVerifySubtitle').textContent =
-        requestNo + ' | checking received / partial status...';
-    document.getElementById('receiveVerifyStatus').className = 'alert alert-light border';
-    document.getElementById('receiveVerifyStatus').textContent =
-        'Loading request status from the local verification cache...';
-    document.getElementById('receiveVerifyOverall').innerHTML = '';
-    document.getElementById('receiveVerifySummary').innerHTML = '';
-    document.getElementById('receiveVerifyRows').innerHTML = '';
-    document.getElementById('receiveVerifyTableWrap').classList.add('d-none');
-}
-
-function verifyOverallStatus(summary) {
-    const received = Number(summary?.received || 0);
-    const partial = Number(summary?.partial_received || 0);
-    const issued = Number(summary?.issued || 0);
-    const total = received + partial + issued;
-
-    let label = 'PENDING RECEIVE';
-    let cls = 'pending_receive';
-
-    if (total > 0 && received === total) {
-        label = 'RECEIVED';
-        cls = 'received';
-    } else if (received > 0 || partial > 0) {
-        label = 'PARTIAL RECEIVED';
-        cls = 'partial_received';
-    } else if (issued > 0) {
-        label = 'ISSUED / PENDING RECEIVE';
-        cls = 'issued';
-    }
-
-    return '<span class="fw-semibold">Overall:</span>' +
-        '<span class="status-pill status-' + cls + '">' +
-        verifyEscape(label) + '</span>';
-}
-
-function verifyRenderSummary(summary) {
-    const labels = {
-        received: 'Received',
-        partial_received: 'Partial',
-        issued: 'Issued / Pending'
-    };
-
-    return Object.keys(labels).map(function (key) {
-        const count = Number(summary?.[key] || 0);
-        const cls = verifyStatusClass(key);
-        return '<span class="status-pill status-' + cls + '">' +
-            verifyEscape(labels[key] + ': ' + count) +
-            '</span>';
-    }).join('');
-}
-
-function verifyRenderRows(lines) {
-    if (!Array.isArray(lines) || lines.length === 0) {
-        return '<tr><td colspan="13" class="empty-row">No lines found.</td></tr>';
-    }
-
-    return lines.map(function (line) {
-        let status = String(line.verification_status || '').trim();
-        const issuedQty = Number(line.issued_qty || 0);
-        const normalizedStatus = status
-            .toUpperCase()
-            .replace(/[_-]+/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-
-        // Do not show stale NOT ISSUED when an actual issued quantity exists.
-        if (
-            Number.isFinite(issuedQty) &&
-            issuedQty > 0 &&
-            (normalizedStatus === 'NOT ISSUED' || normalizedStatus === 'NOT ISSUED REQUEST LINE')
-        ) {
-            status = 'ISSUED';
+                document.querySelectorAll('#reportTable tbody tr, #noStockReportTable tbody tr').forEach(function(
+                    row) {
+                    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+                });
+            });
         }
 
-        const statusClass = verifyStatusClass(status);
-        const receivedQty = Number(line.cache_received_qty || 0);
-        const isReceivedStatus =
-            status === 'RECEIVED' ||
-            status === 'PARTIAL_RECEIVED' ||
-            status === 'PARTIAL RECEIVED';
-        const hasActualReceipt =
-            isReceivedStatus &&
-            Number.isFinite(receivedQty) &&
-            receivedQty > 0;
+        const sidebar = document.getElementById('sidebar');
+        const sidebarToggle = document.getElementById('sidebarToggle');
+        const sidebarBackdrop = document.getElementById('sidebarBackdrop');
 
-        const receivedLot = hasActualReceipt
-            ? (line.cache_received_lot_no || line.cache_lot_no || '')
-            : '';
-        const sourceTransfer = hasActualReceipt
-            ? (line.source_transfer_details || '')
-            : '';
-        const receivedBy = hasActualReceipt
-            ? (line.cache_received_by || '')
-            : '';
-        const receivedAt = hasActualReceipt
-            ? (line.cache_received_at || '')
-            : '';
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', function() {
+                sidebar.classList.add('show');
+                sidebarBackdrop.classList.add('show');
+            });
+        }
 
-        return '<tr>' +
-            '<td><span class="status-pill status-' + statusClass + '">' +
-                verifyEscape(status) +
-            '</span></td>' +
-            '<td>' + verifyEscape(line.item_code) + '</td>' +
-            '<td>' + verifyEscape(line.part_name) + '</td>' +
-            '<td class="text-end">' + verifyEscape(verifyNumber(line.issued_qty)) + '</td>' +
-            '<td>' + verifyEscape(line.issued_at || '') + '</td>' +
-            '<td class="text-end">' + verifyEscape(hasActualReceipt ? verifyNumber(receivedQty) : '') + '</td>' +
-            '<td>' + verifyEscape(line.lot_no) + '</td>' +
-            '<td>' + verifyEscape(line.warehouse_lot_no) + '</td>' +
-            '<td>' + verifyEscape(receivedLot) + '</td>' +
-            '<td class="source-transfer-cell">' + verifyEscape(sourceTransfer) + '</td>' +
-            '<td>' + verifyEscape(receivedBy) + '</td>' +
-            '<td>' + verifyEscape(receivedAt) + '</td>' +
-            '<td>' + verifyEscape(line.cache_last_synced_at) + '</td>' +
-        '</tr>';
-    }).join('');
-}
+        if (sidebarBackdrop) {
+            sidebarBackdrop.addEventListener('click', function() {
+                sidebar.classList.remove('show');
+                sidebarBackdrop.classList.remove('show');
+            });
+        }
 
-async function openReceiveVerification(requestNo) {
-    if (!receiveVerifyModal || !requestNo) {
-        return;
-    }
+        const receiveVerifyModalEl = document.getElementById('receiveVerifyModal');
+        const receiveVerifyModal = receiveVerifyModalEl ?
+            bootstrap.Modal.getOrCreateInstance(receiveVerifyModalEl) :
+            null;
 
-    verifySetLoading(requestNo);
-    receiveVerifyModal.show();
+        function verifyEscape(value) {
+            return String(value ?? '').replace(/[&<>"']/g, function(char) {
+                return {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                } [char];
+            });
+        }
 
-    try {
-        const response = await fetch(
-            'api/requestor/verify_receive.php?request_no=' + encodeURIComponent(requestNo),
-            { cache: 'no-store' }
-        );
-        const data = await response.json();
+        function verifyNumber(value) {
+            const number = Number(value || 0);
+            if (!Number.isFinite(number)) {
+                return '';
+            }
+            return String(parseFloat(number.toFixed(3)));
+        }
 
-        if (!data.ok) {
-            document.getElementById('receiveVerifyStatus').className = 'alert alert-warning';
+        function verifyStatusClass(status) {
+            return String(status || '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '');
+        }
+
+        function verifySetLoading(requestNo) {
+            document.getElementById('receiveVerifyTitle').textContent = 'Receive Verification';
+            document.getElementById('receiveVerifySubtitle').textContent =
+                requestNo + ' | checking received / partial status...';
+            document.getElementById('receiveVerifyStatus').className = 'alert alert-light border';
             document.getElementById('receiveVerifyStatus').textContent =
-                data.message || 'Unable to verify receive status.';
-            return;
+                'Loading request status from the local verification cache...';
+            document.getElementById('receiveVerifyOverall').innerHTML = '';
+            document.getElementById('receiveVerifySummary').innerHTML = '';
+            document.getElementById('receiveVerifyRows').innerHTML = '';
+            document.getElementById('receiveVerifyTableWrap').classList.add('d-none');
         }
 
-        document.getElementById('receiveVerifyTitle').textContent = 'Receive Verification';
-        document.getElementById('receiveVerifySubtitle').textContent =
-            data.request_no + ' | ITR ' + (data.itr_number || '-') +
-            ' | Cache ' + (data.latest_scanplus_cache_sync || 'not synced');
-        document.getElementById('receiveVerifyStatus').className = 'alert alert-info';
-        document.getElementById('receiveVerifyStatus').textContent =
-            data.source || 'Checked local ScanPlus / SAP verification cache.';
-        document.getElementById('receiveVerifyOverall').innerHTML =
-            verifyOverallStatus(data.summary || {});
-        document.getElementById('receiveVerifySummary').innerHTML =
-            verifyRenderSummary(data.summary || {});
-        document.getElementById('receiveVerifyRows').innerHTML =
-            verifyRenderRows(data.lines || []);
-        document.getElementById('receiveVerifyTableWrap').classList.remove('d-none');
-    } catch (error) {
-        document.getElementById('receiveVerifyStatus').className = 'alert alert-danger';
-        document.getElementById('receiveVerifyStatus').textContent =
-            'Unable to load receive verification.';
-        console.error(error);
-    }
-}
+        function verifyOverallStatus(summary) {
+            const received = Number(summary?.received || 0);
+            const partial = Number(summary?.partial_received || 0);
+            const issued = Number(summary?.issued || 0);
+            const total = received + partial + issued;
 
-document.querySelectorAll('.request-verify-link').forEach(function (button) {
-    button.addEventListener('click', function () {
-        openReceiveVerification(button.dataset.requestNo || '');
-    });
-});
-</script>
+            let label = 'PENDING RECEIVE';
+            let cls = 'pending_receive';
+
+            if (total > 0 && received === total) {
+                label = 'RECEIVED';
+                cls = 'received';
+            } else if (received > 0 || partial > 0) {
+                label = 'PARTIAL RECEIVED';
+                cls = 'partial_received';
+            } else if (issued > 0) {
+                label = 'ISSUED / PENDING RECEIVE';
+                cls = 'issued';
+            }
+
+            return '<span class="fw-semibold">Overall:</span>' +
+                '<span class="status-pill status-' + cls + '">' +
+                verifyEscape(label) + '</span>';
+        }
+
+        function verifyRenderSummary(summary) {
+            const labels = {
+                received: 'Received',
+                partial_received: 'Partial',
+                issued: 'Issued / Pending'
+            };
+
+            return Object.keys(labels).map(function(key) {
+                const count = Number(summary?.[key] || 0);
+                const cls = verifyStatusClass(key);
+                return '<span class="status-pill status-' + cls + '">' +
+                    verifyEscape(labels[key] + ': ' + count) +
+                    '</span>';
+            }).join('');
+        }
+
+        function verifyRenderRows(lines) {
+            if (!Array.isArray(lines) || lines.length === 0) {
+                return '<tr><td colspan="13" class="empty-row">No lines found.</td></tr>';
+            }
+
+            return lines.map(function(line) {
+                let status = String(line.verification_status || '').trim();
+                const issuedQty = Number(line.issued_qty || 0);
+                const normalizedStatus = status
+                    .toUpperCase()
+                    .replace(/[_-]+/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+                // Do not show stale NOT ISSUED when an actual issued quantity exists.
+                if (
+                    Number.isFinite(issuedQty) &&
+                    issuedQty > 0 &&
+                    (normalizedStatus === 'NOT ISSUED' || normalizedStatus === 'NOT ISSUED REQUEST LINE')
+                ) {
+                    status = 'ISSUED';
+                }
+
+                const statusClass = verifyStatusClass(status);
+                const receivedQty = Number(line.cache_received_qty || 0);
+                const isReceivedStatus =
+                    status === 'RECEIVED' ||
+                    status === 'PARTIAL_RECEIVED' ||
+                    status === 'PARTIAL RECEIVED';
+                const hasActualReceipt =
+                    isReceivedStatus &&
+                    Number.isFinite(receivedQty) &&
+                    receivedQty > 0;
+
+                const receivedLot = hasActualReceipt ?
+                    (line.cache_received_lot_no || line.cache_lot_no || '') :
+                    '';
+                const sourceTransfer = hasActualReceipt ?
+                    (line.source_transfer_details || '') :
+                    '';
+                const receivedBy = hasActualReceipt ?
+                    (line.cache_received_by || '') :
+                    '';
+                const receivedAt = hasActualReceipt ?
+                    (line.cache_received_at || '') :
+                    '';
+
+                return '<tr>' +
+                    '<td><span class="status-pill status-' + statusClass + '">' +
+                    verifyEscape(status) +
+                    '</span></td>' +
+                    '<td>' + verifyEscape(line.item_code) + '</td>' +
+                    '<td>' + verifyEscape(line.part_name) + '</td>' +
+                    '<td class="text-end">' + verifyEscape(verifyNumber(line.issued_qty)) + '</td>' +
+                    '<td>' + verifyEscape(line.issued_at || '') + '</td>' +
+                    '<td class="text-end">' + verifyEscape(hasActualReceipt ? verifyNumber(receivedQty) : '') +
+                    '</td>' +
+                    '<td>' + verifyEscape(line.lot_no) + '</td>' +
+                    '<td>' + verifyEscape(line.warehouse_lot_no) + '</td>' +
+                    '<td>' + verifyEscape(receivedLot) + '</td>' +
+                    '<td class="source-transfer-cell">' + verifyEscape(sourceTransfer) + '</td>' +
+                    '<td>' + verifyEscape(receivedBy) + '</td>' +
+                    '<td>' + verifyEscape(receivedAt) + '</td>' +
+                    '<td>' + verifyEscape(line.cache_last_synced_at) + '</td>' +
+                    '</tr>';
+            }).join('');
+        }
+
+        async function openReceiveVerification(requestNo) {
+            if (!receiveVerifyModal || !requestNo) {
+                return;
+            }
+
+            verifySetLoading(requestNo);
+            receiveVerifyModal.show();
+
+            try {
+                const response = await fetch(
+                    'api/requestor/verify_receive.php?request_no=' + encodeURIComponent(requestNo), {
+                        cache: 'no-store'
+                    }
+                );
+                const data = await response.json();
+
+                if (!data.ok) {
+                    document.getElementById('receiveVerifyStatus').className = 'alert alert-warning';
+                    document.getElementById('receiveVerifyStatus').textContent =
+                        data.message || 'Unable to verify receive status.';
+                    return;
+                }
+
+                document.getElementById('receiveVerifyTitle').textContent = 'Receive Verification';
+                document.getElementById('receiveVerifySubtitle').textContent =
+                    data.request_no + ' | ITR ' + (data.itr_number || '-') +
+                    ' | Cache ' + (data.latest_scanplus_cache_sync || 'not synced');
+                document.getElementById('receiveVerifyStatus').className = 'alert alert-info';
+                document.getElementById('receiveVerifyStatus').textContent =
+                    data.source || 'Checked local ScanPlus / SAP verification cache.';
+                document.getElementById('receiveVerifyOverall').innerHTML =
+                    verifyOverallStatus(data.summary || {});
+                document.getElementById('receiveVerifySummary').innerHTML =
+                    verifyRenderSummary(data.summary || {});
+                document.getElementById('receiveVerifyRows').innerHTML =
+                    verifyRenderRows(data.lines || []);
+                document.getElementById('receiveVerifyTableWrap').classList.remove('d-none');
+            } catch (error) {
+                document.getElementById('receiveVerifyStatus').className = 'alert alert-danger';
+                document.getElementById('receiveVerifyStatus').textContent =
+                    'Unable to load receive verification.';
+                console.error(error);
+            }
+        }
+
+        document.querySelectorAll('.request-verify-link').forEach(function(button) {
+            button.addEventListener('click', function() {
+                openReceiveVerification(button.dataset.requestNo || '');
+            });
+        });
+    </script>
 
 </body>
+
 </html>

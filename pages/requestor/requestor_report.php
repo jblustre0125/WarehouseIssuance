@@ -260,9 +260,7 @@ if (
 ) {
     http_response_code(500);
 
-    exit(
-        'The issue request tables were not found in the local database.'
-    );
+    exit('The issue request tables were not found in the local database.');
 }
 
 /*
@@ -414,8 +412,8 @@ $requestLineHasWarehouseLot =
 
 $requestWarehouseLotExpression =
     $requestLineHasWarehouseLot
-        ? "NULLIF(LTRIM(RTRIM(L.WarehouseLotNo)), '')"
-        : "CAST(NULL AS NVARCHAR(100))";
+    ? "NULLIF(LTRIM(RTRIM(L.WarehouseLotNo)), '')"
+    : "CAST(NULL AS NVARCHAR(100))";
 
 /*
 |--------------------------------------------------------------------------
@@ -475,11 +473,11 @@ if ($hasTraceTables) {
 
     $traceQuantityExpression =
         $traceQtyColumn !== ''
-            ? "TRY_CONVERT(
+        ? "TRY_CONVERT(
                     DECIMAL(18, 3),
                     TL0.[{$traceQtyColumn}]
                )"
-            : "CAST(NULL AS DECIMAL(18, 3))";
+        : "CAST(NULL AS DECIMAL(18, 3))";
 
     $traceWarehouseLotExpression =
         request_report_has_column(
@@ -487,11 +485,11 @@ if ($hasTraceTables) {
             'RawmatTraceLines',
             'WarehouseLotNo'
         )
-            ? "NULLIF(
+        ? "NULLIF(
                     LTRIM(RTRIM(TL0.WarehouseLotNo)),
                     ''
                )"
-            : "CAST(NULL AS NVARCHAR(100))";
+        : "CAST(NULL AS NVARCHAR(100))";
 
     $traceReceivedQtyExpression =
         request_report_has_column(
@@ -499,11 +497,11 @@ if ($hasTraceTables) {
             'RawmatTraceLines',
             'ReceivedQty'
         )
-            ? "TRY_CONVERT(
+        ? "TRY_CONVERT(
                     DECIMAL(18, 3),
                     TL0.ReceivedQty
                )"
-            : "CAST(NULL AS DECIMAL(18, 3))";
+        : "CAST(NULL AS DECIMAL(18, 3))";
 
     $traceReceivedByExpression =
         request_report_has_column(
@@ -511,8 +509,8 @@ if ($hasTraceTables) {
             'RawmatTraceLines',
             'ReceivedByUsername'
         )
-            ? "TL0.ReceivedByUsername"
-            : "CAST(NULL AS NVARCHAR(120))";
+        ? "TL0.ReceivedByUsername"
+        : "CAST(NULL AS NVARCHAR(120))";
 
     $traceReceiverAreaExpression =
         request_report_has_column(
@@ -520,8 +518,8 @@ if ($hasTraceTables) {
             'RawmatTraceLines',
             'ReceiverArea'
         )
-            ? "TL0.ReceiverArea"
-            : "CAST(NULL AS NVARCHAR(100))";
+        ? "TL0.ReceiverArea"
+        : "CAST(NULL AS NVARCHAR(100))";
 
     $traceHasReceivedScanAt =
         request_report_has_column(
@@ -558,8 +556,8 @@ if ($hasTraceTables) {
             'RawmatTraceLines',
             'VerificationStatus'
         )
-            ? "TL0.VerificationStatus"
-            : "CAST(NULL AS NVARCHAR(50))";
+        ? "TL0.VerificationStatus"
+        : "CAST(NULL AS NVARCHAR(50))";
 
     $traceApply = "
         OUTER APPLY
@@ -859,16 +857,16 @@ if ($hasIssuanceTransactions) {
     if (!empty($transactionMatches)) {
         $transactionWarehouseLotExpression =
             $txHasWarehouseLot
-                ? "NULLIF(
+            ? "NULLIF(
                         LTRIM(RTRIM(IT0.WarehouseLotNo)),
                         ''
                    )"
-                : "CAST(NULL AS NVARCHAR(100))";
+            : "CAST(NULL AS NVARCHAR(100))";
 
         $transactionIssuedAtExpression =
             $txHasIssuedAt
-                ? 'IT0.IssuedAt'
-                : 'CAST(NULL AS DATETIME)';
+            ? 'IT0.IssuedAt'
+            : 'CAST(NULL AS DATETIME)';
 
         /*
          * Never attach an issuance transaction that happened before the
@@ -1014,11 +1012,11 @@ if ($hasCache) {
             'RawmatTraceScanPlusCache',
             'ReceivedLotNo'
         )
-            ? "NULLIF(
+        ? "NULLIF(
                     LTRIM(RTRIM(C0.ReceivedLotNo)),
                     ''
                )"
-            : "CAST(NULL AS NVARCHAR(100))";
+        : "CAST(NULL AS NVARCHAR(100))";
 
     $cacheStatusExpression =
         request_report_has_column(
@@ -1026,8 +1024,8 @@ if ($hasCache) {
             'RawmatTraceScanPlusCache',
             'ScanStatus'
         )
-            ? 'C0.ScanStatus'
-            : "CAST(NULL AS NVARCHAR(50))";
+        ? 'C0.ScanStatus'
+        : "CAST(NULL AS NVARCHAR(50))";
 
     $cacheQuantityExpression =
         request_report_has_column(
@@ -1035,11 +1033,11 @@ if ($hasCache) {
             'RawmatTraceScanPlusCache',
             'ReceivedQty'
         )
-            ? "TRY_CONVERT(
+        ? "TRY_CONVERT(
                     DECIMAL(18, 3),
                     C0.ReceivedQty
                )"
-            : "CAST(NULL AS DECIMAL(18, 3))";
+        : "CAST(NULL AS DECIMAL(18, 3))";
 
     $cacheBarcodeUserExpression =
         request_report_has_column(
@@ -1047,8 +1045,8 @@ if ($hasCache) {
             'RawmatTraceScanPlusCache',
             'BarcodeUser'
         )
-            ? 'C0.BarcodeUser'
-            : "CAST(NULL AS NVARCHAR(120))";
+        ? 'C0.BarcodeUser'
+        : "CAST(NULL AS NVARCHAR(120))";
 
     $cacheHasReceivedAt =
         request_report_has_column(
@@ -1066,13 +1064,13 @@ if ($hasCache) {
 
     $cacheReceivedAtExpression =
         $cacheHasReceivedAt
-            ? 'C0.ReceivedAt'
-            : 'CAST(NULL AS DATETIME)';
+        ? 'C0.ReceivedAt'
+        : 'CAST(NULL AS DATETIME)';
 
     $cacheLastSyncedExpression =
         $cacheHasLastSyncedAt
-            ? 'C0.LastSyncedAt'
-            : 'CAST(NULL AS DATETIME)';
+        ? 'C0.LastSyncedAt'
+        : 'CAST(NULL AS DATETIME)';
 
     /*
      * The same monthly ITR/item/lot can be reused by later local request lines.
@@ -1087,13 +1085,13 @@ if ($hasCache) {
 
     $cacheReceivedAtOrder =
         $cacheHasReceivedAt
-            ? 'C0.ReceivedAt DESC,'
-            : '';
+        ? 'C0.ReceivedAt DESC,'
+        : '';
 
     $cacheLastSyncedOrder =
         $cacheHasLastSyncedAt
-            ? 'C0.LastSyncedAt DESC'
-            : 'C0.SAP_IT_DocEntry DESC';
+        ? 'C0.LastSyncedAt DESC'
+        : 'C0.SAP_IT_DocEntry DESC';
 
     $cacheApply = "
         OUTER APPLY
@@ -1438,9 +1436,9 @@ SELECT
     /*
      * Receive metadata must only be displayed when this report row has an
      * actual positive received quantity. This keeps Received Qty, Received By,
-     * Receive Area and Received At consistent with each other. ScanPlus-only
-     * staging metadata remains in the cache for troubleshooting, but it is not
-     * presented as a completed receipt.
+     * Receive Area and Received At consistent with each other. A positive
+     * ScanPlus FT_INVT request-line allocation is treated as received; SAP
+     * posting remains a separate audit/diagnostic layer.
      */
     CASE
         WHEN ISNULL(E.EffectiveReceivedQty, 0) <= 0
@@ -1524,10 +1522,13 @@ SELECT
                 CASE UPPER(LTRIM(RTRIM(ISNULL(M.MatchStatus, ''))))
                     WHEN 'MATCHED' THEN 'MATCHED'
                     WHEN 'LOT_MISMATCH' THEN 'LOT MISMATCH'
-                    WHEN 'PARTIAL_POSTED' THEN 'PARTIAL POSTED'
+                    WHEN 'PARTIAL' THEN 'PARTIAL RECEIVED'
+                    WHEN 'PARTIAL_LOT_MISMATCH' THEN 'PARTIAL + LOT MISMATCH'
+                    WHEN 'PARTIAL_POSTED' THEN 'PARTIAL RECEIVED'
                     WHEN 'PARTIAL_POSTED_LOT_MISMATCH' THEN 'PARTIAL + LOT MISMATCH'
                     WHEN 'GROUP_PARTIAL_POSTED' THEN 'PARTIAL SAP - ROW PENDING'
-                    WHEN 'SCANNED_NOT_POSTED' THEN 'SCANNED - NOT POSTED'
+                    WHEN 'SCANNED_NOT_POSTED' THEN 'RECEIVED - SAP PENDING'
+                    WHEN 'UNALLOCATED_SCANPLUS_SCAN' THEN 'PENDING RECEIVE'
                     WHEN 'UNALLOCATED_DAILY_SCAN' THEN 'PENDING RECEIVE'
                     WHEN 'UNVERIFIED_DATE' THEN 'UNVERIFIED DATE'
                     WHEN 'PENDING_RECEIVE' THEN 'PENDING RECEIVE'
@@ -1929,9 +1930,9 @@ CROSS APPLY
 ) Q
 
 /*
- * V6: when a request-line receive cache row exists, its SAP allocation is
- * authoritative. Legacy/local receiver quantities may only be used when no
- * request-line mapping exists at all.
+ * When a request-line receive cache row exists, its ScanPlus FT_INVT
+ * allocation is authoritative. Legacy/local receiver quantities may only be
+ * used when no request-line mapping exists at all.
  */
 CROSS APPLY
 (
@@ -2038,6 +2039,7 @@ $columns = [
     'ITR/IT',
     'Needed Date',
     'Issue Status',
+    'Receive Status',
     'Part Number',
     'Part Name',
     'Requested Qty',
@@ -2052,7 +2054,6 @@ $columns = [
     'Received By',
     'Receive Area',
     'Received At',
-    'Receive Status',
     'Closed At',
     'Remarks'
 ];
@@ -2077,193 +2078,196 @@ if ($export) {
 
     header(
         'Content-Disposition: attachment; filename="' .
-        $filename .
-        '"'
+            $filename .
+            '"'
     );
 
     header('Pragma: no-cache');
     header('Expires: 0');
 
-    ?>
+?>
     <!doctype html>
     <html lang="en">
+
     <head>
         <meta charset="utf-8">
         <title>Requestor Requests</title>
     </head>
+
     <body>
 
-    <table border="1">
-        <thead>
-        <tr>
-            <?php foreach ($columns as $column): ?>
-                <th>
-                    <?= request_report_excel_cell($column) ?>
-                </th>
-            <?php endforeach; ?>
-        </tr>
-        </thead>
-
-        <tbody>
-
-        <?php if (empty($rows)): ?>
-
-            <tr>
-                <td colspan="<?= count($columns) ?>">
-                    No records found.
-                </td>
-            </tr>
-
-        <?php else: ?>
-
-            <?php foreach ($rows as $row): ?>
+        <table border="1">
+            <thead>
                 <tr>
-                    <td>
-                        <?= request_report_excel_cell(
-                            $row['RequestNo'] ?? ''
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            $row['ITRNumber'] ?? ''
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            request_report_date_cell(
-                                $row['NeededDate'] ?? ''
-                            )
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            $row['IssueStatus'] ?? ''
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            $row['ItemCode'] ?? ''
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            $row['PartName'] ?? ''
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            request_report_number(
-                                $row['RequestedQty'] ?? ''
-                            )
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            request_report_number(
-                                $row['IssuedQty'] ?? ''
-                            )
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            request_report_number(
-                                $row['ReceivedQty'] ?? ''
-                            )
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            request_report_number(
-                                $row['QtyVariance'] ?? ''
-                            )
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            $row['LotNo'] ?? ''
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            $row['WarehouseLotNo'] ?? ''
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            $row['RequestedByUsername'] ?? ''
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            $row['RequestedAt'] ?? ''
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            $row['IssuedAt'] ?? ''
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            $row['ScannedBy'] ?? ''
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            $row['ScannedArea'] ?? ''
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            $row['ScannedAt'] ?? ''
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            $row['ReceiveStatus'] ?? ''
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            $row['ClosedAt'] ?? ''
-                        ) ?>
-                    </td>
-
-                    <td>
-                        <?= request_report_excel_cell(
-                            $row['Remarks'] ?? ''
-                        ) ?>
-                    </td>
+                    <?php foreach ($columns as $column): ?>
+                        <th>
+                            <?= request_report_excel_cell($column) ?>
+                        </th>
+                    <?php endforeach; ?>
                 </tr>
-            <?php endforeach; ?>
+            </thead>
 
-        <?php endif; ?>
+            <tbody>
 
-        </tbody>
-    </table>
+                <?php if (empty($rows)): ?>
+
+                    <tr>
+                        <td colspan="<?= count($columns) ?>">
+                            No records found.
+                        </td>
+                    </tr>
+
+                <?php else: ?>
+
+                    <?php foreach ($rows as $row): ?>
+                        <tr>
+                            <td>
+                                <?= request_report_excel_cell(
+                                    $row['RequestNo'] ?? ''
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    $row['ITRNumber'] ?? ''
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    request_report_date_cell(
+                                        $row['NeededDate'] ?? ''
+                                    )
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    $row['IssueStatus'] ?? ''
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    $row['ReceiveStatus'] ?? ''
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    $row['ItemCode'] ?? ''
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    $row['PartName'] ?? ''
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    request_report_number(
+                                        $row['RequestedQty'] ?? ''
+                                    )
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    request_report_number(
+                                        $row['IssuedQty'] ?? ''
+                                    )
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    request_report_number(
+                                        $row['ReceivedQty'] ?? ''
+                                    )
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    request_report_number(
+                                        $row['QtyVariance'] ?? ''
+                                    )
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    $row['LotNo'] ?? ''
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    $row['WarehouseLotNo'] ?? ''
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    $row['RequestedByUsername'] ?? ''
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    $row['RequestedAt'] ?? ''
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    $row['IssuedAt'] ?? ''
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    $row['ScannedBy'] ?? ''
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    $row['ScannedArea'] ?? ''
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    $row['ScannedAt'] ?? ''
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    $row['ClosedAt'] ?? ''
+                                ) ?>
+                            </td>
+
+                            <td>
+                                <?= request_report_excel_cell(
+                                    $row['Remarks'] ?? ''
+                                ) ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+
+                <?php endif; ?>
+
+            </tbody>
+        </table>
 
     </body>
+
     </html>
-    <?php
+<?php
 
     exit;
 }
@@ -2305,22 +2309,13 @@ $showingTo = min(
 
     <meta charset="utf-8">
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1"
-    >
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <base href="<?= h(app_path('')) ?>">
 
-    <link
-        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
-        rel="stylesheet"
-    >
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
-    <link
-        href="assets/app-shell.css"
-        rel="stylesheet"
-    >
+    <link href="assets/app-shell.css" rel="stylesheet">
 
     <style>
         :root {
@@ -2400,8 +2395,7 @@ $showingTo = min(
             border: 1px solid var(--border-soft);
             border-radius: 16px;
             box-shadow:
-                0 12px 35px
-                rgba(15, 23, 42, 0.06);
+                0 12px 35px rgba(15, 23, 42, 0.06);
         }
 
         .content-card-header {
@@ -2455,8 +2449,7 @@ $showingTo = min(
         .form-select:focus {
             border-color: #0d6efd;
             box-shadow:
-                0 0 0 4px
-                rgba(13, 110, 253, 0.12);
+                0 0 0 4px rgba(13, 110, 253, 0.12);
         }
 
         .btn {
@@ -2568,6 +2561,7 @@ $showingTo = min(
         /* Partial receipt / partial SAP posting = blue */
         .status-scanplus_partial,
         .status-sap_partial,
+        .status-partial,
         .status-partial_received,
         .status-partial_posted {
             background: #dbeafe;
@@ -2589,6 +2583,7 @@ $showingTo = min(
         }
 
         .status-scan_not_allocated,
+        .status-unallocated_scanplus_scan,
         .status-unallocated_daily_scan,
         .status-unverified_date {
             background: #f3f4f6;
@@ -2712,815 +2707,823 @@ $showingTo = min(
                 font-size: 10px;
             }
         }
+
+
+        /* ============================================================
+           Modern requestor report overrides
+           ============================================================ */
+        .main-content {
+            padding: 24px;
+        }
+
+        .page-header {
+            padding: 4px 2px;
+            margin-bottom: 20px;
+        }
+
+        .page-title {
+            font-size: 26px;
+            font-weight: 850;
+        }
+
+        .page-subtitle {
+            max-width: 920px;
+            font-size: 14px;
+            line-height: 1.55;
+        }
+
+        .content-card {
+            border-radius: 20px;
+            box-shadow: 0 16px 42px rgba(15, 23, 42, 0.08);
+        }
+
+        .content-card-header {
+            padding: 18px 20px;
+        }
+
+        .content-card-body {
+            padding: 20px;
+        }
+
+        .filter-box {
+            padding: 16px;
+            border-radius: 16px;
+            background: #f8fbff;
+        }
+
+        .form-control,
+        .form-select,
+        .btn {
+            min-height: 44px;
+            font-size: 14px;
+        }
+
+        .report-table-wrap {
+            max-height: 70vh;
+            border-radius: 16px;
+        }
+
+        .report-table {
+            min-width: 1740px;
+            font-size: 12px;
+        }
+
+        .report-table thead th {
+            padding: 11px 8px;
+            font-size: 10px;
+            letter-spacing: .035em;
+            background: #eef4fb;
+        }
+
+        .report-table td {
+            padding: 10px 8px;
+            font-size: 12px;
+        }
+
+        .status-pill {
+            max-width: 190px;
+            padding: 5px 9px;
+            font-size: 10px;
+        }
+
+        .part-name-cell,
+        .remarks-cell {
+            line-height: 1.4;
+        }
+
+        @media (max-width: 991.98px) {
+            .main-content {
+                padding: 14px;
+            }
+
+            .page-title {
+                font-size: 22px;
+            }
+
+            .report-table {
+                font-size: 11px;
+            }
+        }
     </style>
 </head>
 
 <body>
 
-<header class="sap-shellbar">
-    <button
-        class="shell-menu-btn"
-        type="button"
-        id="sidebarToggle"
-        aria-label="Open navigation"
-    >
-        &#9776;
-    </button>
+    <header class="sap-shellbar">
+        <button class="shell-menu-btn" type="button" id="sidebarToggle" aria-label="Open navigation">
+            &#9776;
+        </button>
 
-    <div class="shell-logo" aria-hidden="true">
-        <img
-            src="image/nbc-bg-dashboard.jpg"
-            alt="NBC Logo"
-        >
-    </div>
-
-    <div class="shell-title-wrap">
-        <div class="shell-title">
-            NBC Rawmats Traceability
+        <div class="shell-logo" aria-hidden="true">
+            <img src="image/nbc-bg-dashboard.jpg" alt="NBC Logo">
         </div>
 
-        <div class="shell-subtitle">
-            Requestor reporting
+        <div class="shell-title-wrap">
+            <div class="shell-title">
+                NBC Rawmats Traceability
+            </div>
+
+            <div class="shell-subtitle">
+                Requestor reporting
+            </div>
         </div>
-    </div>
-</header>
+    </header>
 
-<div
-    class="sidebar-backdrop"
-    id="sidebarBackdrop"
-></div>
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
-<div class="app-layout">
+    <div class="app-layout">
 
-    <?php app_sidebar('requestor_report'); ?>
+        <?php app_sidebar('requestor_report'); ?>
 
-    <main class="main-content">
+        <main class="main-content">
 
-        <div class="page-header">
+            <div class="page-header">
 
-            <div>
-                <h4 class="page-title">
-                    Requestor Report
-                </h4>
+                <div>
+                    <h4 class="page-title">
+                        Requestor Report
+                    </h4>
 
-                <div class="page-subtitle">
-                    Request timeline: created, issued and received.
-                    Received quantity is confirmed from SAP posting allocation; ScanPlus-only scans remain visible as not posted.
-                </div>
-
-            </div>
-
-            <div class="text-end">
-                <span
-                    class="badge bg-primary rounded-pill px-3 py-2"
-                >
-                    <?= number_format($totalRows) ?> line(s)
-                </span>
-
-                <div class="small text-muted mt-1">
-                    Showing
-                    <?= number_format($showingFrom) ?>
-                    –
-                    <?= number_format($showingTo) ?>
-                </div>
-            </div>
-
-        </div>
-
-        <div class="content-card">
-
-            <div class="content-card-header">
-                <h5 class="content-card-title">
-                    Report Filters
-                </h5>
-
-                <div class="content-card-subtitle">
-                    Filter local request records and export the
-                    selected range.
-                    <?php if ($latestCacheSync !== ''): ?>
-                        ScanPlus cache last synced:
-                        <?= h($latestCacheSync) ?>.
-                    <?php endif; ?>
-                </div>
-            </div>
-
-            <div class="content-card-body">
-
-                <form
-                    class="filter-box"
-                    method="get"
-                    action="<?= h(request_report_url()) ?>"
-                >
-                    <div class="row g-2 align-items-end">
-
-                        <div class="col-sm-6 col-lg-2">
-                            <label
-                                class="form-label"
-                                for="date_from"
-                            >
-                                Date From
-                            </label>
-
-                            <input
-                                class="form-control"
-                                type="date"
-                                id="date_from"
-                                name="date_from"
-                                value="<?= h($dateFrom) ?>"
-                            >
-                        </div>
-
-                        <div class="col-sm-6 col-lg-2">
-                            <label
-                                class="form-label"
-                                for="date_to"
-                            >
-                                Date To
-                            </label>
-
-                            <input
-                                class="form-control"
-                                type="date"
-                                id="date_to"
-                                name="date_to"
-                                value="<?= h($dateTo) ?>"
-                            >
-                        </div>
-
-                        <div class="col-sm-8 col-lg-5">
-                            <label
-                                class="form-label"
-                                for="q"
-                            >
-                                Search
-                            </label>
-
-                            <input
-                                class="form-control"
-                                type="search"
-                                id="q"
-                                name="q"
-                                value="<?= h($search) ?>"
-                                placeholder="Request, ITR, item, part name or status"
-                            >
-                        </div>
-
-                        <div class="col-sm-6 col-lg-1 d-grid">
-                            <button
-                                class="btn btn-primary"
-                                type="submit"
-                            >
-                                Filter
-                            </button>
-                        </div>
-
-                        <div class="col-sm-6 col-lg-2 d-grid">
-                            <a
-                                class="btn btn-success"
-                                href="<?= h($exportUrl) ?>"
-                            >
-                                Export Excel
-                            </a>
-                        </div>
-
+                    <div class="page-subtitle">
+                        Request timeline: created, issued and received.
+                        Received quantity is confirmed from the ScanPlus FT_INVT request-line allocation; SAP posting is
+                        tracked separately for audit.
                     </div>
-                </form>
 
-                <div class="small text-muted mb-2">
-                    <strong>Timeline:</strong> Request Created At &rarr; Issued At &rarr; Received At.
-                    <strong>PARTIAL</strong> under Issue Status means only part of the requested quantity was issued;
-                    it does not mean the issued quantity was only partially received.
-                    ScanPlus scans are FIFO-allocated per request line, while Received Qty is shown only from verified SAP posting allocation.
                 </div>
 
-                <div class="report-table-wrap">
+                <div class="text-end">
+                    <span class="badge bg-primary rounded-pill px-3 py-2">
+                        <?= number_format($totalRows) ?> line(s)
+                    </span>
 
-                    <table
-                        class="table table-bordered table-striped align-middle report-table"
-                    >
-                        <thead>
-                        <tr>
-                            <?php foreach ($columns as $column): ?>
-                                <th><?= h($column) ?></th>
-                            <?php endforeach; ?>
-                        </tr>
-                        </thead>
+                    <div class="small text-muted mt-1">
+                        Showing
+                        <?= number_format($showingFrom) ?>
+                        –
+                        <?= number_format($showingTo) ?>
+                    </div>
+                </div>
 
-                        <tbody>
+            </div>
 
-                        <?php if (empty($rows)): ?>
+            <div class="content-card">
 
-                            <tr>
-                                <td
-                                    colspan="<?= count($columns) ?>"
-                                    class="empty-row"
-                                >
-                                    No records found for the selected
-                                    filters.
-                                </td>
-                            </tr>
+                <div class="content-card-header">
+                    <h5 class="content-card-title">
+                        Report Filters
+                    </h5>
 
-                        <?php else: ?>
+                    <div class="content-card-subtitle">
+                        Filter local request records and export the
+                        selected range.
+                        <?php if ($latestCacheSync !== ''): ?>
+                            ScanPlus cache last synced:
+                            <?= h($latestCacheSync) ?>.
+                        <?php endif; ?>
+                    </div>
+                </div>
 
-                            <?php foreach ($rows as $row): ?>
+                <div class="content-card-body">
 
-                                <?php
-                                $issueStatusClass =
-                                    request_report_status_class(
-                                        $row['IssueStatus'] ?? ''
-                                    );
+                    <form class="filter-box" method="get" action="<?= h(request_report_url()) ?>">
+                        <div class="row g-2 align-items-end">
 
-                                $receiveStatusClass =
-                                    request_report_status_class(
-                                        $row['ReceiveStatus'] ?? ''
-                                    );
-                                ?>
+                            <div class="col-sm-6 col-lg-2">
+                                <label class="form-label" for="date_from">
+                                    Date From
+                                </label>
 
+                                <input class="form-control" type="date" id="date_from" name="date_from"
+                                    value="<?= h($dateFrom) ?>">
+                            </div>
+
+                            <div class="col-sm-6 col-lg-2">
+                                <label class="form-label" for="date_to">
+                                    Date To
+                                </label>
+
+                                <input class="form-control" type="date" id="date_to" name="date_to"
+                                    value="<?= h($dateTo) ?>">
+                            </div>
+
+                            <div class="col-sm-8 col-lg-5">
+                                <label class="form-label" for="q">
+                                    Search
+                                </label>
+
+                                <input class="form-control" type="search" id="q" name="q" value="<?= h($search) ?>"
+                                    placeholder="Request, ITR, item, part name or status">
+                            </div>
+
+                            <div class="col-sm-6 col-lg-1 d-grid">
+                                <button class="btn btn-primary" type="submit">
+                                    Filter
+                                </button>
+                            </div>
+
+                            <div class="col-sm-6 col-lg-2 d-grid">
+                                <a class="btn btn-success" href="<?= h($exportUrl) ?>">
+                                    Export Excel
+                                </a>
+                            </div>
+
+                        </div>
+                    </form>
+
+                    <div class="small text-muted mb-2">
+                        <strong>Timeline:</strong> Request Created At &rarr; Issued At &rarr; Received At.
+                        <strong>Issue Status</strong> and <strong>Receive Status</strong> are side by side.
+                        <strong>PARTIAL</strong> under Issue Status means only part of the requested quantity was
+                        issued;
+                        it does not mean the issued quantity was only partially received.
+                        ScanPlus FT_INVT scans are FIFO-allocated per request line and drive Received Qty. SAP posting
+                        remains a separate audit check.
+                    </div>
+
+                    <div class="report-table-wrap">
+
+                        <table class="table table-bordered table-striped align-middle report-table">
+                            <thead>
                                 <tr>
-                                    <td>
+                                    <?php foreach ($columns as $column): ?>
+                                        <th><?= h($column) ?></th>
+                                    <?php endforeach; ?>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+
+                                <?php if (empty($rows)): ?>
+
+                                    <tr>
+                                        <td colspan="<?= count($columns) ?>" class="empty-row">
+                                            No records found for the selected
+                                            filters.
+                                        </td>
+                                    </tr>
+
+                                <?php else: ?>
+
+                                    <?php foreach ($rows as $row): ?>
+
                                         <?php
-                                        $requestNoText =
-                                            request_report_cell(
-                                                $row['RequestNo'] ?? ''
+                                        $issueStatusClass =
+                                            request_report_status_class(
+                                                $row['IssueStatus'] ?? ''
+                                            );
+
+                                        $receiveStatusClass =
+                                            request_report_status_class(
+                                                $row['ReceiveStatus'] ?? ''
                                             );
                                         ?>
 
-                                        <button
-                                            class="request-verify-link"
-                                            type="button"
-                                            data-request-no="<?= h($requestNoText) ?>"
-                                        >
-                                            <?= h($requestNoText) ?>
-                                        </button>
-                                    </td>
+                                        <tr>
+                                            <td>
+                                                <?php
+                                                $requestNoText =
+                                                    request_report_cell(
+                                                        $row['RequestNo'] ?? ''
+                                                    );
+                                                ?>
 
-                                    <td>
-                                        <?= h(
-                                            request_report_cell(
-                                                $row['ITRNumber'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                                <button class="request-verify-link" type="button"
+                                                    data-request-no="<?= h($requestNoText) ?>">
+                                                    <?= h($requestNoText) ?>
+                                                </button>
+                                            </td>
 
-                                    <td>
-                                        <?= h(
-                                            request_report_date_cell(
-                                                $row['NeededDate'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                            <td>
+                                                <?= h(
+                                                    request_report_cell(
+                                                        $row['ITRNumber'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                                    <td>
-                                        <span
-                                            class="status-pill status-<?= h(
-                                                $issueStatusClass
-                                            ) ?>"
-                                        >
-                                            <?= h(
-                                                request_report_cell(
-                                                    $row['IssueStatus'] ?? ''
-                                                )
-                                            ) ?>
-                                        </span>
-                                    </td>
+                                            <td>
+                                                <?= h(
+                                                    request_report_date_cell(
+                                                        $row['NeededDate'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                                    <td>
-                                        <?= h(
-                                            request_report_cell(
-                                                $row['ItemCode'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                            <td>
+                                                <span class="status-pill status-<?= h(
+                                                                                    $issueStatusClass
+                                                                                ) ?>">
+                                                    <?= h(
+                                                        request_report_cell(
+                                                            $row['IssueStatus'] ?? ''
+                                                        )
+                                                    ) ?>
+                                                </span>
+                                            </td>
 
-                                    <td class="part-name-cell">
-                                        <?= h(
-                                            request_report_cell(
-                                                $row['PartName'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                            <td>
+                                                <span class="status-pill status-<?= h(
+                                                                                    $receiveStatusClass
+                                                                                ) ?>">
+                                                    <?= h(
+                                                        request_report_cell(
+                                                            $row['ReceiveStatus']
+                                                                ?? ''
+                                                        )
+                                                    ) ?>
+                                                </span>
+                                            </td>
 
-                                    <td class="quantity-cell">
-                                        <?= h(
-                                            request_report_number(
-                                                $row['RequestedQty'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                            <td>
+                                                <?= h(
+                                                    request_report_cell(
+                                                        $row['ItemCode'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                                    <td class="quantity-cell">
-                                        <?= h(
-                                            request_report_number(
-                                                $row['IssuedQty'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                            <td class="part-name-cell">
+                                                <?= h(
+                                                    request_report_cell(
+                                                        $row['PartName'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                                    <td class="quantity-cell">
-                                        <?= h(
-                                            request_report_number(
-                                                $row['ReceivedQty'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                            <td class="quantity-cell">
+                                                <?= h(
+                                                    request_report_number(
+                                                        $row['RequestedQty'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                                    <td class="quantity-cell">
-                                        <?= h(
-                                            request_report_number(
-                                                $row['QtyVariance'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                            <td class="quantity-cell">
+                                                <?= h(
+                                                    request_report_number(
+                                                        $row['IssuedQty'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                                    <td>
-                                        <?= h(
-                                            request_report_cell(
-                                                $row['LotNo'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                            <td class="quantity-cell">
+                                                <?= h(
+                                                    request_report_number(
+                                                        $row['ReceivedQty'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                                    <td>
-                                        <?= h(
-                                            request_report_cell(
-                                                $row['WarehouseLotNo'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                            <td class="quantity-cell">
+                                                <?= h(
+                                                    request_report_number(
+                                                        $row['QtyVariance'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                                    <td>
-                                        <?= h(
-                                            request_report_cell(
-                                                $row['RequestedByUsername']
-                                                    ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                            <td>
+                                                <?= h(
+                                                    request_report_cell(
+                                                        $row['LotNo'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                                    <td>
-                                        <?= h(
-                                            request_report_cell(
-                                                $row['RequestedAt'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                            <td>
+                                                <?= h(
+                                                    request_report_cell(
+                                                        $row['WarehouseLotNo'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                                    <td>
-                                        <?= h(
-                                            request_report_cell(
-                                                $row['IssuedAt'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                            <td>
+                                                <?= h(
+                                                    request_report_cell(
+                                                        $row['RequestedByUsername']
+                                                            ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                                    <td>
-                                        <?= h(
-                                            request_report_cell(
-                                                $row['ScannedBy'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                            <td>
+                                                <?= h(
+                                                    request_report_cell(
+                                                        $row['RequestedAt'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                                    <td>
-                                        <?= h(
-                                            request_report_cell(
-                                                $row['ScannedArea'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                            <td>
+                                                <?= h(
+                                                    request_report_cell(
+                                                        $row['IssuedAt'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                                    <td>
-                                        <?= h(
-                                            request_report_cell(
-                                                $row['ScannedAt'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                            <td>
+                                                <?= h(
+                                                    request_report_cell(
+                                                        $row['ScannedBy'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                                    <td>
-                                        <span
-                                            class="status-pill status-<?= h(
-                                                $receiveStatusClass
-                                            ) ?>"
-                                        >
-                                            <?= h(
-                                                request_report_cell(
-                                                    $row['ReceiveStatus']
-                                                        ?? ''
-                                                )
-                                            ) ?>
-                                        </span>
-                                    </td>
+                                            <td>
+                                                <?= h(
+                                                    request_report_cell(
+                                                        $row['ScannedArea'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                                    <td>
-                                        <?= h(
-                                            request_report_cell(
-                                                $row['ClosedAt'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
+                                            <td>
+                                                <?= h(
+                                                    request_report_cell(
+                                                        $row['ScannedAt'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                                    <td class="remarks-cell">
-                                        <?= h(
-                                            request_report_cell(
-                                                $row['Remarks'] ?? ''
-                                            )
-                                        ) ?>
-                                    </td>
-                                </tr>
+                                            <td>
+                                                <?= h(
+                                                    request_report_cell(
+                                                        $row['ClosedAt'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
 
-                            <?php endforeach; ?>
+                                            <td class="remarks-cell">
+                                                <?= h(
+                                                    request_report_cell(
+                                                        $row['Remarks'] ?? ''
+                                                    )
+                                                ) ?>
+                                            </td>
+                                        </tr>
 
-                        <?php endif; ?>
+                                    <?php endforeach; ?>
 
-                        </tbody>
-                    </table>
+                                <?php endif; ?>
 
-                </div>
+                            </tbody>
+                        </table>
 
-                <?php if (!$export && $totalRows > 0): ?>
+                    </div>
 
-                    <div
-                        class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3"
-                    >
-                        <div class="small text-muted">
-                            Showing
-                            <?= number_format($showingFrom) ?>
-                            to
-                            <?= number_format($showingTo) ?>
-                            of
-                            <?= number_format($totalRows) ?>
-                            lines
-                        </div>
+                    <?php if (!$export && $totalRows > 0): ?>
 
-                        <nav aria-label="Request report pagination">
-                            <ul class="pagination pagination-sm">
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+                            <div class="small text-muted">
+                                Showing
+                                <?= number_format($showingFrom) ?>
+                                to
+                                <?= number_format($showingTo) ?>
+                                of
+                                <?= number_format($totalRows) ?>
+                                lines
+                            </div>
 
-                                <li
-                                    class="page-item <?= $page <= 1
-                                        ? 'disabled'
-                                        : '' ?>"
-                                >
-                                    <a
-                                        class="page-link"
-                                        href="<?= h(
-                                            request_report_url($baseQuery + [
-                                                'page' => max(
-                                                    1,
-                                                    $page - 1
-                                                )
-                                            ])
-                                        ) ?>"
-                                    >
-                                        Previous
-                                    </a>
-                                </li>
+                            <nav aria-label="Request report pagination">
+                                <ul class="pagination pagination-sm">
 
-                                <?php
-                                $pageStart = max(
-                                    1,
-                                    $page - 2
-                                );
-
-                                $pageEnd = min(
-                                    $totalPages,
-                                    $page + 2
-                                );
-                                ?>
-
-                                <?php for (
-                                    $pageNumber = $pageStart;
-                                    $pageNumber <= $pageEnd;
-                                    $pageNumber++
-                                ): ?>
-
-                                    <li
-                                        class="page-item <?= $pageNumber
-                                            === $page
-                                                ? 'active'
-                                                : '' ?>"
-                                    >
-                                        <a
-                                            class="page-link"
-                                            href="<?= h(
-                                                request_report_url($baseQuery + [
-                                                    'page' => $pageNumber
-                                                ])
-                                            ) ?>"
-                                        >
-                                            <?= $pageNumber ?>
+                                    <li class="page-item <?= $page <= 1
+                                                                ? 'disabled'
+                                                                : '' ?>">
+                                        <a class="page-link" href="<?= h(
+                                                                        request_report_url($baseQuery + [
+                                                                            'page' => max(
+                                                                                1,
+                                                                                $page - 1
+                                                                            )
+                                                                        ])
+                                                                    ) ?>">
+                                            Previous
                                         </a>
                                     </li>
 
-                                <?php endfor; ?>
+                                    <?php
+                                    $pageStart = max(
+                                        1,
+                                        $page - 2
+                                    );
 
-                                <li
-                                    class="page-item <?= $page >= $totalPages
-                                        ? 'disabled'
-                                        : '' ?>"
-                                >
-                                    <a
-                                        class="page-link"
-                                        href="<?= h(
-                                            request_report_url($baseQuery + [
-                                                'page' => min(
-                                                    $totalPages,
-                                                    $page + 1
-                                                )
-                                            ])
-                                        ) ?>"
-                                    >
-                                        Next
-                                    </a>
-                                </li>
+                                    $pageEnd = min(
+                                        $totalPages,
+                                        $page + 2
+                                    );
+                                    ?>
 
-                            </ul>
-                        </nav>
-                    </div>
+                                    <?php for (
+                                        $pageNumber = $pageStart;
+                                        $pageNumber <= $pageEnd;
+                                        $pageNumber++
+                                    ): ?>
 
-                <?php endif; ?>
+                                        <li class="page-item <?= $pageNumber
+                                                                    === $page
+                                                                    ? 'active'
+                                                                    : '' ?>">
+                                            <a class="page-link" href="<?= h(
+                                                                            request_report_url($baseQuery + [
+                                                                                'page' => $pageNumber
+                                                                            ])
+                                                                        ) ?>">
+                                                <?= $pageNumber ?>
+                                            </a>
+                                        </li>
 
-            </div>
-        </div>
+                                    <?php endfor; ?>
 
-    </main>
-</div>
+                                    <li class="page-item <?= $page >= $totalPages
+                                                                ? 'disabled'
+                                                                : '' ?>">
+                                        <a class="page-link" href="<?= h(
+                                                                        request_report_url($baseQuery + [
+                                                                            'page' => min(
+                                                                                $totalPages,
+                                                                                $page + 1
+                                                                            )
+                                                                        ])
+                                                                    ) ?>">
+                                            Next
+                                        </a>
+                                    </li>
 
-<div
-    class="modal fade"
-    id="receiveVerifyModal"
-    tabindex="-1"
-    aria-labelledby="receiveVerifyTitle"
-    aria-hidden="true"
->
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <div>
-                    <h5 class="modal-title" id="receiveVerifyTitle">
-                        Receive Verification
-                    </h5>
-                    <div class="text-muted small" id="receiveVerifySubtitle">
-                        Local ScanPlus cache check
-                    </div>
+                                </ul>
+                            </nav>
+                        </div>
+
+                    <?php endif; ?>
+
                 </div>
-
-                <button
-                    type="button"
-                    class="btn-close"
-                    data-bs-dismiss="modal"
-                    aria-label="Close"
-                ></button>
             </div>
 
-            <div class="modal-body">
-                <div id="receiveVerifyStatus" class="alert alert-light border">
-                    Select a request to verify receive status.
+        </main>
+    </div>
+
+    <div class="modal fade" id="receiveVerifyModal" tabindex="-1" aria-labelledby="receiveVerifyTitle"
+        aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title" id="receiveVerifyTitle">
+                            Receive Verification
+                        </h5>
+                        <div class="text-muted small" id="receiveVerifySubtitle">
+                            Local ScanPlus cache check
+                        </div>
+                    </div>
+
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
 
-                <div
-                    class="verify-summary mb-3"
-                    id="receiveVerifySummary"
-                ></div>
+                <div class="modal-body">
+                    <div id="receiveVerifyStatus" class="alert alert-light border">
+                        Select a request to verify receive status.
+                    </div>
 
-                <div
-                    class="verify-table-wrap d-none"
-                    id="receiveVerifyTableWrap"
-                >
-                    <table class="table table-sm table-striped table-bordered verify-table">
-                        <thead>
-                        <tr>
-                            <th>Result</th>
-                            <th>Item</th>
-                            <th>Part Name</th>
-                            <th class="text-end">Issued</th>
-                            <th class="text-end">ScanPlus Received</th>
-                            <th>GRPO Lot</th>
-                            <th>WH Lot</th>
-                            <th>Received Lot</th>
-                            <th>ScanPlus Source</th>
-                            <th>Received By</th>
-                            <th>Received At</th>
-                            <th>Cache Synced</th>
-                        </tr>
-                        </thead>
-                        <tbody id="receiveVerifyRows"></tbody>
-                    </table>
+                    <div class="verify-summary mb-3" id="receiveVerifySummary"></div>
+
+                    <div class="verify-table-wrap d-none" id="receiveVerifyTableWrap">
+                        <table class="table table-sm table-striped table-bordered verify-table">
+                            <thead>
+                                <tr>
+                                    <th>Result</th>
+                                    <th>Item</th>
+                                    <th>Part Name</th>
+                                    <th class="text-end">Issued</th>
+                                    <th class="text-end">ScanPlus Received</th>
+                                    <th>GRPO Lot</th>
+                                    <th>WH Lot</th>
+                                    <th>Received Lot</th>
+                                    <th>ScanPlus Source</th>
+                                    <th>Received By</th>
+                                    <th>Received At</th>
+                                    <th>Cache Synced</th>
+                                </tr>
+                            </thead>
+                            <tbody id="receiveVerifyRows"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-<script
-    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
-></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
-<script>
-const sidebar = document.getElementById('sidebar');
-const sidebarToggle = document.getElementById('sidebarToggle');
-const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+    <script>
+        const sidebar = document.getElementById('sidebar');
+        const sidebarToggle = document.getElementById('sidebarToggle');
+        const sidebarBackdrop = document.getElementById('sidebarBackdrop');
 
-if (sidebarToggle && sidebar) {
-    sidebarToggle.addEventListener('click', function () {
-        sidebar.classList.add('show');
+        if (sidebarToggle && sidebar) {
+            sidebarToggle.addEventListener('click', function() {
+                sidebar.classList.add('show');
 
-        if (sidebarBackdrop) {
-            sidebarBackdrop.classList.add('show');
-        }
-    });
-}
-
-if (sidebarBackdrop && sidebar) {
-    sidebarBackdrop.addEventListener('click', function () {
-        sidebar.classList.remove('show');
-        sidebarBackdrop.classList.remove('show');
-    });
-}
-
-const receiveVerifyModalEl = document.getElementById('receiveVerifyModal');
-const receiveVerifyModal = receiveVerifyModalEl
-    ? bootstrap.Modal.getOrCreateInstance(receiveVerifyModalEl)
-    : null;
-
-function verifyEscape(value) {
-    return String(value ?? '').replace(/[&<>"']/g, function (char) {
-        return {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#039;'
-        }[char];
-    });
-}
-
-function verifyNumber(value) {
-    const number = Number(value || 0);
-
-    if (!Number.isFinite(number)) {
-        return '';
-    }
-
-    return String(parseFloat(number.toFixed(3)));
-}
-
-function verifyStatusClass(status) {
-    return String(status || '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '');
-}
-
-function verifySetLoading(requestNo) {
-    document.getElementById('receiveVerifyTitle').textContent =
-        'Receive Verification';
-    document.getElementById('receiveVerifySubtitle').textContent =
-        requestNo + ' | validating exact GRPO lot and ScanPlus receipt source...';
-    document.getElementById('receiveVerifyStatus').className =
-        'alert alert-light border';
-    document.getElementById('receiveVerifyStatus').textContent =
-        'Loading request status and ScanPlus receipt source from local cache...';
-    document.getElementById('receiveVerifySummary').innerHTML = '';
-    document.getElementById('receiveVerifyRows').innerHTML = '';
-    document.getElementById('receiveVerifyTableWrap')
-        .classList.add('d-none');
-}
-
-function verifyRenderSummary(summary) {
-    const labels = {
-        received: 'Received',
-        partial_received: 'Partial',
-        issued: 'Issued'
-    };
-
-    return Object.keys(labels).map(function (key) {
-        const count = Number(summary?.[key] || 0);
-        const cls = verifyStatusClass(key);
-
-        return '<span class="status-pill status-' + cls + '">' +
-            verifyEscape(labels[key] + ': ' + count) +
-            '</span>';
-    }).join('');
-}
-
-function verifyRenderRows(lines) {
-    if (!Array.isArray(lines) || lines.length === 0) {
-        return '<tr><td colspan="12" class="empty-row">No lines found.</td></tr>';
-    }
-
-    return lines.map(function (line) {
-        let status = String(line.verification_status || '').trim();
-        const issuedQty = Number(line.issued_qty || 0);
-        const normalizedStatus = status.toUpperCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
-
-        // A stale receive-cache state must never say NOT ISSUED when the
-        // actual local issuance row already has a positive issued quantity.
-        if (
-            Number.isFinite(issuedQty) &&
-            issuedQty > 0 &&
-            (
-                normalizedStatus === 'NOT ISSUED' ||
-                normalizedStatus === 'NOT ISSUED REQUEST LINE'
-            )
-        ) {
-            status = 'ISSUED';
+                if (sidebarBackdrop) {
+                    sidebarBackdrop.classList.add('show');
+                }
+            });
         }
 
-        const statusClass = verifyStatusClass(status);
-        const isReceived = status === 'RECEIVED' || status === 'PARTIAL_RECEIVED';
-        const receivedQty = Number(line.cache_received_qty || 0);
-        const hasActualReceipt =
-            isReceived &&
-            Number.isFinite(receivedQty) &&
-            receivedQty > 0;
+        if (sidebarBackdrop && sidebar) {
+            sidebarBackdrop.addEventListener('click', function() {
+                sidebar.classList.remove('show');
+                sidebarBackdrop.classList.remove('show');
+            });
+        }
 
-        const sapLot = hasActualReceipt
-            ? (line.cache_received_lot_no || line.cache_lot_no || '')
-            : '';
-        const sourceTransfer = hasActualReceipt
-            ? (line.source_transfer_details || '')
-            : '';
-        const receivedBy = hasActualReceipt
-            ? (line.cache_received_by || '')
-            : '';
-        const receivedAt = hasActualReceipt
-            ? (line.cache_received_at || '')
-            : '';
+        const receiveVerifyModalEl = document.getElementById('receiveVerifyModal');
+        const receiveVerifyModal = receiveVerifyModalEl ?
+            bootstrap.Modal.getOrCreateInstance(receiveVerifyModalEl) :
+            null;
 
-        return '<tr>' +
-            '<td><span class="status-pill status-' + statusClass + '">' +
-                verifyEscape(status) +
-            '</span></td>' +
-            '<td>' + verifyEscape(line.item_code) + '</td>' +
-            '<td>' + verifyEscape(line.part_name) + '</td>' +
-            '<td class="text-end">' + verifyEscape(verifyNumber(line.issued_qty)) + '</td>' +
-            '<td class="text-end">' + verifyEscape(verifyNumber(line.cache_received_qty)) + '</td>' +
-            '<td>' + verifyEscape(line.lot_no) + '</td>' +
-            '<td>' + verifyEscape(line.warehouse_lot_no) + '</td>' +
-            '<td>' + verifyEscape(sapLot) + '</td>' +
-            '<td class="source-transfer-cell">' + verifyEscape(sourceTransfer) + '</td>' +
-            '<td>' + verifyEscape(receivedBy) + '</td>' +
-            '<td>' + verifyEscape(receivedAt) + '</td>' +
-            '<td>' + verifyEscape(line.cache_last_synced_at) + '</td>' +
-        '</tr>';
-    }).join('');
-}
+        function verifyEscape(value) {
+            return String(value ?? '').replace(/[&<>"']/g, function(char) {
+                return {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                } [char];
+            });
+        }
 
-async function openReceiveVerification(requestNo) {
-    if (!receiveVerifyModal || !requestNo) {
-        return;
-    }
+        function verifyNumber(value) {
+            const number = Number(value || 0);
 
-    verifySetLoading(requestNo);
-    receiveVerifyModal.show();
+            if (!Number.isFinite(number)) {
+                return '';
+            }
 
-    try {
-        const response = await fetch(
-            'api/requestor/verify_receive.php?request_no=' +
-            encodeURIComponent(requestNo),
-            { cache: 'no-store' }
-        );
-        const data = await response.json();
+            return String(parseFloat(number.toFixed(3)));
+        }
 
-        if (!data.ok) {
+        function verifyStatusClass(status) {
+            return String(status || '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '');
+        }
+
+        function verifySetLoading(requestNo) {
+            document.getElementById('receiveVerifyTitle').textContent =
+                'Receive Verification';
+            document.getElementById('receiveVerifySubtitle').textContent =
+                requestNo + ' | validating exact GRPO lot and ScanPlus receipt source...';
             document.getElementById('receiveVerifyStatus').className =
-                'alert alert-warning';
+                'alert alert-light border';
             document.getElementById('receiveVerifyStatus').textContent =
-                data.message || 'Unable to verify receive status.';
-            return;
+                'Loading request status and ScanPlus receipt source from local cache...';
+            document.getElementById('receiveVerifySummary').innerHTML = '';
+            document.getElementById('receiveVerifyRows').innerHTML = '';
+            document.getElementById('receiveVerifyTableWrap')
+                .classList.add('d-none');
         }
 
-        document.getElementById('receiveVerifyTitle').textContent =
-            'Receive Verification';
-        document.getElementById('receiveVerifySubtitle').textContent =
-            data.request_no + ' | ITR ' + (data.itr_number || '-') +
-            ' | ScanPlus cache ' + (data.latest_scanplus_cache_sync || 'not synced');
-        document.getElementById('receiveVerifyStatus').className =
-            'alert alert-info';
-        document.getElementById('receiveVerifyStatus').textContent =
-            data.source || 'Checked local ScanPlus cache only.';
-        document.getElementById('receiveVerifySummary').innerHTML =
-            verifyRenderSummary(data.summary || {});
-        document.getElementById('receiveVerifyRows').innerHTML =
-            verifyRenderRows(data.lines || []);
-        document.getElementById('receiveVerifyTableWrap')
-            .classList.remove('d-none');
-    } catch (error) {
-        document.getElementById('receiveVerifyStatus').className =
-            'alert alert-danger';
-        document.getElementById('receiveVerifyStatus').textContent =
-            'Unable to load receive verification.';
-        console.error(error);
-    }
-}
+        function verifyRenderSummary(summary) {
+            const labels = {
+                received: 'Received',
+                partial_received: 'Partial',
+                issued: 'Issued'
+            };
 
-document.querySelectorAll('.request-verify-link').forEach(function (button) {
-    button.addEventListener('click', function () {
-        openReceiveVerification(button.dataset.requestNo || '');
-    });
-});
-</script>
+            return Object.keys(labels).map(function(key) {
+                const count = Number(summary?.[key] || 0);
+                const cls = verifyStatusClass(key);
+
+                return '<span class="status-pill status-' + cls + '">' +
+                    verifyEscape(labels[key] + ': ' + count) +
+                    '</span>';
+            }).join('');
+        }
+
+        function verifyRenderRows(lines) {
+            if (!Array.isArray(lines) || lines.length === 0) {
+                return '<tr><td colspan="12" class="empty-row">No lines found.</td></tr>';
+            }
+
+            return lines.map(function(line) {
+                let status = String(line.verification_status || '').trim();
+                const issuedQty = Number(line.issued_qty || 0);
+                const normalizedStatus = status.toUpperCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+                // A stale receive-cache state must never say NOT ISSUED when the
+                // actual local issuance row already has a positive issued quantity.
+                if (
+                    Number.isFinite(issuedQty) &&
+                    issuedQty > 0 &&
+                    (
+                        normalizedStatus === 'NOT ISSUED' ||
+                        normalizedStatus === 'NOT ISSUED REQUEST LINE'
+                    )
+                ) {
+                    status = 'ISSUED';
+                }
+
+                const statusClass = verifyStatusClass(status);
+                const isReceived = status === 'RECEIVED' || status === 'PARTIAL_RECEIVED';
+                const receivedQty = Number(line.cache_received_qty || 0);
+                const hasActualReceipt =
+                    isReceived &&
+                    Number.isFinite(receivedQty) &&
+                    receivedQty > 0;
+
+                const sapLot = hasActualReceipt ?
+                    (line.cache_received_lot_no || line.cache_lot_no || '') :
+                    '';
+                const sourceTransfer = hasActualReceipt ?
+                    (line.source_transfer_details || '') :
+                    '';
+                const receivedBy = hasActualReceipt ?
+                    (line.cache_received_by || '') :
+                    '';
+                const receivedAt = hasActualReceipt ?
+                    (line.cache_received_at || '') :
+                    '';
+
+                return '<tr>' +
+                    '<td><span class="status-pill status-' + statusClass + '">' +
+                    verifyEscape(status) +
+                    '</span></td>' +
+                    '<td>' + verifyEscape(line.item_code) + '</td>' +
+                    '<td>' + verifyEscape(line.part_name) + '</td>' +
+                    '<td class="text-end">' + verifyEscape(verifyNumber(line.issued_qty)) + '</td>' +
+                    '<td class="text-end">' + verifyEscape(verifyNumber(line.cache_received_qty)) + '</td>' +
+                    '<td>' + verifyEscape(line.lot_no) + '</td>' +
+                    '<td>' + verifyEscape(line.warehouse_lot_no) + '</td>' +
+                    '<td>' + verifyEscape(sapLot) + '</td>' +
+                    '<td class="source-transfer-cell">' + verifyEscape(sourceTransfer) + '</td>' +
+                    '<td>' + verifyEscape(receivedBy) + '</td>' +
+                    '<td>' + verifyEscape(receivedAt) + '</td>' +
+                    '<td>' + verifyEscape(line.cache_last_synced_at) + '</td>' +
+                    '</tr>';
+            }).join('');
+        }
+
+        async function openReceiveVerification(requestNo) {
+            if (!receiveVerifyModal || !requestNo) {
+                return;
+            }
+
+            verifySetLoading(requestNo);
+            receiveVerifyModal.show();
+
+            try {
+                const response = await fetch(
+                    'api/requestor/verify_receive.php?request_no=' +
+                    encodeURIComponent(requestNo), {
+                        cache: 'no-store'
+                    }
+                );
+                const data = await response.json();
+
+                if (!data.ok) {
+                    document.getElementById('receiveVerifyStatus').className =
+                        'alert alert-warning';
+                    document.getElementById('receiveVerifyStatus').textContent =
+                        data.message || 'Unable to verify receive status.';
+                    return;
+                }
+
+                document.getElementById('receiveVerifyTitle').textContent =
+                    'Receive Verification';
+                document.getElementById('receiveVerifySubtitle').textContent =
+                    data.request_no + ' | ITR ' + (data.itr_number || '-') +
+                    ' | ScanPlus cache ' + (data.latest_scanplus_cache_sync || 'not synced');
+                document.getElementById('receiveVerifyStatus').className =
+                    'alert alert-info';
+                document.getElementById('receiveVerifyStatus').textContent =
+                    data.source || 'Checked local ScanPlus cache only.';
+                document.getElementById('receiveVerifySummary').innerHTML =
+                    verifyRenderSummary(data.summary || {});
+                document.getElementById('receiveVerifyRows').innerHTML =
+                    verifyRenderRows(data.lines || []);
+                document.getElementById('receiveVerifyTableWrap')
+                    .classList.remove('d-none');
+            } catch (error) {
+                document.getElementById('receiveVerifyStatus').className =
+                    'alert alert-danger';
+                document.getElementById('receiveVerifyStatus').textContent =
+                    'Unable to load receive verification.';
+                console.error(error);
+            }
+        }
+
+        document.querySelectorAll('.request-verify-link').forEach(function(button) {
+            button.addEventListener('click', function() {
+                openReceiveVerification(button.dataset.requestNo || '');
+            });
+        });
+    </script>
 
 </body>
+
 </html>
