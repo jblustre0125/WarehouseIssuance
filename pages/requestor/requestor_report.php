@@ -1544,20 +1544,20 @@ SELECT
                              */
                             WHEN ISNULL(R.BaseIssuedQty, 0) > 0
                                  OR COALESCE(ITXSUM.IssuedAt, ITX.IssuedAt) IS NOT NULL
-                                THEN 'ISSUED'
+                                THEN 'PENDING RECEIVE'
                             ELSE 'NOT ISSUED'
                         END
-                    WHEN 'NOT_ALLOCATED_TO_REQUEST_LINE' THEN 'ISSUED'
-                    WHEN 'LOT_REQUIRED_FOR_ALLOCATION' THEN 'ISSUED'
-                    WHEN 'GRPO_LOT_REQUIRED' THEN 'ISSUED'
-                    WHEN 'AMBIGUOUS_REQUEST_MATCH' THEN 'ISSUED'
-                    WHEN 'ISSUED_AFTER_SAP_RECEIPT' THEN 'ISSUED'
-                    WHEN 'ISSUED_AFTER_SCANPLUS_RECEIPT' THEN 'ISSUED'
-                    WHEN 'NOT_CONFIRMED' THEN 'ISSUED'
-                    WHEN 'NOT_RECEIVED_IN_SAP_CACHE' THEN 'ISSUED'
-                    WHEN 'NOT_RECEIVED_IN_SCANPLUS' THEN 'ISSUED'
-                    WHEN 'NOT RECEIVED IN SAP' THEN 'ISSUED'
-                    WHEN 'OLD_CACHE_RECEIVE' THEN 'ISSUED'
+                    WHEN 'NOT_ALLOCATED_TO_REQUEST_LINE' THEN 'PENDING RECEIVE'
+                    WHEN 'LOT_REQUIRED_FOR_ALLOCATION' THEN 'PENDING RECEIVE'
+                    WHEN 'GRPO_LOT_REQUIRED' THEN 'PENDING RECEIVE'
+                    WHEN 'AMBIGUOUS_REQUEST_MATCH' THEN 'PENDING RECEIVE'
+                    WHEN 'ISSUED_AFTER_SAP_RECEIPT' THEN 'PENDING RECEIVE'
+                    WHEN 'ISSUED_AFTER_SCANPLUS_RECEIPT' THEN 'PENDING RECEIVE'
+                    WHEN 'NOT_CONFIRMED' THEN 'PENDING RECEIVE'
+                    WHEN 'NOT_RECEIVED_IN_SAP_CACHE' THEN 'PENDING RECEIVE'
+                    WHEN 'NOT_RECEIVED_IN_SCANPLUS' THEN 'PENDING RECEIVE'
+                    WHEN 'NOT RECEIVED IN SAP' THEN 'PENDING RECEIVE'
+                    WHEN 'OLD_CACHE_RECEIVE' THEN 'PENDING RECEIVE'
                     ELSE
                         CASE
                             WHEN S.UseLineReceive = 1
@@ -1574,7 +1574,7 @@ SELECT
                             WHEN S.UseLineReceive = 1
                                  AND Q.CacheReceivedQty > 0
                                 THEN 'MATCHED'
-                            ELSE 'ISSUED'
+                            ELSE 'PENDING RECEIVE'
                         END
                 END
 
@@ -1611,7 +1611,7 @@ SELECT
                     ELSE 'RECEIVED'
                 END
 
-        ELSE 'ISSUED'
+        ELSE 'PENDING RECEIVE'
     END AS ReceiveStatus,
 
     CASE
