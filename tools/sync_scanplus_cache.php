@@ -886,7 +886,7 @@ function sync_upsert_request_line_receive_cache($conn, array $ref, ?array $scan)
         ? (float)$scan['received_qty']
         : null;
     $receivedAt = is_array($scan) ? ($scan['received_at'] ?? null) : null;
-    $receivedAtText = trim((string)$receivedAt);
+    $receivedAtText = sync_datetime_sort_key($receivedAt);
     if ($receivedAtText === '' || str_starts_with($receivedAtText, '1900-01-01')) {
         $receivedAt = null;
     }
@@ -1244,12 +1244,12 @@ function sync_apply_transfer_allocation(
         'item_code' => trim((string)($transfer['item_code'] ?? '')),
         'received_lot_no' => trim((string)($transfer['received_lot_no'] ?? '')),
         'allocated_qty' => $allocatedQty,
-        'received_at' => trim((string)($transfer['received_at'] ?? '')),
+        'received_at' => sync_datetime_sort_key($transfer['received_at'] ?? ''),
         'barcode_user' => trim((string)($transfer['barcode_user'] ?? '')),
         'match_method' => $matchMethod,
     ];
 
-    $receivedAt = trim((string)($transfer['received_at'] ?? ''));
+    $receivedAt = sync_datetime_sort_key($transfer['received_at'] ?? '');
 
     if (
         $receivedAt !== ''
@@ -1907,7 +1907,7 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
                 'received_qty' => 0.0,
                 'received_lot_no' => trim((string)($transfer['received_lot_no'] ?? '')),
                 'barcode_user' => trim((string)($transfer['barcode_user'] ?? '')),
-                'received_at' => trim((string)($transfer['received_at'] ?? '')),
+                'received_at' => sync_datetime_sort_key($transfer['received_at'] ?? ''),
                 'scan_status' => 'SAP_RECEIVED',
                 'itr_requested_qty' => $transfer['itr_requested_qty'] ?? null,
                 'itr_open_qty' => $transfer['itr_open_qty'] ?? null,
@@ -1918,7 +1918,7 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
         $groupScans[$groupKey]['received_qty'] += $transferQty;
         $groupScans[$groupKey]['transfer_count']++;
 
-        $receivedAt = trim((string)($transfer['received_at'] ?? ''));
+        $receivedAt = sync_datetime_sort_key($transfer['received_at'] ?? '');
 
         if (
             $receivedAt !== ''
@@ -2045,7 +2045,7 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
                 static fn(array $row): float => max(0.0, (float)($row['received_qty'] ?? 0)),
                 $rows
             )),
-            'received_at' => (string)($transferDocument['received_at'] ?? ''),
+            'received_at' => sync_datetime_sort_key($transferDocument['received_at'] ?? ''),
             'candidate_request_line_ids' => array_keys($candidateLineIds),
             'reason' => $reason,
         ];
@@ -2453,12 +2453,12 @@ function sync_allocate_monthly_itr_transfers(array $refs, array $transferRows): 
                 'item_code' => trim((string)($transfer['item_code'] ?? '')),
                 'received_lot_no' => trim((string)($transfer['received_lot_no'] ?? '')),
                 'allocated_qty' => $allocatedQty,
-                'received_at' => trim((string)($transfer['received_at'] ?? '')),
+                'received_at' => sync_datetime_sort_key($transfer['received_at'] ?? ''),
                 'barcode_user' => trim((string)($transfer['barcode_user'] ?? '')),
                 'match_method' => $matchMethod,
             ];
 
-            $receivedAt = trim((string)($transfer['received_at'] ?? ''));
+            $receivedAt = sync_datetime_sort_key($transfer['received_at'] ?? '');
 
             if (
                 $receivedAt !== ''
@@ -2679,7 +2679,7 @@ function sync_build_raw_group_scans(array $transferRows): array
                 'received_qty' => 0.0,
                 'received_lot_no' => trim((string)($transfer['received_lot_no'] ?? '')),
                 'barcode_user' => trim((string)($transfer['barcode_user'] ?? '')),
-                'received_at' => trim((string)($transfer['received_at'] ?? '')),
+                'received_at' => sync_datetime_sort_key($transfer['received_at'] ?? ''),
                 'scan_status' => 'SCANPLUS_RECEIVED',
                 'itr_requested_qty' => $transfer['itr_requested_qty'] ?? null,
                 'itr_open_qty' => $transfer['itr_open_qty'] ?? null,
@@ -2689,7 +2689,7 @@ function sync_build_raw_group_scans(array $transferRows): array
 
         $groupScans[$groupKey]['received_qty'] += $qty;
         $groupScans[$groupKey]['transfer_count']++;
-        $receivedAt = trim((string)($transfer['received_at'] ?? ''));
+        $receivedAt = sync_datetime_sort_key($transfer['received_at'] ?? '');
 
         if ($receivedAt !== '' && strcmp($receivedAt, (string)$groupScans[$groupKey]['received_at']) >= 0) {
             $groupScans[$groupKey]['received_at'] = $receivedAt;
@@ -2721,7 +2721,7 @@ function sync_add_daily_allocation_chunk(
     $transactionId = (int)($issue['TransactionID'] ?? 0);
     $issuedLot = trim((string)($issue['LotNo'] ?? ''));
     $receivedLot = trim((string)($receipt['received_lot_no'] ?? ''));
-    $receivedAt = trim((string)($receipt['received_at'] ?? ''));
+    $receivedAt = sync_datetime_sort_key($receipt['received_at'] ?? '');
 
     if ($requestLineId > 0) {
         if (!isset($lineAllocations[$requestLineId])) {
@@ -3436,7 +3436,7 @@ function sync_find_consumed_lot_mismatch_evidence(
         return null;
     }
 
-    $issuedAt = trim((string)($ref['local_issued_at'] ?? ''));
+    $issuedAt = sync_datetime_sort_key($ref['local_issued_at'] ?? '');
     $issuedTimestamp = sync_datetime_timestamp($issuedAt);
     $issuedDateKey = sync_datetime_date_key($issuedAt);
     $delayedReceiveDays = max(1, min(14, $delayedReceiveDays));
@@ -3462,7 +3462,7 @@ function sync_find_consumed_lot_mismatch_evidence(
             continue;
         }
 
-        $receivedAt = trim((string)($row['received_at'] ?? ''));
+        $receivedAt = sync_datetime_sort_key($row['received_at'] ?? '');
         $receivedTimestamp = sync_datetime_timestamp($receivedAt);
         $receivedDateKey = sync_datetime_date_key($receivedAt);
 
@@ -4246,7 +4246,7 @@ try {
         $rawDailyScannedQty = max(0.0, (float)($scanAllocation['raw_daily_received_qty'] ?? 0));
 
         $scanErrorQty = max(0.0, (float)($scanErrorAllocation['qty'] ?? 0));
-        $scanErrorAt = trim((string)($scanErrorAllocation['received_at'] ?? ''));
+        $scanErrorAt = sync_datetime_sort_key($scanErrorAllocation['received_at'] ?? '');
         $scanErrorMessage = trim((string)($scanErrorAllocation['scanplus_error_message'] ?? ''));
         $scanErrorHeaderStatus = strtoupper(trim((string)($scanErrorAllocation['scanplus_header_status'] ?? '')));
         $scanErrorInventoryStatus = strtoupper(trim((string)($scanErrorAllocation['scanplus_inventory_status'] ?? '')));
@@ -4292,7 +4292,7 @@ try {
             $groupSapQty += (float)($sapDailyTotals[$dailyBaseKey]['received'] ?? 0);
         }
 
-        $scanReceivedAt = trim((string)($scanAllocation['received_at'] ?? ''));
+        $scanReceivedAt = sync_datetime_sort_key($scanAllocation['received_at'] ?? '');
         $scanDateValid = $scanReceivedAt !== ''
             && !str_starts_with($scanReceivedAt, '1900-01-01')
             && sync_datetime_date_key($scanReceivedAt) !== '';
@@ -4401,7 +4401,7 @@ try {
                 'received_qty' => 0.0,
                 'received_lot_no' => (string)($consumedLotMismatch['received_lot_no'] ?? ''),
                 'barcode_user' => (string)($consumedLotMismatch['barcode_user'] ?? ''),
-                'received_at' => trim((string)($consumedLotMismatch['received_at'] ?? '')) ?: null,
+                'received_at' => sync_datetime_sort_key($consumedLotMismatch['received_at'] ?? '') ?: null,
                 'scan_status' => 'SCANPLUS_LOT_MISMATCH_CONSUMED_LOT',
                 'match_status' => 'LOT_MISMATCH',
                 'scanplus_doc_num' => (string)($consumedLotMismatch['scanplus_doc_num'] ?? $consumedLotMismatch['source_document_key'] ?? ''),
