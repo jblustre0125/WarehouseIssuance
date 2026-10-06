@@ -64,7 +64,21 @@ function verify_receive_status(array $line): string
     }
 
     /*
-     * Actual SAP-posted quantity is authoritative for received status.
+     * The request-line receive cache is written by the ScanPlus FT_INVT sync.
+     * Preserve explicit mismatch states before falling back to received quantity,
+     * because mismatch rows may deliberately carry zero clean received quantity.
+     */
+    if ($cacheStatus === 'LOT_MISMATCH') {
+        return 'LOT_MISMATCH';
+    }
+
+    if ($cacheStatus === 'PARTIAL_LOT_MISMATCH') {
+        return 'PARTIAL_LOT_MISMATCH';
+    }
+
+    /*
+     * ScanPlus allocated quantity is authoritative for warehouse receive status.
+     * SAP posting is retained separately as audit/diagnostic evidence.
      */
     if ($receivedQty > 0.0005 && $receivedQty + 0.0005 >= $issuedQty) {
         return 'RECEIVED';
@@ -432,11 +446,15 @@ $rows = fetch_all(
         END AS CacheReceivedQty,
         COALESCE(M.RawReceivedQty, C.ReceivedQty) AS CacheRawReceivedQty,
         CASE
-            WHEN ISNULL(M.IsCurrentMatch, 0) = 1 THEN M.BarcodeUser
+            WHEN ISNULL(M.IsCurrentMatch, 0) = 1
+                 OR UPPER(LTRIM(RTRIM(ISNULL(M.MatchStatus, '')))) IN ('LOT_MISMATCH', 'PARTIAL_LOT_MISMATCH')
+                THEN M.BarcodeUser
             ELSE NULL
         END AS CacheReceivedBy,
         CASE
-            WHEN ISNULL(M.IsCurrentMatch, 0) = 1 THEN M.ReceivedAt
+            WHEN ISNULL(M.IsCurrentMatch, 0) = 1
+                 OR UPPER(LTRIM(RTRIM(ISNULL(M.MatchStatus, '')))) IN ('LOT_MISMATCH', 'PARTIAL_LOT_MISMATCH')
+                THEN M.ReceivedAt
             ELSE NULL
         END AS CacheReceivedAt,
         COALESCE(M.LastSyncedAt, C.LastSyncedAt) AS CacheLastSyncedAt,
@@ -519,6 +537,8 @@ $lines = [];
 $summary = [
     'received' => 0,
     'partial_received' => 0,
+    'lot_mismatch' => 0,
+    'partial_lot_mismatch' => 0,
     'scanned_not_posted' => 0,
     'pending_receive' => 0,
     'issued' => 0,

@@ -3392,6 +3392,8 @@ $showingTo = min(
             const labels = {
                 received: 'Received',
                 partial_received: 'Partial',
+                lot_mismatch: 'Lot mismatch',
+                partial_lot_mismatch: 'Partial + lot mismatch',
                 issued: 'Issued'
             };
 
@@ -3431,23 +3433,36 @@ $showingTo = min(
                 const statusClass = verifyStatusClass(status);
                 const isReceived = status === 'RECEIVED' || status === 'PARTIAL_RECEIVED';
                 const receivedQty = Number(line.cache_received_qty || 0);
+                const rawReceivedQty = Number(line.cache_raw_received_qty || 0);
+                const isLotMismatch =
+                    status === 'LOT_MISMATCH' ||
+                    status === 'PARTIAL_LOT_MISMATCH' ||
+                    status === 'LOT MISMATCH' ||
+                    status === 'PARTIAL + LOT MISMATCH';
                 const hasActualReceipt =
                     isReceived &&
                     Number.isFinite(receivedQty) &&
                     receivedQty > 0;
+                const hasMismatchEvidence =
+                    isLotMismatch &&
+                    Number.isFinite(rawReceivedQty) &&
+                    rawReceivedQty > 0;
 
-                const sapLot = hasActualReceipt ?
+                const sapLot = (hasActualReceipt || hasMismatchEvidence) ?
                     (line.cache_received_lot_no || line.cache_lot_no || '') :
                     '';
-                const sourceTransfer = hasActualReceipt ?
+                const sourceTransfer = (hasActualReceipt || hasMismatchEvidence) ?
                     (line.source_transfer_details || '') :
                     '';
-                const receivedBy = hasActualReceipt ?
+                const receivedBy = (hasActualReceipt || hasMismatchEvidence) ?
                     (line.cache_received_by || '') :
                     '';
-                const receivedAt = hasActualReceipt ?
+                const receivedAt = (hasActualReceipt || hasMismatchEvidence) ?
                     (line.cache_received_at || '') :
                     '';
+                const qtyDisplay = hasActualReceipt ?
+                    verifyNumber(receivedQty) :
+                    (hasMismatchEvidence ? verifyNumber(rawReceivedQty) : '');
 
                 return '<tr>' +
                     '<td><span class="status-pill status-' + statusClass + '">' +
@@ -3456,7 +3471,7 @@ $showingTo = min(
                     '<td>' + verifyEscape(line.item_code) + '</td>' +
                     '<td>' + verifyEscape(line.part_name) + '</td>' +
                     '<td class="text-end">' + verifyEscape(verifyNumber(line.issued_qty)) + '</td>' +
-                    '<td class="text-end">' + verifyEscape(verifyNumber(line.cache_received_qty)) + '</td>' +
+                    '<td class="text-end">' + verifyEscape(qtyDisplay) + '</td>' +
                     '<td>' + verifyEscape(line.lot_no) + '</td>' +
                     '<td>' + verifyEscape(line.warehouse_lot_no) + '</td>' +
                     '<td>' + verifyEscape(sapLot) + '</td>' +
