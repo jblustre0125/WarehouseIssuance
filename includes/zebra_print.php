@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/issuer_tag.php';
+
 /*
     Optional Composer autoload for Endroid QR Code.
     This file still runs even if Composer is not installed, but NITTO QR rendering
@@ -2059,7 +2061,7 @@ function zebra_print_receive_labels($traceNo, array $items)
     ];
 }
 
-function zebra_print_pick_labels_to_target(array $items, $usePickerPrinter, $printerKey = null)
+function zebra_print_pick_labels_to_target(array $items, $usePickerPrinter, $printerKey = null, $issuerTag = false)
 {
     $usePickerPrinter = (bool)$usePickerPrinter;
     $printerKey = $usePickerPrinter ? zebra_pick_printer_key($printerKey) : 'zebra';
@@ -2105,7 +2107,9 @@ function zebra_print_pick_labels_to_target(array $items, $usePickerPrinter, $pri
         if ($useWindowsDriver) {
             $imagePath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'nitto_picker_' . uniqid('', true) . '.png';
             $renderStartedAt = microtime(true);
-            $renderResult = zebra_pick_label_png($item, $imagePath);
+            $renderResult = $issuerTag
+                ? zebra_issue_label_png($item, $imagePath)
+                : zebra_pick_label_png($item, $imagePath);
             $renderSeconds = round(microtime(true) - $renderStartedAt, 3);
 
             if (empty($renderResult['ok'])) {
@@ -2117,7 +2121,13 @@ function zebra_print_pick_labels_to_target(array $items, $usePickerPrinter, $pri
             $labelBytes = is_file($imagePath) ? (int)filesize($imagePath) : 0;
             $messages[] = 'Rendered Nitto picker label image in ' . $renderSeconds . 's. Bytes: ' . $labelBytes;
         } else {
-            $zpl = zebra_pick_label_zpl($item);
+            try {
+                $zpl = $issuerTag ? zebra_issue_label_zpl($item) : zebra_pick_label_zpl($item);
+            } catch (Throwable $e) {
+                $failed++;
+                $messages[] = 'Unable to render issue tag: ' . $e->getMessage();
+                continue;
+            }
             $labelBytes = strlen((string)$zpl);
         }
 
@@ -2184,6 +2194,11 @@ function zebra_print_pick_labels(array $items)
 function zebra_print_picker_tags(array $items, $printerKey = null)
 {
     return zebra_print_pick_labels_to_target($items, true, $printerKey);
+}
+
+function zebra_print_issue_tags(array $items, $printerKey = null)
+{
+    return zebra_print_pick_labels_to_target($items, true, $printerKey, true);
 }
 
 function zebra_print_test_label()

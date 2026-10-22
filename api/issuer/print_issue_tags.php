@@ -75,6 +75,7 @@ foreach ($items as $idx => $item) {
     /*
         WH Lot No is optional for issuer printing.
         The GRPO lot is still required because it is part of the QR payload.
+        A supplied WH lot is encoded separately in the WH LOT QR.
     */
 
     $printItems[] = [
@@ -105,7 +106,7 @@ if ($errors !== []) {
     exit;
 }
 
-$result = zebra_print_picker_tags($printItems, $printerKey);
+$result = zebra_print_issue_tags($printItems, $printerKey);
 
 if (empty($result['ok'])) {
     http_response_code(500);
