@@ -52,7 +52,11 @@ foreach ($items as $item) {
 }
 
 $batchStatuses = sap_item_batch_statuses($erp, $itemCodes);
-$itemLocations = $missingPartCodes === [] ? [] : item_locations_by_codes($whp, array_keys($missingPartCodes));
+$itemLocations = [];
+if ($missingPartCodes !== []) {
+    $whp = get_whpokayoke_connection();
+    $itemLocations = item_locations_by_codes($whp, array_keys($missingPartCodes));
+}
 
 foreach ($items as $idx => $item) {
     if (!is_array($item)) {

@@ -4,33 +4,15 @@
  * NBC ISSUED MATERIAL LABEL
  * File: includes/issuer_tag.php
  *
- * 3 x 3-inch label for Zebra / NITTO
- * Designed for 203 DPI
+ * 3 x 3 inches / Zebra 203 DPI
  *
- * Layout:
- *  - ISSUED MATERIAL heading
- *  - Request / ITR reference
- *  - Code 128 barcode
- *  - Part description
- *  - Quantity and GRPO lot
- *  - Four QR codes in a 2 x 2 arrangement:
- *      1. Issued QR
- *      2. Part Number QR
- *      3. Item Code QR
- *      4. Warehouse Lot QR
- *
- * Dependencies from zebra_print.php:
- *  - zebra_pick_qr_payload()
- *  - zebra_pick_reference_barcode_value()
- *  - zebra_zpl_text()
- *  - zebra_label_setup_zpl()
- *  - zebra_build_endroid_qrcode()
- *  - zebra_pick_image_scale()
- *  - zebra_pick_image_png_compression()
- *  - zebra_draw_code128()
- *  - zebra_font_path()
- *
- * This file is included by zebra_print.php.
+ * Changes:
+ * - All four QR codes are 112 x 112 dots
+ * - Removed "ITEM + QTY + GRPO LOT" caption
+ * - Barcode horizontally centered
+ * - Same positioning for ZPL and PNG
+ * - Preserves original QR payload
+ * - Preserves existing printer settings
  */
 
 
@@ -60,7 +42,7 @@ function zebra_issue_part_number(array $item, array $master = [])
 
 
 /* ==========================================================
-   2. NORMALIZE LABEL DATA
+   2. LABEL DATA
    ========================================================== */
 
 function zebra_issue_tag_fields(array $item)
@@ -84,7 +66,7 @@ function zebra_issue_tag_fields(array $item)
         ]));
 
     return [
-        // Preserve existing picker-compatible payload.
+        // Keep the existing scanner-compatible QR format.
         'payload' => zebra_pick_qr_payload($item),
 
         'item_code' => trim(
@@ -115,28 +97,15 @@ function zebra_issue_tag_fields(array $item)
 
         'reference' => zebra_pick_reference_barcode_value($item),
 
-        'reference_label' => $isPurchaseOrder
-            ? 'REFERENCE / PO'
-            : 'REFERENCE / REQ-ITR',
-
         'reference_text' => $referenceText
     ];
 }
 
 
 /* ==========================================================
-   3. QR CODE BITMAP
+   3. QR BITMAP
    ========================================================== */
 
-/**
- * Generates a monochrome QR bitmap.
- *
- * The bitmap is shared by:
- *  - Zebra ZPL
- *  - NITTO PNG printing
- *
- * This keeps QR payloads identical.
- */
 function zebra_issue_qr_bitmap($text, $size)
 {
     $text = (string)$text;
@@ -156,31 +125,30 @@ function zebra_issue_qr_bitmap($text, $size)
 
     if ($qr === null) {
         throw new RuntimeException(
-            'QR library is not available.'
+            'Endroid QR library is unavailable.'
         );
     }
 
     $writer = new \Endroid\QrCode\Writer\PngWriter();
-    $result = $writer->write($qr);
 
+    $result = $writer->write($qr);
     $matrix = $result->getMatrix();
+
     $count = $matrix->getBlockCount();
 
-    // Reserve a quiet zone of at least 4 modules.
+    // Four-module quiet zone on every side.
     $module = (int)floor(
         $size / ($count + 8)
     );
 
     if ($module < 2) {
         throw new RuntimeException(
-            'QR value is too long for the issuer label.'
+            'QR content is too long for the selected label size.'
         );
     }
 
-    $qrSize = $count * $module;
-
     $offset = (int)floor(
-        ($size - $qrSize) / 2
+        ($size - $count * $module) / 2
     );
 
     $image = imagecreatetruecolor(
@@ -190,7 +158,7 @@ function zebra_issue_qr_bitmap($text, $size)
 
     if ($image === false) {
         throw new RuntimeException(
-            'Unable to create QR bitmap.'
+            'Unable to generate QR image.'
         );
     }
 
@@ -238,7 +206,7 @@ function zebra_issue_qr_bitmap($text, $size)
 
 
 /* ==========================================================
-   4. QR BITMAP TO ZPL
+   4. QR TO ZPL IMAGE
    ========================================================== */
 
 function zebra_issue_qr_zpl($x, $y, $size, $text)
@@ -270,10 +238,7 @@ function zebra_issue_qr_zpl($x, $y, $size, $text)
                 }
             }
 
-            $hex .= sprintf(
-                '%02X',
-                $value
-            );
+            $hex .= sprintf('%02X', $value);
         }
     }
 
@@ -288,47 +253,58 @@ function zebra_issue_qr_zpl($x, $y, $size, $text)
 
 
 /* ==========================================================
-   5. FOUR QR LAYOUT
+   5. FOUR EQUAL-SIZE QR CODES
    ========================================================== */
 
 /**
- * Each element:
- *  x, y, size, title, payload, caption
+ * All QR codes:
+ *   112 x 112 dots
+ *
+ * Physical layout:
+ *
+ *    ISSUED QR        PART NUMBER QR
+ *      [ QR ]             [ QR ]
+ *
+ *    ITEM CODE QR     WAREHOUSE LOT QR
+ *      [ QR ]             [ QR ]
  */
+
 function zebra_issue_tag_qrs(array $fields)
 {
+    $size = 112;
+
     return [
         [
-            101,
-            293,
-            112,
+            96,
+            285,
+            $size,
             'ISSUED QR',
             $fields['payload'],
-            'ITEM + QTY + GRPO LOT'
+            ''
         ],
 
         [
-            365,
-            293,
-            112,
+            362,
+            285,
+            $size,
             'PART NUMBER QR',
             $fields['part_number'],
             $fields['part_number']
         ],
 
         [
-            101,
-            466,
-            108,
+            96,
+            440,
+            $size,
             'ITEM CODE QR',
             $fields['item_code'],
             $fields['item_code']
         ],
 
         [
-            367,
-            466,
-            108,
+            362,
+            440,
+            $size,
             'WAREHOUSE LOT QR',
             $fields['warehouse_lot_no'],
             $fields['warehouse_lot_no']
@@ -338,7 +314,7 @@ function zebra_issue_tag_qrs(array $fields)
 
 
 /* ==========================================================
-   6. CENTERED ZPL TEXT
+   6. ZPL CENTERED TEXT
    ========================================================== */
 
 function zebra_issue_zpl_center(
@@ -362,7 +338,72 @@ function zebra_issue_zpl_center(
 
 
 /* ==========================================================
-   7. GENERATE ISSUED MATERIAL ZPL
+   7. CALCULATE BARCODE WIDTH FOR CENTERING
+   ========================================================== */
+
+/**
+ * Uses the Code 128 B patterns already present
+ * in zebra_print.php.
+ *
+ * Center position:
+ *
+ *    Label center = 576 / 2 = 288
+ *
+ *    X = 288 - (barcode width / 2)
+ *
+ * This prevents the barcode from always starting
+ * at a fixed left coordinate.
+ */
+
+function zebra_issue_barcode_layout($value)
+{
+    $value = zebra_zpl_text($value, 96);
+
+    $patterns = zebra_code128_patterns();
+    $codes = zebra_code128_b_values($value);
+
+    $modules = 0;
+
+    foreach ($codes as $code) {
+        $pattern = $patterns[$code] ?? '';
+
+        foreach (str_split($pattern) as $digit) {
+            $modules += (int)$digit;
+        }
+    }
+
+    $availableWidth = 480;
+
+    // Use two printer dots per module when possible.
+    $moduleWidth = 2;
+
+    if ($modules * 2 > $availableWidth) {
+        $moduleWidth = 1;
+    }
+
+    $barcodeWidth = $modules * $moduleWidth;
+
+    // Center against the existing 576-dot layout.
+    $centerX = 288;
+
+    $x = (int)round(
+        $centerX - $barcodeWidth / 2
+    );
+
+    if ($x < 28) {
+        $x = 28;
+    }
+
+    return [
+        'x' => $x,
+        'width' => $barcodeWidth,
+        'module_width' => $moduleWidth
+    ];
+}
+
+
+/* ==========================================================
+   8. ZPL ISSUED MATERIAL LABEL
    ========================================================== */
 
 function zebra_issue_label_zpl(array $item)
@@ -381,10 +422,14 @@ function zebra_issue_label_zpl(array $item)
         60
     );
 
+    $barcode = zebra_issue_barcode_layout(
+        $reference
+    );
+
     $zpl = "^XA\r\n";
     $zpl .= "^CI28\r\n";
 
-    // Preserve existing Zebra media settings.
+    // Existing printer setup.
     $zpl .= zebra_label_setup_zpl();
 
     // Outer border.
@@ -398,7 +443,7 @@ function zebra_issue_label_zpl(array $item)
         38
     );
 
-    // Reference number.
+    // Request / ITR.
     $zpl .= zebra_issue_zpl_center(
         82,
         $f['reference_text'],
@@ -406,9 +451,13 @@ function zebra_issue_label_zpl(array $item)
         22
     );
 
-    // Barcode.
-    $zpl .= "^FO100,116"
-        . "^BY2,2,49"
+    // Calculate exact Code 128 barcode position.
+    $barcodeX = $barcode['x'];
+    $barcodeModule = $barcode['module_width'];
+
+    $zpl .= "^BY{$barcodeModule},2,49\r\n";
+
+    $zpl .= "^FO{$barcodeX},116"
         . "^BCN,49,N,N,N"
         . "^FD{$reference}^FS\r\n";
 
@@ -439,40 +488,40 @@ function zebra_issue_label_zpl(array $item)
         . "^FB324,1,0,R,0"
         . "^FD{$text($lotText, 48)}^FS\r\n";
 
-    // Horizontal divider.
+    // Divider.
     $zpl .= "^FO28,251^GB520,2,2^FS\r\n";
 
-    // First QR row headings.
+    // First row headings.
     $zpl .= zebra_issue_zpl_center(
-        266,
+        263,
         'ISSUED QR',
-        21,
         19,
+        17,
         27,
         245
     );
 
     $zpl .= zebra_issue_zpl_center(
-        266,
+        263,
         'PART NUMBER QR',
-        20,
-        17,
+        19,
+        16,
         295,
         252
     );
 
-    // Second QR row headings.
+    // Second row headings.
     $zpl .= zebra_issue_zpl_center(
-        439,
+        420,
         'ITEM CODE QR',
-        21,
-        18,
+        19,
+        17,
         27,
         245
     );
 
     $zpl .= zebra_issue_zpl_center(
-        439,
+        420,
         'WAREHOUSE LOT QR',
         19,
         16,
@@ -480,9 +529,16 @@ function zebra_issue_label_zpl(array $item)
         252
     );
 
-    // Draw all four QR codes and captions.
+    // Four equally sized QR codes.
     foreach (zebra_issue_tag_qrs($f) as $index => $qr) {
-        [$x, $y, $size, $label, $value, $caption] = $qr;
+        [
+            $x,
+            $y,
+            $size,
+            $label,
+            $value,
+            $caption
+        ] = $qr;
 
         if ($value !== '') {
             $zpl .= zebra_issue_qr_zpl(
@@ -493,22 +549,28 @@ function zebra_issue_label_zpl(array $item)
             );
         }
 
-        // Captions under the QR.
-        $captionY = $index < 2 ? 413 : 577;
-        $columnX = ($index % 2 === 0) ? 27 : 295;
-        $columnWidth = 252;
+        // Do not display the issued QR caption.
+        if ($index === 0) {
+            continue;
+        }
 
         if ($value === '') {
             $caption = 'N/A';
         }
 
+        $captionY = $index < 2 ? 401 : 560;
+
+        $columnX = ($index % 2 === 0)
+            ? 27
+            : 295;
+
         $zpl .= zebra_issue_zpl_center(
             $captionY,
             $text($caption, 60),
-            $index < 2 ? 17 : 18,
-            $index < 2 ? 14 : 16,
+            17,
+            14,
             $columnX,
-            $columnWidth
+            252
         );
     }
 
@@ -520,7 +582,7 @@ function zebra_issue_label_zpl(array $item)
 
 
 /* ==========================================================
-   8. GD CENTERED TEXT
+   9. GD CENTERED TEXT
    ========================================================== */
 
 function zebra_issue_gd_center(
@@ -596,9 +658,10 @@ function zebra_issue_gd_center(
         return;
     }
 
-    // Built-in PHP GD font fallback.
     $fontNo = 5;
-    $width = imagefontwidth($fontNo) * strlen($value);
+
+    $width = imagefontwidth($fontNo)
+        * strlen($value);
 
     $x = (int)round(
         $centerX - $width / 2
@@ -616,7 +679,7 @@ function zebra_issue_gd_center(
 
 
 /* ==========================================================
-   9. DRAW QR ON PNG CANVAS
+   10. DRAW QR ON PNG CANVAS
    ========================================================== */
 
 function zebra_issue_gd_qr(
@@ -654,7 +717,7 @@ function zebra_issue_gd_qr(
 
 
 /* ==========================================================
-   10. GENERATE ISSUED MATERIAL PNG PREVIEW
+   11. PNG ISSUED MATERIAL LABEL
    ========================================================== */
 
 function zebra_issue_label_png(array $item, $path)
@@ -681,7 +744,7 @@ function zebra_issue_label_png(array $item, $path)
 
         if ($image === false) {
             throw new RuntimeException(
-                'Unable to create issuer tag image.'
+                'Unable to create label image.'
             );
         }
 
@@ -708,7 +771,6 @@ function zebra_issue_label_png(array $item, $path)
 
         $f = zebra_issue_tag_fields($item);
 
-        // Centered text helper.
         $center = static function (
             $x,
             $y,
@@ -726,7 +788,7 @@ function zebra_issue_label_png(array $item, $path)
             );
         };
 
-        // Outer label border.
+        // Outer border.
         imagesetthickness(
             $image,
             $p(2)
@@ -746,7 +808,7 @@ function zebra_issue_label_png(array $item, $path)
             1
         );
 
-        // Main heading.
+        // Heading.
         $center(
             288,
             70,
@@ -755,7 +817,7 @@ function zebra_issue_label_png(array $item, $path)
             518
         );
 
-        // REQ / ITR reference.
+        // Reference.
         $center(
             288,
             105,
@@ -764,18 +826,25 @@ function zebra_issue_label_png(array $item, $path)
             518
         );
 
-        // Code 128 barcode.
+        // Horizontally centered barcode.
+        //
+        // zebra_draw_code128() centers the bars
+        // inside the supplied horizontal region.
+        //
+        // Center of region:
+        // (28 + 520 / 2) = 288
+
         zebra_draw_code128(
             $image,
-            $p(60),
+            $p(28),
             $p(115),
-            $p(456),
+            $p(520),
             $p(52),
             $f['reference'],
             ''
         );
 
-        // Item description.
+        // Description.
         $center(
             288,
             203,
@@ -805,7 +874,7 @@ function zebra_issue_label_png(array $item, $path)
             315
         );
 
-        // Horizontal divider.
+        // Divider.
         imagesetthickness(
             $image,
             $p(2)
@@ -825,41 +894,40 @@ function zebra_issue_label_png(array $item, $path)
             1
         );
 
-        // First QR row headings.
+        // QR titles.
         $center(
-            157,
-            285,
+            152,
+            280,
             'ISSUED QR',
             17,
             245
         );
 
         $center(
-            421,
-            285,
+            418,
+            280,
             'PART NUMBER QR',
             16,
             250
         );
 
-        // Second QR row headings.
         $center(
-            157,
-            457,
+            152,
+            435,
             'ITEM CODE QR',
             17,
             245
         );
 
         $center(
-            421,
-            457,
+            418,
+            435,
             'WAREHOUSE LOT QR',
             16,
             250
         );
 
-        // Four QR codes.
+        // Draw all four equal-size QR codes.
         foreach (zebra_issue_tag_qrs($f) as $index => $qrData) {
             [
                 $x,
@@ -881,28 +949,33 @@ function zebra_issue_label_png(array $item, $path)
                 );
             }
 
-            $centerX = ($index % 2 === 0)
-                ? 157
-                : 421;
-
-            $captionY = ($index < 2)
-                ? 427
-                : 588;
+            // Remove the caption below Issued QR.
+            if ($index === 0) {
+                continue;
+            }
 
             if ($value === '') {
                 $caption = 'N/A';
             }
 
+            $centerX = ($index % 2 === 0)
+                ? 152
+                : 418;
+
+            $captionY = $index < 2
+                ? 416
+                : 578;
+
             $center(
                 $centerX,
                 $captionY,
                 $caption,
-                ($index < 2) ? 13 : 14,
+                13,
                 245
             );
         }
 
-        // Ensure directory exists.
+        // Create output directory if necessary.
         $directory = dirname($path);
 
         if (!is_dir($directory)) {
@@ -916,20 +989,20 @@ function zebra_issue_label_png(array $item, $path)
             }
         }
 
-        // Save PNG preview.
+        // Save PNG.
         if (!imagepng(
             $image,
             $path,
             zebra_pick_image_png_compression()
         )) {
             throw new RuntimeException(
-                'Unable to save issuer label PNG.'
+                'Unable to save PNG preview.'
             );
         }
 
         return [
             'ok' => true,
-            'message' => 'Issued Material 3 x 3-inch label rendered.'
+            'message' => 'Issued Material label generated successfully.'
         ];
     } catch (Throwable $e) {
         return [

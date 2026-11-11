@@ -2989,9 +2989,13 @@ foreach ([
 
                 quantity: row.quantity,
 
+                uom: row.uom || 'PCS',
+
                 lot_no: row.lot_no,
 
                 warehouse_lot_no: row.warehouse_lot_no || '',
+
+                request_no: row.request_no || '',
 
                 itr_number: row.itr_number || '',
 
