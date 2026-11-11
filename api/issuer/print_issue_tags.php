@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../includes/auth.php';
 require_once __DIR__ . '/../../includes/sap_item_batch.php';
 require_once __DIR__ . '/../../includes/zebra_print.php';
+require_once __DIR__ . '/../../includes/item_locations.php';
 
 require_role([ROLE_ISSUER, ROLE_ADMIN]);
 
@@ -34,6 +35,7 @@ $printerKey = zebra_pick_printer_key($_POST['issue_printer'] ?? ($_POST['pick_pr
 $printItems = [];
 $errors = [];
 $itemCodes = [];
+$missingPartCodes = [];
 $erp = get_erp_connection();
 
 foreach ($items as $item) {
@@ -42,11 +44,15 @@ foreach ($items as $item) {
 
         if ($itemCode !== '') {
             $itemCodes[] = $itemCode;
+            if (zebra_issue_part_number($item) === '') {
+                $missingPartCodes[$itemCode] = true;
+            }
         }
     }
 }
 
 $batchStatuses = sap_item_batch_statuses($erp, $itemCodes);
+$itemLocations = $missingPartCodes === [] ? [] : item_locations_by_codes($whp, array_keys($missingPartCodes));
 
 foreach ($items as $idx => $item) {
     if (!is_array($item)) {
@@ -80,6 +86,7 @@ foreach ($items as $idx => $item) {
 
     $printItems[] = [
         'item_code' => $itemCode,
+        'parts_code' => zebra_issue_part_number($item, $itemLocations[$itemCode] ?? []),
         'part_name' => trim((string)($item['part_name'] ?? '')),
         /*
             Quantity is printed as text and encoded in the QR only.
