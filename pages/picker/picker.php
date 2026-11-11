@@ -1072,6 +1072,7 @@ $defaultPickPrinter = $defaultPickPrinter === 'zebra' ? 'zebra' : 'nitto';
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="assets/app-refresh.js"></script>
+<script src="assets/tablet-printer.js"></script>
 <script>
 let openDocuments = [];
 let openPurchaseOrders = [];
@@ -1670,7 +1671,7 @@ async function printTags() {
         body.append('batch_items', JSON.stringify(printable));
         body.append('pick_printer', selectedPickPrinter());
 
-        const res = await fetch('actions/print_pick_tags.php', {
+        const res = await WarehousePrinter.fetch('actions/print_pick_tags.php', {
             method: 'POST',
             headers: {
                 'Accept': 'application/json',
@@ -1685,12 +1686,12 @@ async function printTags() {
             throw new Error(data.message || 'Unable to queue pick tags.');
         }
 
-        showPrintQueueMessage(
+        showPrintQueueMessage(data.transport === 'tablet_bluetooth' ? data.message : (
             data.queued + ' picker tag(s) queued. ' +
             (data.printer_name ? 'Printer: ' + data.printer_name + '. ' : '') +
             (data.trigger_message || 'You can continue picking.') +
             (data.job_id ? ' Job ' + data.job_id + '.' : '')
-        );
+        ));
 
         if (queuedRequestId === String(selectedDocument?.request_id || '')) {
             printableIndexes

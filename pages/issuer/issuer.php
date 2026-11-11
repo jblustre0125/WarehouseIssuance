@@ -1589,6 +1589,7 @@ foreach ([
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
     <script src="assets/app-refresh.js"></script>
+    <script src="assets/tablet-printer.js"></script>
 
     <script>
     let items = [];
@@ -3053,7 +3054,7 @@ foreach ([
             );
 
             const res =
-                await fetch(
+                await WarehousePrinter.fetch(
                     'api/issuer/print_issue_tags.php', {
                         method: 'POST',
 
@@ -8667,7 +8668,7 @@ foreach ([
             );
 
             const res =
-                await fetch(
+                await WarehousePrinter.fetch(
                     'api/issuer/print_issue_tags.php', {
                         method: 'POST',
 
@@ -8986,7 +8987,7 @@ foreach ([
             );
 
             const res =
-                await fetch(
+                await WarehousePrinter.fetch(
                     'api/issuer/print_issue_tags.php', {
                         method: 'POST',
 

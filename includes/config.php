@@ -39,14 +39,19 @@ define('APP_BASE_URL', 'http://localhost/rawmat_traceability_app');
 |--------------------------------------------------------------------------
 | Zebra QLn320 Receiving / Picker Printer
 |--------------------------------------------------------------------------
-| The application sends raw ZPL directly over TCP. Windows printer-driver
-| paper settings do not control these jobs.
+| The application sends raw ZPL over TCP or a paired Bluetooth COM port.
+| Set ZEBRA_PRINT_CONNECTION to 'bluetooth' to use Bluetooth.
+| Pair the printer on the XAMPP server and enter its outgoing COM port below.
+| Windows printer-driver paper settings do not control these jobs.
 */
 
 define('ZEBRA_PRINT_ENABLED', true);
 define('ZEBRA_PRINT_CONNECTION', 'tcp');
 define('ZEBRA_PRINTER_HOST', '192.168.20.174');
 define('ZEBRA_PRINTER_PORT', 6101);
+define('ZEBRA_BLUETOOTH_COM_PORT', ''); // Example: COM10 (outgoing Bluetooth SPP port)
+define('ZEBRA_BLUETOOTH_BAUD_RATE', 115200);
+define('ZEBRA_BLUETOOTH_TIMEOUT_SECONDS', 20);
 
 /*
 |--------------------------------------------------------------------------

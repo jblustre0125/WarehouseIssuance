@@ -59,6 +59,8 @@ Password: admin123
 
 ## Label auto-printing
 
+For Android tablets using the new WebView app, see [NBC Warehouse tablet app](android-webview/README.md). It prints directly from the tablet to a paired QLn320 over Bluetooth and includes a warehouse app logo. The following TCP and Windows Bluetooth settings apply to printers connected to the XAMPP server.
+
 For the Zebra QLn320 Wi-Fi printer, send raw ZPL directly to the printer IP and port shown on the printer screen.
 
 In `config.php`:
@@ -71,6 +73,22 @@ define('ZEBRA_PRINTER_PORT', 6101);
 ```
 
 The XAMPP server must be able to reach the printer over the network.
+
+For Bluetooth, pair the Bluetooth-enabled QLn320 with the **Windows computer running XAMPP**. In Windows Bluetooth settings, find the printer's **outgoing Serial Port Profile (SPP) COM port** (for example `COM10`). Zebra documents this pairing method in its [Windows Bluetooth setup guidance](https://support.zebra.com/article/000014632).
+
+Update the existing settings in `includes/config.php`:
+
+```php
+define('ZEBRA_PRINT_ENABLED', true);
+define('ZEBRA_PRINT_CONNECTION', 'bluetooth');
+define('ZEBRA_BLUETOOTH_COM_PORT', 'COM10'); // Replace with your outgoing port
+define('ZEBRA_BLUETOOTH_BAUD_RATE', 115200);
+define('ZEBRA_BLUETOOTH_TIMEOUT_SECONDS', 20);
+```
+
+Select **Zebra QLn320** in the picker or issuer screen as usual. Receiving, picker, issuer, and Zebra test labels use this connection setting. Bluetooth sends the same raw ZPL and label layout. Wi-Fi remains available by setting `ZEBRA_PRINT_CONNECTION` back to `tcp`.
+
+Bluetooth requires Windows PowerShell and PHP `proc_open()`. The printer must be powered on, in range, and paired for the Windows account running XAMPP or its print worker. A printer paired to a browser user's phone or a different PC is not available to the server. If the port is missing or busy, check Windows pairing and close other programs using it. A successful send confirms the bytes were handed to the serial connection; verify the physical label. After a timeout or transmission error, check for a partial label before retrying; the app does not automatically resend Bluetooth labels.
 
 Picker tags can be sent to either the Nitto DURA-SL-400 or the Zebra QLn320 from the picker screen.
 The default selected picker-tag printer is controlled by:

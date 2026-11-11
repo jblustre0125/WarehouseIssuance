@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">NBC Warehouse</string>
+    <string name="welcome">Welcome to NBC Warehouse.\nSet the warehouse server address to get started.</string>
+    <string name="update_webview">Update Android System WebView before using tablet Bluetooth printing.</string>
+    <string name="server_help">Enter the same warehouse address used on the tablets. Use the server\'s network name or IP address.</string>
+    <string name="offline">Cannot reach the warehouse server.\nCheck Wi-Fi and the server address, then tap Reload.</string>
+    <string name="sending_labels">Sending labels to Bluetooth printer…</string>
+    <string name="server_printer">Zebra: server / Wi-Fi printer</string>
+    <string name="bluetooth_printer">Zebra Bluetooth: %1$s</string>
+    <color name="nbc_blue">#3578B9</color>
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#3578B9</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#17334F</item>
+        <item name="android:navigationBarColor">#17334F</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#F3F6FA</item>
+    </style>
+</resources>

@@ -1934,10 +1934,107 @@ function zebra_send_to_tcp_printer($zpl, $host, $port, $printerLabel = 'Zebra pr
     ];
 }
 
+function zebra_bluetooth_com_port($value = null)
+{
+    $port = strtoupper(trim((string)($value ?? (defined('ZEBRA_BLUETOOTH_COM_PORT') ? ZEBRA_BLUETOOTH_COM_PORT : ''))));
+    // Accept multi-digit Windows ports, but never a path or command argument.
+    return preg_match('/^COM[1-9][0-9]{0,4}:?$/D', $port) ? rtrim($port, ':') : '';
+}
+
+function zebra_send_to_bluetooth_printer($zpl, $comPort = null, $printerLabel = 'Zebra printer')
+{
+    $comPort = zebra_bluetooth_com_port($comPort);
+    if ($comPort === '') {
+        return ['ok' => false, 'message' => 'Configure ZEBRA_BLUETOOTH_COM_PORT with the paired printer outgoing COM port (for example COM10) on the XAMPP server.'];
+    }
+    if (PHP_OS_FAMILY !== 'Windows' || !function_exists('proc_open')) {
+        return ['ok' => false, 'message' => 'Bluetooth printing requires Windows and PHP proc_open().'];
+    }
+    if ((string)$zpl === '') {
+        return ['ok' => false, 'message' => 'Bluetooth label data is empty.'];
+    }
+
+    $script = realpath(__DIR__ . '/../tools/print_zpl_to_bluetooth.ps1');
+    if ($script === false) {
+        return ['ok' => false, 'message' => 'Bluetooth print script was not found.'];
+    }
+    $baudRate = defined('ZEBRA_BLUETOOTH_BAUD_RATE') ? (int)ZEBRA_BLUETOOTH_BAUD_RATE : 115200;
+    $timeout = defined('ZEBRA_BLUETOOTH_TIMEOUT_SECONDS') ? (int)ZEBRA_BLUETOOTH_TIMEOUT_SECONDS : 20;
+    if ($baudRate < 1 || $baudRate > 4000000 || $timeout < 1 || $timeout > 120) {
+        return ['ok' => false, 'message' => 'Invalid Bluetooth baud rate or timeout (expected 1-120 seconds).'];
+    }
+
+    // HTTP requests and the picker worker must not interleave labels on one port.
+    $lock = @fopen(sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'warehouse_zebra_' . $comPort . '.lock', 'c');
+    if ($lock === false) {
+        return ['ok' => false, 'message' => 'Unable to create Bluetooth printer lock.'];
+    }
+    if (!flock($lock, LOCK_EX | LOCK_NB)) {
+        fclose($lock);
+        return ['ok' => false, 'message' => 'Bluetooth printer ' . $comPort . ' is busy. Wait for the current job to finish before printing again.'];
+    }
+
+    $dataFile = false;
+    $outputFile = false;
+    $process = null;
+    try {
+        $dataFile = tempnam(sys_get_temp_dir(), 'zebra_bt_');
+        $outputFile = tempnam(sys_get_temp_dir(), 'zebra_bt_out_');
+        if ($dataFile === false || $outputFile === false || file_put_contents($dataFile, (string)$zpl) !== strlen((string)$zpl)) {
+            return ['ok' => false, 'message' => 'Unable to prepare Bluetooth label data.'];
+        }
+        // An argument array bypasses cmd.exe, preserving paths and raw label data.
+        $process = @proc_open([
+            'powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+            '-File', $script, '-ZplPath', $dataFile, '-ComPort', $comPort,
+            '-BaudRate', (string)$baudRate, '-TimeoutSeconds', (string)$timeout
+        ], [0 => ['file', 'NUL', 'r'], 1 => ['file', $outputFile, 'w'], 2 => ['redirect', 1]], $pipes, null, null,
+            ['bypass_shell' => true, 'create_no_window' => true]);
+        if (!is_resource($process)) {
+            return ['ok' => false, 'message' => 'Unable to start the Bluetooth print process.'];
+        }
+
+        // Bound even SerialPort.Open(), which can stall for an offline device.
+        $deadline = microtime(true) + $timeout + 5;
+        do {
+            $status = proc_get_status($process);
+            if (!$status['running']) {
+                break;
+            }
+            if (microtime(true) >= $deadline) {
+                proc_terminate($process);
+                return ['ok' => false, 'message' => 'Bluetooth printing timed out on ' . $comPort . '. The label may have been partially sent; check the printer before retrying.'];
+            }
+            usleep(100000);
+        } while (true);
+
+        $output = trim((string)file_get_contents($outputFile));
+        if ($status['exitcode'] !== 0) {
+            return ['ok' => false, 'message' => 'Unable to send label to ' . $printerLabel . ' via Bluetooth ' . $comPort . '. ' . $output . ' Check pairing, power, range, and access for the Windows account running XAMPP. Check for a partial label before retrying.'];
+        }
+        return ['ok' => true, 'message' => 'Label sent to ' . $printerLabel . ' via Bluetooth ' . $comPort . '. Bytes: ' . strlen((string)$zpl)];
+    } finally {
+        if (is_resource($process)) {
+            proc_close($process);
+        }
+        foreach ([$dataFile, $outputFile] as $file) {
+            if ($file !== false) {
+                @unlink($file);
+            }
+        }
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+}
+
 function zebra_send_label_to_target($zpl, array $target)
 {
     $connection = strtolower(trim((string)($target['connection'] ?? zebra_print_connection())));
     $printerLabel = trim((string)($target['printer_label'] ?? 'Zebra printer'));
+
+    if ($connection === 'bluetooth') {
+        return zebra_send_to_bluetooth_printer($zpl, $target['com_port'] ?? null, $printerLabel);
+    }
 
     if ($connection === 'tcp') {
         return zebra_send_to_tcp_printer(

@@ -75,6 +75,21 @@ if (count($saved) === 0) {
     picker_print_fail('No valid pick tags to print.', 400);
 }
 
+if (($_POST['print_transport'] ?? '') === 'tablet_bluetooth') {
+    if ($printerKey !== 'zebra') {
+        picker_print_fail('Tablet Bluetooth printing requires Zebra QLn320.', 400);
+    }
+    require_once __DIR__ . '/../includes/tablet_print.php';
+    $payload = zebra_prepare_tablet_labels($saved);
+    $payload['failed_validation'] = count($failed);
+    header('Content-Type: application/json; charset=utf-8');
+    if (!$payload['ok']) {
+        http_response_code(400);
+    }
+    echo json_encode($payload);
+    exit;
+}
+
 /*
 |--------------------------------------------------------------------------
 | Root folders

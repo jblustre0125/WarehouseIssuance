@@ -106,6 +106,21 @@ if ($errors !== []) {
     exit;
 }
 
+if (($_POST['print_transport'] ?? '') === 'tablet_bluetooth') {
+    if ($printerKey !== 'zebra') {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'message' => 'Tablet Bluetooth printing requires Zebra QLn320.']);
+        exit;
+    }
+    require_once __DIR__ . '/../../includes/tablet_print.php';
+    $payload = zebra_prepare_tablet_labels($printItems, true);
+    if (!$payload['ok']) {
+        http_response_code(400);
+    }
+    echo json_encode($payload);
+    exit;
+}
+
 $result = zebra_print_issue_tags($printItems, $printerKey);
 
 if (empty($result['ok'])) {
