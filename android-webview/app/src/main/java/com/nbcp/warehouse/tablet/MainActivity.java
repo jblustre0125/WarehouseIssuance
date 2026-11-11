@@ -5,6 +5,7 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothSocket;
@@ -30,7 +31,6 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.PopupMenu;
@@ -45,7 +45,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.IOException;
-import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -70,7 +72,7 @@ public final class MainActivity extends Activity {
     private SharedPreferences prefs;
     private ServerAddress server;
     private WebView web;
-    private TextView connection;
+    private ImageButton menu;
     private TextView offline;
     private ProgressBar progress;
     private LinearLayout root;
@@ -124,30 +126,6 @@ public final class MainActivity extends Activity {
         screen.addView(root, new FrameLayout.LayoutParams(-1, -1));
         setContentView(screen);
 
-        LinearLayout header = new LinearLayout(this);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(14), dp(10), dp(14), dp(10));
-        header.setBackgroundColor(Color.rgb(23, 51, 79));
-        ImageView logo = new ImageView(this);
-        logo.setImageResource(R.drawable.warehouse_mark);
-        logo.setContentDescription("Warehouse logo");
-        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        header.addView(logo, new LinearLayout.LayoutParams(dp(44), dp(44)));
-        LinearLayout titles = new LinearLayout(this);
-        titles.setOrientation(LinearLayout.VERTICAL);
-        titles.setPadding(dp(14), 0, 0, 0);
-        TextView title = new TextView(this);
-        title.setText(R.string.app_name);
-        title.setTextSize(20);
-        title.setTextColor(Color.WHITE);
-        titles.addView(title);
-        connection = new TextView(this);
-        connection.setTextSize(12);
-        connection.setTextColor(Color.rgb(192, 219, 243));
-        titles.addView(connection);
-        header.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
-        root.addView(header);
-
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(100);
         root.addView(progress, new LinearLayout.LayoutParams(-1, dp(3)));
@@ -162,7 +140,7 @@ public final class MainActivity extends Activity {
         web.setBackgroundColor(Color.WHITE);
         root.addView(web, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        ImageButton menu = new ImageButton(this);
+        menu = new ImageButton(this);
         menu.setImageResource(R.drawable.ic_menu);
         menu.setBackgroundResource(R.drawable.menu_background);
         menu.setPadding(dp(16), dp(16), dp(16), dp(16));
@@ -202,16 +180,27 @@ public final class MainActivity extends Activity {
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        settings.setUserAgentString(settings.getUserAgentString() + " NBCWarehouse/2.0");
+        settings.setUserAgentString(settings.getUserAgentString() + " NBCWarehouse/2.0.1");
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
 
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
+                && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             WebViewCompat.addWebMessageListener(web, "WarehouseTablet", Collections.singleton(server.origin),
                     (view, message, sourceOrigin, isMainFrame, reply) -> {
                         if (!isMainFrame || !server.allows(view.getUrl())) return;
                         handleBridge(message.getData(), reply);
                     });
+            try (java.io.InputStream script = getAssets().open("tablet-printer.js")) {
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                byte[] buffer = new byte[4096];
+                int read;
+                while ((read = script.read(buffer)) != -1) bytes.write(buffer, 0, read);
+                WebViewCompat.addDocumentStartJavaScript(web, new String(bytes.toByteArray(), StandardCharsets.UTF_8), Collections.singleton(server.origin));
+            } catch (IOException error) {
+                toast("The tablet printing client could not be loaded. Reinstall the app.");
+                return false;
+            }
         } else {
             offline.setText(R.string.update_webview);
             offline.setVisibility(View.VISIBLE);
@@ -299,18 +288,23 @@ public final class MainActivity extends Activity {
     }
 
     private void refreshConnection() {
-        if (printing.get()) connection.setText(R.string.sending_labels);
-        else if (!prefs.getBoolean("tablet_bluetooth", true)) connection.setText(R.string.server_printer);
-        else connection.setText(getString(R.string.bluetooth_printer, prefs.getString("printer_name", "tap Printer to select")));
+        if (menu != null) menu.setTooltipText(printerSummary());
+    }
+
+    private String printerSummary() {
+        if (printing.get()) return "Printer operation in progress";
+        if (!prefs.getBoolean("tablet_bluetooth", true)) return "Zebra: server / Wi-Fi printer";
+        return "Tablet Bluetooth: " + prefs.getString("printer_name", "no printer selected");
     }
 
     private void showPrinterMenu() {
         if (printing.get() || preparing) { toast("Wait for the current printer operation."); return; }
-        new AlertDialog.Builder(this).setTitle("Zebra connection")
-                .setItems(new String[]{"Select tablet Bluetooth printer", "Use server / Wi-Fi printer", "Pair a device in Android settings"}, (dialog, item) -> {
+        new AlertDialog.Builder(this).setTitle(printerSummary())
+                .setItems(new String[]{"Select tablet Bluetooth printer", "Use server / Wi-Fi printer", "Pair a device in Android settings", "Check selected printer", "Print one test label"}, (dialog, item) -> {
                     if (item == 0) withBluetoothPermission(() -> selectPairedPrinter(null), () -> toast("Nearby devices permission is required for Bluetooth printing."));
                     else if (item == 1) { prefs.edit().putBoolean("tablet_bluetooth", false).apply(); refreshConnection(); }
-                    else openBluetoothSettings();
+                    else if (item == 2) openBluetoothSettings();
+                    else withBluetoothPermission(() -> runPrinterDiagnostic(item == 4), () -> toast("Allow Nearby devices permission to check the printer."));
                 }).setNegativeButton("Close", null).show();
     }
 
@@ -346,14 +340,17 @@ public final class MainActivity extends Activity {
             openBluetoothSettings();
             return;
         }
-        List<BluetoothDevice> devices = new ArrayList<>(adapter.getBondedDevices());
+        List<BluetoothDevice> devices = new ArrayList<>();
+        for (BluetoothDevice device : adapter.getBondedDevices()) if (printerCandidate(device)) devices.add(device);
         devices.sort(Comparator.comparing(device -> (device.getName() == null ? "" : device.getName()) + device.getAddress()));
         String[] names = new String[devices.size()];
         for (int i = 0; i < devices.size(); i++) {
             BluetoothDevice device = devices.get(i);
             names[i] = (device.getName() == null ? "Paired device" : device.getName()) + "\n" + device.getAddress();
         }
-        new AlertDialog.Builder(this).setTitle(devices.isEmpty() ? "Pair the QLn320 first" : "Select the paired QLn320")
+        AlertDialog.Builder printerChooser = new AlertDialog.Builder(this).setTitle(devices.isEmpty() ? "Pair the QLn320 first" : "Select the paired QLn320");
+        if (devices.isEmpty()) printerChooser.setMessage("No paired Classic Bluetooth printer was found. Barcode scanners are not printers. Pair the QLn320 in Android settings.");
+        printerChooser
                 .setItems(names, (dialog, index) -> {
                     BluetoothDevice device = devices.get(index);
                     prefs.edit().putString("printer_address", device.getAddress())
@@ -371,6 +368,13 @@ public final class MainActivity extends Activity {
     private void openBluetoothSettings() {
         try { startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)); }
         catch (Exception ignored) { toast("Open Android settings to pair the printer."); }
+    }
+
+    @SuppressLint("MissingPermission")
+    private boolean printerCandidate(BluetoothDevice device) {
+        BluetoothClass kind = device.getBluetoothClass();
+        return device.getType() != BluetoothDevice.DEVICE_TYPE_LE
+                && (kind == null || kind.getMajorDeviceClass() != BluetoothClass.Device.Major.PERIPHERAL);
     }
 
     private void handleBridge(String text, JavaScriptReplyProxy reply) {
@@ -400,13 +404,14 @@ public final class MainActivity extends Activity {
             BluetoothAdapter adapter = adapter();
             String address = prefs.getString("printer_address", "");
             if (adapter != null && adapter.isEnabled() && BluetoothAdapter.checkBluetoothAddress(address)
-                    && adapter.getRemoteDevice(address).getBondState() == BluetoothDevice.BOND_BONDED) {
+                    && adapter.getRemoteDevice(address).getBondState() == BluetoothDevice.BOND_BONDED
+                    && printerCandidate(adapter.getRemoteDevice(address))) {
                 preparing = false;
                 respond(reply, id, true, "Printer selected.", 0, 0);
             } else {
                 selectPairedPrinter(ok -> {
                     preparing = false;
-                    respond(reply, id, ok, ok ? "Printer selected." : "Select a paired Bluetooth QLn320 using the app's Printer button.", 0, 0);
+                    respond(reply, id, ok, ok ? "Printer selected." : "Pair and select the QLn320 from floating menu > Printer. A barcode scanner cannot print labels.", 0, 0);
                 });
             }
         }, () -> {
@@ -435,6 +440,19 @@ public final class MainActivity extends Activity {
         printerWorker.execute(() -> sendBatch(id, batch, reply));
     }
 
+    private void runPrinterDiagnostic(boolean testLabel) {
+        if (!printing.compareAndSet(false, true)) { toast("The printer is busy."); return; }
+        LabelBatch batch = null;
+        if (testLabel) {
+            String zpl = "^XA^PW576^LL609^FO40,60^A0N,36,36^FDBLUETOOTH TEST^FS^FO40,120^A0N,24,24^FDNBC Warehouse tablet^FS^FO40,180^BQN,2,6^FDLA,TABLET-BLUETOOTH-TEST^FS^PQ1^XZ\r\n";
+            batch = new LabelBatch(Collections.singletonList(java.util.Base64.getEncoder().encodeToString(zpl.getBytes(StandardCharsets.UTF_8))), 0);
+        }
+        final LabelBatch selectedBatch = batch;
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        refreshConnection();
+        printerWorker.execute(() -> sendBatch("diagnostic", selectedBatch, null));
+    }
+
     @SuppressLint("MissingPermission")
     private void sendBatch(String id, LabelBatch batch, JavaScriptReplyProxy reply) {
         int printed = 0;
@@ -450,29 +468,31 @@ public final class MainActivity extends Activity {
             }
             BluetoothDevice device = adapter.getRemoteDevice(address);
             if (device.getBondState() != BluetoothDevice.BOND_BONDED) throw new IOException("The selected printer is no longer paired.");
+            if (!printerCandidate(device)) throw new IOException("The selected device is a scanner or a BLE-only device. Select the QLn320 Classic Bluetooth printer.");
             socket = device.createRfcommSocketToServiceRecord(SPP);
             activeSocket = socket;
             if (destroyed) throw new IOException("The app was closed.");
             timeout = closeAfterTimeout(socket, 20);
             socket.connect();
             timeout.cancel(false);
-            OutputStream output = socket.getOutputStream();
-            for (byte[] label : batch.labels) {
+            timeout = closeAfterTimeout(socket, 45);
+            ZebraPrinterSession printer = new ZebraPrinterSession(socket.getInputStream(), socket.getOutputStream());
+            String model = printer.verifyReady();
+            timeout.cancel(false);
+            for (byte[] label : batch == null ? Collections.<byte[]>emptyList() : batch.labels) {
                 if (destroyed || Thread.currentThread().isInterrupted()) throw new IOException("Printing was interrupted.");
-                timeout = closeAfterTimeout(socket, 20);
-                for (int offset = 0; offset < label.length; offset += 1024) {
-                    output.write(label, offset, Math.min(1024, label.length - offset));
-                }
-                output.flush();
+                timeout = closeAfterTimeout(socket, 60);
+                printer.printAndConfirm(label);
                 timeout.cancel(false);
                 printed++;
                 if (printed < batch.labels.size() && batch.delayMs > 0) Thread.sleep(batch.delayMs);
             }
             ok = true;
-            message = "Sent " + printed + " label(s) to " + prefs.getString("printer_name", "QLn320") + " via tablet Bluetooth. Check the printed labels.";
+            message = batch == null ? model + " replied, accepts ZPL, and reports ready. No label was printed."
+                    : model + " confirmed " + printed + " printed label(s) via tablet Bluetooth.";
         } catch (Exception error) {
-            message = "Bluetooth printing stopped after " + printed + " of " + batch.labels.size()
-                    + " label(s). " + (error.getMessage() == null ? "Connection failed." : error.getMessage())
+            message = "Printer check / printing stopped. Confirmed labels: " + printed
+                    + ". " + (error.getMessage() == null ? "Connection failed." : error.getMessage())
                     + " Check the printer for complete or partial labels before retrying.";
         } finally {
             if (timeout != null) timeout.cancel(false);
@@ -487,7 +507,9 @@ public final class MainActivity extends Activity {
             if (destroyed) return;
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             refreshConnection();
-            respond(reply, id, success, resultMessage, completed, batch.labels.size() - completed);
+            if (reply == null) new AlertDialog.Builder(this).setTitle(success ? "Printer result" : "Printer error")
+                    .setMessage(resultMessage).setPositiveButton("OK", null).show();
+            else respond(reply, id, success, resultMessage, completed, batch.labels.size() - completed);
         });
     }
 
@@ -502,6 +524,7 @@ public final class MainActivity extends Activity {
         try {
             JSONObject result = new JSONObject();
             result.put("id", id).put("ok", ok).put("message", message).put("printed", printed).put("failed", failed)
+                    .put("protocol", "confirmed_print_v1").put("confirmed", ok && printed > 0)
                     .put("transport", prefs.getBoolean("tablet_bluetooth", true) ? "tablet_bluetooth" : "server")
                     .put("printer_name", prefs.getString("printer_name", "Zebra QLn320") + " (tablet Bluetooth)");
             if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) reply.postMessage(result.toString());
