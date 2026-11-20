@@ -1,4 +1,5 @@
 <?php
-// NBC Central managed bridge
-$GLOBALS['nbc_application_key'] = 'warehouse';
-require 'C:/Xampp/htdocs/nbc-central/integrations/bridge.php';
+// Warehouse native login restored.
+header('Cache-Control: no-store');
+header('Location: pages/auth/login.php', true, 303);
+exit;
