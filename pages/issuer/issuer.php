@@ -31,12 +31,13 @@ foreach ([
 <html lang="en">
 
 <head>
+    <script src="<?= h(app_path('assets/central-auth.js')) ?>" data-auth-mode="<?= whAuthContext() ?>"></script>
     <title>Issuer - Warehouse</title>
 
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
 
-    <base href="<?= h(app_path('')) ?>">
+    <base href="<?= h(whAuthUrl(app_path(''))) ?>">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
@@ -2029,7 +2030,7 @@ foreach ([
         try {
 
             const res =
-                await fetch(
+                await WarehouseAuth.fetch(
                     'api/get_open_issue_requests.php' +
                     (
                         forceRefresh ?
@@ -2262,7 +2263,7 @@ foreach ([
         try {
 
             const res =
-                await fetch(
+                await WarehouseAuth.fetch(
                     'api/stocks/list.php?scope=issuer', {
                         cache: 'no-store'
                     }
@@ -2507,7 +2508,7 @@ foreach ([
         try {
 
             const res =
-                await fetch(
+                await WarehouseAuth.fetch(
                     'api/issuer/get_reprint_issuances.php?limit=300', {
                         cache: 'no-store',
 
@@ -3058,7 +3059,7 @@ foreach ([
             );
 
             const res =
-                await WarehousePrinter.fetch(
+                await WarehouseAuth.printFetch(
                     'api/issuer/print_issue_tags.php', {
                         method: 'POST',
 
@@ -5551,7 +5552,7 @@ foreach ([
         lotSuggestionRequests[
                 itemKey
             ] =
-            fetch(
+            WarehouseAuth.fetch(
                 'api/issuer/get_lot_suggestions.php?' +
                 'item_code=' +
                 encodeURIComponent(
@@ -6968,7 +6969,7 @@ foreach ([
             );
 
             const res =
-                await fetch(
+                await WarehouseAuth.fetch(
                     'api/issuer/return_no_stock_item.php', {
                         method: 'POST',
 
@@ -7207,7 +7208,7 @@ foreach ([
             );
 
         const res =
-            await fetch(
+            await WarehouseAuth.fetch(
                 url, {
                     cache: 'no-store'
                 }
@@ -7742,7 +7743,7 @@ foreach ([
             );
 
             const res =
-                await fetch(
+                await WarehouseAuth.fetch(
                     'api/issuer/validate_issue_batch.php', {
                         method: 'POST',
 
@@ -8431,7 +8432,7 @@ foreach ([
         }
 
         const res =
-            await fetch(
+            await WarehouseAuth.fetch(
                 'actions/save_issue_with_lot_validation.php', {
                     method: 'POST',
 
@@ -8672,7 +8673,7 @@ foreach ([
             );
 
             const res =
-                await WarehousePrinter.fetch(
+                await WarehouseAuth.printFetch(
                     'api/issuer/print_issue_tags.php', {
                         method: 'POST',
 
@@ -8991,7 +8992,7 @@ foreach ([
             );
 
             const res =
-                await WarehousePrinter.fetch(
+                await WarehouseAuth.printFetch(
                     'api/issuer/print_issue_tags.php', {
                         method: 'POST',
 

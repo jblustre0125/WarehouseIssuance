@@ -122,10 +122,11 @@ function status_class($status): string
 <!doctype html>
 <html lang="en">
 <head>
+    <script src="<?= h(app_path('assets/central-auth.js')) ?>" data-auth-mode="<?= whAuthContext() ?>"></script>
     <title>SAP Encoder Report</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <base href="<?= h(app_path('')) ?>">
+    <base href="<?= h(whAuthUrl(app_path(''))) ?>">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="assets/app-shell.css" rel="stylesheet">
@@ -487,7 +488,7 @@ function status_class($status): string
             </div>
 
             <div class="content-card-body">
-                <form method="get" class="row g-3 align-items-end">
+                <form method="get" class="row g-3 align-items-end"><?=whAuthField()?>
                     <div class="col-md-4">
                         <label class="form-label fw-bold small text-muted">Process</label>
                         <select name="process" class="form-select">
@@ -516,7 +517,7 @@ function status_class($status): string
                     </div>
 
                     <div class="col-md-2 d-grid">
-                        <a href="<?= h(app_path('pages/sap_encoder/sap_encoder_report.php')) ?>" class="btn btn-outline-secondary">
+                        <a href="<?= h(whAuthUrl(app_path('pages/sap_encoder/sap_encoder_report.php'))) ?>" class="btn btn-outline-secondary">
                             Clear
                         </a>
                     </div>

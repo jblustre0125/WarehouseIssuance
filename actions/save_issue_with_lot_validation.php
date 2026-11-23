@@ -32,6 +32,7 @@ function issuer_save_lot_fail($message)
 <!doctype html>
 <html lang="en">
 <head>
+    <script src="<?= h(app_path('assets/central-auth.js')) ?>" data-auth-mode="<?= whAuthContext() ?>"></script>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Lot Validation Failed</title>

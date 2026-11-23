@@ -34,7 +34,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             [client_hostname(), client_ip(), $user['UserID']]
         );
 
-        header('Location: ' . app_path('index.php'));
+        whAuthMode('native');
+        header('Location: ' . whAuthUrl(app_path('index.php')));
         exit;
     }
 
@@ -44,10 +45,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <!doctype html>
 <html lang="en">
 <head>
+    <script src="<?= h(app_path('assets/central-auth.js')) ?>" data-auth-mode="<?= whAuthContext() ?>"></script>
     <title>Login | NBC Rawmats Traceability</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <base href="<?= h(app_path('')) ?>">
+    <base href="<?= h(whAuthUrl(app_path(''))) ?>">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
@@ -182,7 +184,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
         <?php endif; ?>
 
-        <form method="post" autocomplete="off">
+        <form method="post" autocomplete="off"><?=whAuthField()?>
             <div class="mb-3">
                 <label class="form-label" for="username">Employee Code</label>
                 <input

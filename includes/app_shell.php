@@ -33,7 +33,7 @@ function app_sidebar_link($active, $key, $href, $icon, $label)
 {
     $isActive = $active === $key;
     ?>
-    <a class="sap-nav-link <?= $isActive ? 'active' : '' ?>" href="<?= h(app_path($href)) ?>" title="<?= h($label) ?>" <?= $isActive ? 'aria-current="page"' : '' ?>>
+    <a class="sap-nav-link <?= $isActive ? 'active' : '' ?>" href="<?= h(whAuthUrl(app_path($href))) ?>" title="<?= h($label) ?>" <?= $isActive ? 'aria-current="page"' : '' ?>>
         <span class="sap-nav-icon"><?= app_sidebar_icon($icon) ?></span>
         <span class="sap-nav-label"><?= h($label) ?></span>
     </a>
@@ -254,7 +254,7 @@ function app_sidebar($active = '')
                     <div class="side-user-role"><?= h($u['role'] ?? '') ?></div>
                 </div>
             </div>
-            <a class="logout-link" href="<?= h(app_path('pages/auth/logout.php')) ?>">
+            <a class="logout-link" href="<?= h(whAuthUrl(app_path('pages/auth/logout.php'))) ?>">
                 <span class="logout-icon"><?= app_sidebar_icon('logout') ?></span>
                 <span>Logout</span>
             </a>

@@ -17,9 +17,10 @@ function sqlsrv_options($database, $user, $password)
     ];
 }
 
-function get_whpokayoke_connection()
+function get_whpokayoke_connection($throwOnFailure = false)
 {
     $conn = sqlsrv_connect(DB_HOST_WHP, sqlsrv_options(DB_NAME_WHP, DB_USER_WHP, DB_PASS_WHP));
+    if ($conn === false && $throwOnFailure) throw new RuntimeException('Warehouse database connection unavailable.');
     if ($conn === false) die('WHPOKAYOKE DB Connection failed: ' . print_r(sqlsrv_errors(), true));
     return $conn;
 }

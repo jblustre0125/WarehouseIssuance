@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/../../includes/central-auth.php'; ?>
 <?php
 require_once __DIR__ . '/../../includes/app_shell.php';
 
@@ -77,7 +78,7 @@ $qrPayloads = [];
     <title><?= result_h($pageTitle) ?></title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <base href="<?= h(app_path('')) ?>">
+    <base href="<?= h(whAuthUrl(app_path(''))) ?>">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="assets/app-shell.css" rel="stylesheet">
@@ -619,10 +620,10 @@ $qrPayloads = [];
             </div>
 
             <div class="d-flex gap-2 flex-wrap">
-                <a class="btn btn-outline-primary btn-sm" href="<?= result_h($backUrl) ?>">
+                <a class="btn btn-outline-primary btn-sm" href="<?= h(whAuthUrl(result_h($backUrl))) ?>">
                     Issue More
                 </a>
-                <a class="btn btn-secondary btn-sm" href="pages/dashboard/verification_dashboard.php">
+                <a class="btn btn-secondary btn-sm" href="pages/dashboard/verification_dashboard.php?wh_auth=<?=whAuthContext()?>">
                     Dashboard
                 </a>
             </div>

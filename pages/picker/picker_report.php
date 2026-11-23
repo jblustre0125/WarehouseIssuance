@@ -448,10 +448,11 @@ $exportUrl = app_path('api/picker/export_grpo_receipts.php?' . http_build_query(
 <!doctype html>
 <html lang="en">
 <head>
+    <script src="<?= h(app_path('assets/central-auth.js')) ?>" data-auth-mode="<?= whAuthContext() ?>"></script>
     <title>Picker Receiving Report</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <base href="<?= h(app_path('')) ?>">
+    <base href="<?= h(whAuthUrl(app_path(''))) ?>">
     <link href="assets/app-shell.css" rel="stylesheet">
     <style>
         :root {
@@ -855,14 +856,14 @@ $exportUrl = app_path('api/picker/export_grpo_receipts.php?' . http_build_query(
                     <div class="page-subtitle">Review purchase-order receipts, SAP batch or lot numbers, quantities, suppliers, and destination warehouses in one compact report.</div>
                 </div>
                 <div class="toolbar-actions">
-                    <a class="btn btn-light" href="<?= h(app_path('pages/picker/picker.php')) ?>">&#8592; <span>Back to Picker</span></a>
-                    <a class="btn btn-success disabled" id="excel-btn" href="<?= h($exportUrl) ?>">&#8681; <span>Export Excel</span></a>
+                    <a class="btn btn-light" href="<?= h(whAuthUrl(app_path('pages/picker/picker.php'))) ?>">&#8592; <span>Back to Picker</span></a>
+                    <a class="btn btn-success disabled" id="excel-btn" href="<?= h(whAuthUrl($exportUrl)) ?>">&#8681; <span>Export Excel</span></a>
                 </div>
             </div>
 
             <section class="report-shell">
                 <div class="filter-panel">
-                    <form id="report-form" method="get">
+                    <form id="report-form" method="get"><?=whAuthField()?>
                         <input type="hidden" name="run" value="1">
                         <div class="filter-row">
                             <div class="field">
@@ -1100,7 +1101,7 @@ $exportUrl = app_path('api/picker/export_grpo_receipts.php?' . http_build_query(
     }
 
     async function fetchPageData(page, signal) {
-        const response = await fetch(API + '?' + new URLSearchParams({ ...currentParams, page }).toString(), {
+        const response = await WarehouseAuth.fetch(API + '?' + new URLSearchParams({ ...currentParams, page }).toString(), {
             headers: { 'Accept': 'application/json' },
             cache: 'no-store',
             signal

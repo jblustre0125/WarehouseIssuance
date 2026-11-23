@@ -2090,6 +2090,7 @@ if ($export) {
     <html lang="en">
 
     <head>
+    <script src="<?= h(app_path('assets/central-auth.js')) ?>" data-auth-mode="<?= whAuthContext() ?>"></script>
         <meta charset="utf-8">
         <title>Requestor Requests</title>
     </head>
@@ -2311,7 +2312,7 @@ $showingTo = min(
 
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <base href="<?= h(app_path('')) ?>">
+    <base href="<?= h(whAuthUrl(app_path(''))) ?>">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
@@ -2886,7 +2887,7 @@ $showingTo = min(
 
                 <div class="content-card-body">
 
-                    <form class="filter-box" method="get" action="<?= h(request_report_url()) ?>">
+                    <form class="filter-box" method="get" action="<?= h(whAuthUrl(request_report_url())) ?>"><?=whAuthField()?>
                         <div class="row g-2 align-items-end">
 
                             <div class="col-sm-6 col-lg-2">
@@ -2923,7 +2924,7 @@ $showingTo = min(
                             </div>
 
                             <div class="col-sm-6 col-lg-2 d-grid">
-                                <a class="btn btn-success" href="<?= h($exportUrl) ?>">
+                                <a class="btn btn-success" href="<?= h(whAuthUrl($exportUrl)) ?>">
                                     Export Excel
                                 </a>
                             </div>
@@ -3193,14 +3194,14 @@ $showingTo = min(
                                     <li class="page-item <?= $page <= 1
                                                                 ? 'disabled'
                                                                 : '' ?>">
-                                        <a class="page-link" href="<?= h(
+                                        <a class="page-link" href="<?= h(whAuthUrl(
                                                                         request_report_url($baseQuery + [
                                                                             'page' => max(
                                                                                 1,
                                                                                 $page - 1
                                                                             )
                                                                         ])
-                                                                    ) ?>">
+                                                                    )) ?>">
                                             Previous
                                         </a>
                                     </li>
@@ -3227,11 +3228,11 @@ $showingTo = min(
                                                                     === $page
                                                                     ? 'active'
                                                                     : '' ?>">
-                                            <a class="page-link" href="<?= h(
+                                            <a class="page-link" href="<?= h(whAuthUrl(
                                                                             request_report_url($baseQuery + [
                                                                                 'page' => $pageNumber
                                                                             ])
-                                                                        ) ?>">
+                                                                        )) ?>">
                                                 <?= $pageNumber ?>
                                             </a>
                                         </li>
@@ -3241,14 +3242,14 @@ $showingTo = min(
                                     <li class="page-item <?= $page >= $totalPages
                                                                 ? 'disabled'
                                                                 : '' ?>">
-                                        <a class="page-link" href="<?= h(
+                                        <a class="page-link" href="<?= h(whAuthUrl(
                                                                         request_report_url($baseQuery + [
                                                                             'page' => min(
                                                                                 $totalPages,
                                                                                 $page + 1
                                                                             )
                                                                         ])
-                                                                    ) ?>">
+                                                                    )) ?>">
                                             Next
                                         </a>
                                     </li>
@@ -3492,7 +3493,7 @@ $showingTo = min(
             receiveVerifyModal.show();
 
             try {
-                const response = await fetch(
+                const response = await WarehouseAuth.fetch(
                     'api/requestor/verify_receive.php?request_no=' +
                     encodeURIComponent(requestNo), {
                         cache: 'no-store'

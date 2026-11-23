@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/../../includes/central-auth.php'; ?>
 <?php
 $currentUser = function_exists('current_user') ? current_user() : [];
 $currentRole = strtolower($currentUser['role'] ?? '');
@@ -44,7 +45,7 @@ foreach ($saved as $idx => $s) {
     <title><?= pick_result_h($pageTitle) ?></title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <base href="<?= pick_result_h(app_path('')) ?>">
+    <base href="<?= h(whAuthUrl(pick_result_h(app_path('')))) ?>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background:#f4f7fb; font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
@@ -70,7 +71,7 @@ foreach ($saved as $idx => $s) {
                 <h4 class="title"><?= pick_result_h($pageTitle) ?></h4>
                 <div class="sub">Picker tags for issuer scanning. Barcode is PO/ITR; QR is item, qty, and lot.</div>
             </div>
-            <a class="btn btn-outline-primary btn-sm" href="<?= pick_result_h($backUrl) ?>">Back to Picker</a>
+            <a class="btn btn-outline-primary btn-sm" href="<?= h(whAuthUrl(pick_result_h($backUrl))) ?>">Back to Picker</a>
         </div>
         <div class="panel-body">
             <div class="row g-3 mb-3">

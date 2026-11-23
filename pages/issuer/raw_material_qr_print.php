@@ -6,9 +6,10 @@ raw_material_qr_print_require_access();
 <!doctype html>
 <html lang="en">
 <head>
+    <script src="<?= h(app_path('assets/central-auth.js')) ?>" data-auth-mode="<?= whAuthContext() ?>"></script>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <base href="<?= h(app_path('')) ?>">
+    <base href="<?= h(whAuthUrl(app_path(''))) ?>">
     <title>Raw Material QR Labels</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="assets/app-shell.css" rel="stylesheet">
@@ -123,7 +124,7 @@ raw_material_qr_print_require_access();
                     <h4 class="mb-1 fw-bold">Raw Material QR Labels</h4>
                     <div class="text-muted small">Each label is exactly 2 × 2 inches. A4 portrait fits 3 columns × 5 rows, or 15 labels per page.</div>
                 </div>
-                <a class="btn btn-outline-secondary" href="<?= h(app_path('pages/issuer/issuer.php')) ?>">Back to Issuer</a>
+                <a class="btn btn-outline-secondary" href="<?= h(whAuthUrl(app_path('pages/issuer/issuer.php'))) ?>">Back to Issuer</a>
             </div>
 
             <div class="toolbar-row">
@@ -254,7 +255,7 @@ document.querySelectorAll('.sap-nav-link').forEach(function (link) {
 
     async function loadRows() {
         try {
-            const response = await fetch(API, {
+            const response = await WarehouseAuth.fetch(API, {
                 cache: 'no-store',
                 credentials: 'same-origin',
                 headers: {

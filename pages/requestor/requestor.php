@@ -10,10 +10,11 @@ $currentRole = strtolower($currentUser['role'] ?? '');
 <!doctype html>
 <html lang="en">
 <head>
+    <script src="<?= h(app_path('assets/central-auth.js')) ?>" data-auth-mode="<?= whAuthContext() ?>"></script>
     <title>Issue Request</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <base href="<?= h(app_path('')) ?>">
+    <base href="<?= h(whAuthUrl(app_path(''))) ?>">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="assets/app-shell.css" rel="stylesheet">
@@ -1181,7 +1182,7 @@ $currentRole = strtolower($currentUser['role'] ?? '');
             </div>
 
             <div class="modal-footer">
-                <a class="btn btn-outline-primary" href="pages/requestor/requestor_report.php">View Report</a>
+                <a class="btn btn-outline-primary" href="pages/requestor/requestor_report.php?wh_auth=<?=whAuthContext()?>">View Report</a>
                 <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Create Another</button>
             </div>
         </div>
@@ -1353,7 +1354,7 @@ async function loadOpenItrs(forceRefresh = false) {
 
     try {
         const refreshSuffix = forceRefresh ? '&refresh=1' : '';
-        const res = await fetch(getItrRequestUrl() + refreshSuffix, { cache: 'no-store' });
+        const res = await WarehouseAuth.fetch(getItrRequestUrl() + refreshSuffix, { cache: 'no-store' });
         const data = await res.json();
 
         if (!data.ok) {
@@ -1386,7 +1387,7 @@ async function loadMyRequests() {
     status.textContent = 'Refreshing requests...';
 
     try {
-        const res = await fetch('api/requestor/list_requests.php', { cache: 'no-store' });
+        const res = await WarehouseAuth.fetch('api/requestor/list_requests.php', { cache: 'no-store' });
         const data = await res.json();
 
         if (!data.ok) {
@@ -1497,7 +1498,7 @@ async function loadSapInventoryTransfers(append = false) {
         }
 
         let url = 'api/requestor/list_sap_inventory_transfers.php?max=50&page=' + encodeURIComponent(nextPage);
-        const res = await fetch(url, { cache: 'no-store' });
+        const res = await WarehouseAuth.fetch(url, { cache: 'no-store' });
         const text = await res.text();
         let data = null;
 
@@ -1591,7 +1592,7 @@ async function loadStocks() {
     status.textContent = 'Refreshing stock...';
 
     try {
-        const res = await fetch('api/stocks/list.php?scope=requestor', { cache: 'no-store' });
+        const res = await WarehouseAuth.fetch('api/stocks/list.php?scope=requestor', { cache: 'no-store' });
         const data = await res.json();
 
         if (!data.ok) {
@@ -2264,7 +2265,7 @@ async function postForm(url, fields) {
         body.append(k, fields[k]);
     });
 
-    const res = await fetch(url, {
+    const res = await WarehouseAuth.fetch(url, {
         method: 'POST',
         body: body
     });

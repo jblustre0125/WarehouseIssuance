@@ -1504,10 +1504,11 @@ echo '
 <html lang="en">
 
 <head>
+    <script src="<?= h(app_path('assets/central-auth.js')) ?>" data-auth-mode="<?= whAuthContext() ?>"></script>
     <title>Issuer Scan Report</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <base href="<?= h(app_path('')) ?>">
+    <base href="<?= h(whAuthUrl(app_path(''))) ?>">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="assets/app-shell.css" rel="stylesheet">
@@ -1966,7 +1967,7 @@ echo '
 
                 <div class="content-card-body">
 
-                    <form class="filter-box" method="get">
+                    <form class="filter-box" method="get"><?=whAuthField()?>
                         <div class="row g-2 align-items-end">
                             <div class="col-sm-6 col-md-3">
                                 <label class="form-label" for="date_from">Date From</label>
@@ -1988,7 +1989,7 @@ echo '
 
                             <div class="col-sm-6 col-md-3 d-grid">
                                 <a class="btn btn-success"
-                                    href="<?= h(issuer_scan_report_url($baseQuery + ['export' => 'excel'])) ?>">
+                                    href="<?= h(whAuthUrl(issuer_scan_report_url($baseQuery + ['export' => 'excel']))) ?>">
                                     Export Excel
                                 </a>
                             </div>
@@ -2147,7 +2148,7 @@ echo '
                         <ul class="pagination pagination-sm justify-content-end mb-0">
                             <li class="page-item <?= $page <= 1 ? 'disabled' : '' ?>">
                                 <a class="page-link"
-                                    href="<?= h(issuer_scan_report_url($baseQuery + ['page' => max(1, $page - 1)])) ?>">Previous</a>
+                                    href="<?= h(whAuthUrl(issuer_scan_report_url($baseQuery + ['page' => max(1, $page - 1)]))) ?>">Previous</a>
                             </li>
 
                             <?php
@@ -2157,13 +2158,13 @@ echo '
                             ?>
                             <li class="page-item <?= $p === $page ? 'active' : '' ?>">
                                 <a class="page-link"
-                                    href="<?= h(issuer_scan_report_url($baseQuery + ['page' => $p])) ?>"><?= $p ?></a>
+                                    href="<?= h(whAuthUrl(issuer_scan_report_url($baseQuery + ['page' => $p]))) ?>"><?= $p ?></a>
                             </li>
                             <?php endfor; ?>
 
                             <li class="page-item <?= $page >= $totalPages ? 'disabled' : '' ?>">
                                 <a class="page-link"
-                                    href="<?= h(issuer_scan_report_url($baseQuery + ['page' => min($totalPages, $page + 1)])) ?>">Next</a>
+                                    href="<?= h(whAuthUrl(issuer_scan_report_url($baseQuery + ['page' => min($totalPages, $page + 1)]))) ?>">Next</a>
                             </li>
                         </ul>
                     </nav>
@@ -2554,7 +2555,7 @@ echo '
         receiveVerifyModal.show();
 
         try {
-            const response = await fetch(
+            const response = await WarehouseAuth.fetch(
                 'api/requestor/verify_receive.php?request_no=' + encodeURIComponent(requestNo), {
                     cache: 'no-store'
                 }

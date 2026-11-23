@@ -250,6 +250,6 @@ $query = http_build_query([
     'print_trigger' => $payload['trigger_message']
 ]);
 
-header('Location: ' . app_path('pages/picker/picker.php?' . $query));
+header('Location: ' . whAuthUrl(app_path('pages/picker/picker.php?' . $query)));
 exit;
 ?>

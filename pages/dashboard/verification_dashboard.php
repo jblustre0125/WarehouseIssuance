@@ -149,10 +149,11 @@ $clearUrl = $baseDashboardUrl;
 <!doctype html>
 <html lang="en">
 <head>
+    <script src="<?= h(app_path('assets/central-auth.js')) ?>" data-auth-mode="<?= whAuthContext() ?>"></script>
     <title>Verification Dashboard</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <base href="<?= h(app_path('')) ?>">
+    <base href="<?= h(whAuthUrl(app_path(''))) ?>">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="assets/app-shell.css" rel="stylesheet">
@@ -947,7 +948,7 @@ $clearUrl = $baseDashboardUrl;
 
                 <div class="d-flex flex-wrap gap-2 justify-content-end">
                     <?php if ($status !== ''): ?>
-                        <a class="btn btn-outline-secondary" href="<?= h($clearUrl) ?>">
+                        <a class="btn btn-outline-secondary" href="<?= h(whAuthUrl($clearUrl)) ?>">
                             Clear Filter
                         </a>
                     <?php endif; ?>
@@ -962,7 +963,7 @@ $clearUrl = $baseDashboardUrl;
                         $summaryStatus = (string)$s['VerificationStatus'];
                         $isActive = $status !== '' && $status === $summaryStatus;
                     ?>
-                    <a class="summary-card" href="pages/dashboard/verification_dashboard.php?status=<?= urlencode($summaryStatus) ?>">
+                    <a class="summary-card" href="pages/dashboard/verification_dashboard.php?wh_auth=<?=whAuthContext()?>&amp;status=<?= urlencode($summaryStatus) ?>">
                         <div class="summary-box <?= $isActive ? 'active-filter' : '' ?>">
                             <div class="summary-label"><?= h($summaryStatus) ?></div>
                             <div class="summary-count"><?= (int)$s['Cnt'] ?></div>
@@ -970,7 +971,7 @@ $clearUrl = $baseDashboardUrl;
                     </a>
                 <?php endforeach; ?>
 
-                <a class="summary-card" href="pages/dashboard/verification_dashboard.php">
+                <a class="summary-card" href="pages/dashboard/verification_dashboard.php?wh_auth=<?=whAuthContext()?>">
                     <div class="summary-box <?= $status === '' ? 'active-filter' : '' ?>">
                         <div class="summary-label">All Records</div>
                         <div class="summary-count"><?= (int)$totalSummaryRows ?></div>
@@ -1052,7 +1053,7 @@ $clearUrl = $baseDashboardUrl;
                                     ?>
                                     <tr>
                                         <td title="<?= h($r['TraceNo']) ?>">
-                                            <a href="pages/reports/print_trace.php?trace_no=<?= urlencode($r['TraceNo']) ?>" target="_blank">
+                                            <a href="pages/reports/print_trace.php?wh_auth=<?=whAuthContext()?>&amp;trace_no=<?= urlencode($r['TraceNo']) ?>" target="_blank">
                                                 <?= h($r['TraceNo']) ?>
                                             </a>
                                         </td>

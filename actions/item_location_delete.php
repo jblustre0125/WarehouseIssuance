@@ -31,6 +31,6 @@ if ($stmt === false) {
     app_error(sqlsrv_fail_message());
 }
 
-header('Location: ' . app_path('pages/warehouse/item_locations.php?deleted=1'));
+header('Location: ' . whAuthUrl(app_path('pages/warehouse/item_locations.php?deleted=1')));
 exit;
 ?>

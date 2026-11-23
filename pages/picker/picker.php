@@ -15,10 +15,11 @@ $defaultPickPrinter = $defaultPickPrinter === 'zebra' ? 'zebra' : 'nitto';
 <!doctype html>
 <html lang="en">
 <head>
+    <script src="<?= h(app_path('assets/central-auth.js')) ?>" data-auth-mode="<?= whAuthContext() ?>"></script>
     <title>Picker - Warehouse</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <base href="<?= h(app_path('')) ?>">
+    <base href="<?= h(whAuthUrl(app_path(''))) ?>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="assets/app-shell.css" rel="stylesheet">
     <style>
@@ -884,7 +885,7 @@ $defaultPickPrinter = $defaultPickPrinter === 'zebra' ? 'zebra' : 'nitto';
                     <div class="page-subtitle">Load a request or open PO, enter actual lot details, split quantities when needed, then print pick tags for issuer scanning.</div>
                 </div>
                 <div class="hero-actions">
-                    <a class="btn btn-light" href="<?= h(app_path('pages/picker/picker_report.php')) ?>">GRPO Report</a>
+                    <a class="btn btn-light" href="<?= h(whAuthUrl(app_path('pages/picker/picker_report.php'))) ?>">GRPO Report</a>
                     <span class="count-pill" id="countBadge">0 tag(s)</span>
                 </div>
             </section>
@@ -897,7 +898,7 @@ $defaultPickPrinter = $defaultPickPrinter === 'zebra' ? 'zebra' : 'nitto';
                         <?= h($queuedPrintTrigger ?: 'The print worker was started.') ?>
                         <?php if ($queuedPrintJob !== ''): ?><span class="small text-muted">Job <?= h($queuedPrintJob) ?></span><?php endif; ?>
                     </div>
-                    <a class="btn btn-sm btn-outline-success" href="<?= h(app_path('pages/picker/picker.php')) ?>">Dismiss</a>
+                    <a class="btn btn-sm btn-outline-success" href="<?= h(whAuthUrl(app_path('pages/picker/picker.php'))) ?>">Dismiss</a>
                 </div>
             <?php endif; ?>
             <div class="alert alert-success d-none" id="printQueueAlert"></div>
@@ -1147,7 +1148,7 @@ async function loadOpenRequests() {
     status.textContent = 'Refreshing requests...';
 
     try {
-        const res = await fetch('api/get_open_issue_requests.php', { cache: 'no-store' });
+        const res = await WarehouseAuth.fetch('api/get_open_issue_requests.php', { cache: 'no-store' });
         const data = await res.json();
 
         if (!data.ok) {
@@ -1210,7 +1211,7 @@ async function loadOpenPurchaseOrders(forceLoad = false) {
         params.set('max', search ? '50' : '20');
 
         const url = 'api/picker/open_purchase_orders.php?' + params.toString();
-        const res = await fetch(url, {
+        const res = await WarehouseAuth.fetch(url, {
             cache: 'no-store',
             signal: controller.signal,
             headers: {
@@ -1671,7 +1672,7 @@ async function printTags() {
         body.append('batch_items', JSON.stringify(printable));
         body.append('pick_printer', selectedPickPrinter());
 
-        const res = await WarehousePrinter.fetch('actions/print_pick_tags.php', {
+        const res = await WarehouseAuth.printFetch('actions/print_pick_tags.php', {
             method: 'POST',
             headers: {
                 'Accept': 'application/json',

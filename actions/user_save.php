@@ -156,6 +156,6 @@ if ($stmt === false) {
     app_error(sqlsrv_fail_message());
 }
 
-header('Location: ' . app_path('pages/admin/admin_users.php'));
+header('Location: ' . whAuthUrl(app_path('pages/admin/admin_users.php')));
 exit;
 ?>

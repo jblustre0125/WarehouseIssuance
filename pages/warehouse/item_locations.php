@@ -63,10 +63,11 @@ $currentUser = current_user();
 <!doctype html>
 <html lang="en">
 <head>
+    <script src="<?= h(app_path('assets/central-auth.js')) ?>" data-auth-mode="<?= whAuthContext() ?>"></script>
     <title>Item Locations | Warehouse Issuance</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <base href="<?= h(app_path('')) ?>">
+    <base href="<?= h(whAuthUrl(app_path(''))) ?>">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="assets/app-shell.css" rel="stylesheet">
@@ -235,7 +236,7 @@ $currentUser = current_user();
             </div>
 
             <div class="content-card-body">
-                <form method="post" action="actions/item_location_save.php" autocomplete="off">
+                <form method="post" action="actions/item_location_save.php?wh_auth=<?=whAuthContext()?>" autocomplete="off"><?=whAuthField()?>
                     <input type="hidden" name="original_item_code" value="<?= h($editRow['ItemCode'] ?? '') ?>">
 
                     <div class="row g-3">
@@ -268,7 +269,7 @@ $currentUser = current_user();
 
                         <div class="col-12 d-flex justify-content-end gap-2">
                             <?php if ($editRow): ?>
-                                <a class="btn btn-outline-secondary" href="pages/warehouse/item_locations.php">Cancel</a>
+                                <a class="btn btn-outline-secondary" href="pages/warehouse/item_locations.php?wh_auth=<?=whAuthContext()?>">Cancel</a>
                             <?php endif; ?>
                             <button class="btn btn-primary" type="submit">Save Location</button>
                         </div>
@@ -279,7 +280,7 @@ $currentUser = current_user();
 
         <div class="content-card">
             <div class="content-card-header">
-                <form class="row g-2 align-items-end" method="get">
+                <form class="row g-2 align-items-end" method="get"><?=whAuthField()?>
                     <div class="col-md-8">
                         <label class="form-label" for="q">Search</label>
                         <input class="form-control" id="q" name="q" value="<?= h($q) ?>" placeholder="SAP code, parts code, item name, or location">
@@ -337,9 +338,9 @@ $currentUser = current_user();
                                         </td>
                                         <td class="col-actions">
                                             <div class="d-flex gap-2">
-                                                <a class="btn btn-sm btn-outline-primary" href="pages/warehouse/item_locations.php?edit=<?= urlencode((string)$row['ItemCode']) ?>">Edit</a>
+                                                <a class="btn btn-sm btn-outline-primary" href="pages/warehouse/item_locations.php?wh_auth=<?=whAuthContext()?>&amp;edit=<?= urlencode((string)$row['ItemCode']) ?>">Edit</a>
                                                 <?php if ((int)($row['IsActive'] ?? 0) === 1): ?>
-                                                    <form method="post" action="actions/item_location_delete.php" onsubmit="return confirm('Deactivate this item location?');">
+                                                    <form method="post" action="actions/item_location_delete.php?wh_auth=<?=whAuthContext()?>" onsubmit="return confirm('Deactivate this item location?');"><?=whAuthField()?>
                                                         <input type="hidden" name="item_code" value="<?= h($row['ItemCode'] ?? '') ?>">
                                                         <button class="btn btn-sm btn-outline-danger" type="submit">Deactivate</button>
                                                     </form>

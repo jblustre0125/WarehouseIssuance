@@ -38,10 +38,11 @@ $roleOptions = [
 <!doctype html>
 <html lang="en">
 <head>
+    <script src="<?= h(app_path('assets/central-auth.js')) ?>" data-auth-mode="<?= whAuthContext() ?>"></script>
     <title>Admin - Users</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <base href="<?= h(app_path('')) ?>">
+    <base href="<?= h(whAuthUrl(app_path(''))) ?>">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="assets/app-shell.css" rel="stylesheet">
@@ -714,7 +715,7 @@ $roleOptions = [
                 </div>
 
                 <?php if ($editUser): ?>
-                    <a class="btn btn-outline-secondary" href="pages/admin/admin_users.php">Cancel Editing</a>
+                    <a class="btn btn-outline-secondary" href="pages/admin/admin_users.php?wh_auth=<?=whAuthContext()?>">Cancel Editing</a>
                 <?php endif; ?>
             </div>
         </section>
@@ -750,7 +751,7 @@ $roleOptions = [
                         </div>
 
                         <div class="sap-card-body">
-                            <form method="post" action="actions/user_save.php" autocomplete="off">
+                            <form method="post" action="actions/user_save.php?wh_auth=<?=whAuthContext()?>" autocomplete="off"><?=whAuthField()?>
                                 <input type="hidden" name="user_id" value="<?= h($editUser['UserID'] ?? '') ?>">
 
                                 <div class="row g-3">
@@ -824,7 +825,7 @@ $roleOptions = [
                                     <div class="col-12 d-flex flex-wrap gap-2 pt-1">
                                         <button class="btn btn-primary" type="submit"><?= $editUser ? 'Update User' : 'Add User' ?></button>
                                         <?php if ($editUser): ?>
-                                            <a class="btn btn-outline-secondary" href="pages/admin/admin_users.php">Cancel</a>
+                                            <a class="btn btn-outline-secondary" href="pages/admin/admin_users.php?wh_auth=<?=whAuthContext()?>">Cancel</a>
                                         <?php endif; ?>
                                     </div>
                                 </div>
@@ -889,8 +890,8 @@ $roleOptions = [
                                                 </td>
                                                 <td>
                                                     <div class="action-buttons">
-                                                        <a class="btn btn-sm btn-outline-primary" href="pages/admin/admin_users.php?edit=<?= (int)$u['UserID'] ?>">Edit</a>
-                                                        <a class="btn btn-sm btn-outline-danger" href="actions/user_delete.php?id=<?= (int)$u['UserID'] ?>" onclick="return confirm('Deactivate this user?')">Delete</a>
+                                                        <a class="btn btn-sm btn-outline-primary" href="pages/admin/admin_users.php?wh_auth=<?=whAuthContext()?>&amp;edit=<?= (int)$u['UserID'] ?>">Edit</a>
+                                                        <a class="btn btn-sm btn-outline-danger" href="actions/user_delete.php?wh_auth=<?=whAuthContext()?>&amp;id=<?= (int)$u['UserID'] ?>" onclick="return confirm('Deactivate this user?')">Delete</a>
                                                     </div>
                                                 </td>
                                             </tr>

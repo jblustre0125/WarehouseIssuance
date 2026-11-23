@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/db_connect.php';
+require_once __DIR__ . '/../central-session.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
 const ROLE_ISSUER = 'issuer';
@@ -19,7 +20,7 @@ function app_path($path = '')
     $base = preg_replace('#/[^/]*\.php$#', '', $base);
     return rtrim($base, '/') . '/' . ltrim((string)$path, '/');
 }
-function require_login() { if (!current_user()) { header('Location: ' . app_path('pages/auth/login.php')); exit; } }
+function require_login() { if (!current_user()) { header('Location: ' . whAuthUrl(app_path('pages/auth/login.php'))); exit; } }
 function require_role($roles)
 {
     require_login();
@@ -101,21 +102,21 @@ function navbar($active = '')
     ?>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container-fluid">
-            <a class="navbar-brand" href="<?= h(app_path('index.php')) ?>">NBC Rawmat Traceability</a>
+            <a class="navbar-brand" href="<?= h(whAuthUrl(app_path('index.php'))) ?>">NBC Rawmat Traceability</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#topNav"><span class="navbar-toggler-icon"></span></button>
             <div class="collapse navbar-collapse" id="topNav">
             <?php if ($u): ?>
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item"><a class="nav-link <?= $active === 'home' ? 'active' : '' ?>" href="<?= h(app_path('index.php')) ?>">Home</a></li>
-                    <?php if (role_can_access($role, [ROLE_PICKER, ROLE_ADMIN])): ?><li class="nav-item"><a class="nav-link <?= $active === 'picker' ? 'active' : '' ?>" href="<?= h(app_path('pages/picker/picker.php')) ?>">Pick Tags</a></li><li class="nav-item"><a class="nav-link <?= $active === 'picker_report' ? 'active' : '' ?>" href="<?= h(app_path('pages/picker/picker_report.php')) ?>">Picker Report</a></li><?php endif; ?>
-                    <?php if (role_can_access($role, [ROLE_ISSUER, ROLE_ADMIN])): ?><li class="nav-item"><a class="nav-link <?= $active === 'issuer' ? 'active' : '' ?>" href="<?= h(app_path('pages/issuer/issuer.php')) ?>">Issue Scan</a></li><li class="nav-item"><a class="nav-link <?= $active === 'issuer_report' ? 'active' : '' ?>" href="<?= h(app_path('pages/issuer/issuer_scan_report.php')) ?>">Issue Report</a></li><?php endif; ?>
-                    <?php if (role_can_access($role, [ROLE_REQUESTOR, ROLE_ADMIN])): ?><li class="nav-item"><a class="nav-link <?= $active === 'requestor' ? 'active' : '' ?>" href="<?= h(app_path('pages/requestor/requestor.php')) ?>">Issue Request</a></li><li class="nav-item"><a class="nav-link <?= $active === 'requestor_report' ? 'active' : '' ?>" href="<?= h(app_path('pages/requestor/requestor_report.php')) ?>">Request Report</a></li><?php endif; ?>
-                    <li class="nav-item"><a class="nav-link <?= $active === 'dashboard' ? 'active' : '' ?>" href="<?= h(app_path('pages/dashboard/verification_dashboard.php')) ?>">Verification</a></li>
-                    <li class="nav-item"><a class="nav-link <?= $active === 'transactions' ? 'active' : '' ?>" href="<?= h(app_path('pages/reports/view_transactions.php')) ?>">Transactions</a></li>
-                    <?php if ($role === ROLE_ADMIN): ?><li class="nav-item"><a class="nav-link <?= $active === 'admin' ? 'active' : '' ?>" href="<?= h(app_path('pages/admin/admin_users.php')) ?>">Users</a></li><?php endif; ?>
+                    <li class="nav-item"><a class="nav-link <?= $active === 'home' ? 'active' : '' ?>" href="<?= h(whAuthUrl(app_path('index.php'))) ?>">Home</a></li>
+                    <?php if (role_can_access($role, [ROLE_PICKER, ROLE_ADMIN])): ?><li class="nav-item"><a class="nav-link <?= $active === 'picker' ? 'active' : '' ?>" href="<?= h(whAuthUrl(app_path('pages/picker/picker.php'))) ?>">Pick Tags</a></li><li class="nav-item"><a class="nav-link <?= $active === 'picker_report' ? 'active' : '' ?>" href="<?= h(whAuthUrl(app_path('pages/picker/picker_report.php'))) ?>">Picker Report</a></li><?php endif; ?>
+                    <?php if (role_can_access($role, [ROLE_ISSUER, ROLE_ADMIN])): ?><li class="nav-item"><a class="nav-link <?= $active === 'issuer' ? 'active' : '' ?>" href="<?= h(whAuthUrl(app_path('pages/issuer/issuer.php'))) ?>">Issue Scan</a></li><li class="nav-item"><a class="nav-link <?= $active === 'issuer_report' ? 'active' : '' ?>" href="<?= h(whAuthUrl(app_path('pages/issuer/issuer_scan_report.php'))) ?>">Issue Report</a></li><?php endif; ?>
+                    <?php if (role_can_access($role, [ROLE_REQUESTOR, ROLE_ADMIN])): ?><li class="nav-item"><a class="nav-link <?= $active === 'requestor' ? 'active' : '' ?>" href="<?= h(whAuthUrl(app_path('pages/requestor/requestor.php'))) ?>">Issue Request</a></li><li class="nav-item"><a class="nav-link <?= $active === 'requestor_report' ? 'active' : '' ?>" href="<?= h(whAuthUrl(app_path('pages/requestor/requestor_report.php'))) ?>">Request Report</a></li><?php endif; ?>
+                    <li class="nav-item"><a class="nav-link <?= $active === 'dashboard' ? 'active' : '' ?>" href="<?= h(whAuthUrl(app_path('pages/dashboard/verification_dashboard.php'))) ?>">Verification</a></li>
+                    <li class="nav-item"><a class="nav-link <?= $active === 'transactions' ? 'active' : '' ?>" href="<?= h(whAuthUrl(app_path('pages/reports/view_transactions.php'))) ?>">Transactions</a></li>
+                    <?php if ($role === ROLE_ADMIN): ?><li class="nav-item"><a class="nav-link <?= $active === 'admin' ? 'active' : '' ?>" href="<?= h(whAuthUrl(app_path('pages/admin/admin_users.php'))) ?>">Users</a></li><?php endif; ?>
                 </ul>
                 <span class="navbar-text me-3"><?= h($u['full_name'] ?: $u['username']) ?> (<?= h(role_label($u['role'])) ?>)</span>
-                <a class="btn btn-sm btn-outline-light" href="<?= h(app_path('pages/auth/logout.php')) ?>">Logout</a>
+                <a class="btn btn-sm btn-outline-light" href="<?= h(whAuthUrl(app_path('pages/auth/logout.php'))) ?>">Logout</a>
             <?php endif; ?>
             </div>
         </div>

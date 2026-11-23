@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/../../includes/central-auth.php'; ?>
 <!doctype html>
 <html>
 <head>
@@ -14,7 +15,7 @@
             <div class="row my-3">
                 <div class="col-md-3"><div class="p-3 bg-white rounded border"><div>Saved</div><div class="display-6 text-success"><?= count($saved) ?></div></div></div>
                 <div class="col-md-3"><div class="p-3 bg-white rounded border"><div>Failed</div><div class="display-6 text-danger"><?= count($failed) ?></div></div></div>
-                <div class="col-md-6 text-end align-self-center"><a class="btn btn-outline-primary" href="<?= h($backUrl) ?>">Scan More</a> <a class="btn btn-primary" href="pages/reports/view_transactions.php">View Transactions</a></div>
+                <div class="col-md-6 text-end align-self-center"><a class="btn btn-outline-primary" href="<?= h(whAuthUrl($backUrl)) ?>">Scan More</a> <a class="btn btn-primary" href="pages/reports/view_transactions.php?wh_auth=<?=whAuthContext()?>">View Transactions</a></div>
             </div>
             <div class="table-responsive">
                 <table class="table table-sm table-bordered">

@@ -168,3 +168,7 @@ To run both SAP cache sync and ScanPlus dashboard cache sync in one hidden sched
 - Program/script: `wscript.exe`
 - Arguments: `"C:\Xampp\htdocs\WarehouseIssuance\tools\run_all_cache_hidden.vbs"`
 - Start in: `C:\Xampp\htdocs\WarehouseIssuance`
+
+## Optional NBC Central SSO
+
+See [Warehouse SSO setup and testing](docs/CENTRAL_SSO.md). Direct passwords remain available, and Central uses a separate session with the same native roles and account fields. Run `composer test:sso` for tests without live SQL, SAP or printing.

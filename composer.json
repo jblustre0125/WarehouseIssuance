@@ -1,5 +1,12 @@
 {
     "require": {
         "endroid/qr-code": "^6.0"
+    },
+    "scripts": {
+        "test:sso": [
+            "@php tests/central-sso.php",
+            "node tests/central-auth.cjs",
+            "node tools/test_tablet_printer.cjs"
+        ]
     }
 }

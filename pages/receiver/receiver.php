@@ -12,10 +12,11 @@ $prefillToken = trim($_GET['token'] ?? '');
 <!doctype html>
 <html lang="en">
 <head>
+    <script src="<?= h(app_path('assets/central-auth.js')) ?>" data-auth-mode="<?= whAuthContext() ?>"></script>
     <title>Receiver Scan</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <base href="<?= h(app_path('')) ?>">
+    <base href="<?= h(whAuthUrl(app_path(''))) ?>">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="assets/app-shell.css" rel="stylesheet">
@@ -668,7 +669,7 @@ function extractToken(raw) {
 async function postReceive(payload) {
     const body = new URLSearchParams(payload);
 
-    const res = await fetch('api/scan_receive_item.php', {
+    const res = await WarehouseAuth.fetch('api/scan_receive_item.php', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded'

@@ -1,3 +1,6 @@
 <?php
-// Warehouse native login restored. Retained for cached prepend settings.
-// This file does not create a session or authenticate a user.
+// Warehouse-owned compatibility shim for explicit or cached prepend bootstraps.
+require_once __DIR__ . '/includes/central-auth.php';
+if (whCallbackRequest()) return;
+if (whSelectCentralSession()) return;
+whResumeLegacyNative();

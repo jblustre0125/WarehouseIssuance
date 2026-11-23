@@ -78,6 +78,6 @@ if ($stmt === false) {
     app_error(sqlsrv_fail_message());
 }
 
-header('Location: ' . app_path('pages/warehouse/pack_sizes.php?saved=1&q=' . urlencode($itemCode)));
+header('Location: ' . whAuthUrl(app_path('pages/warehouse/pack_sizes.php?saved=1&q=' . urlencode($itemCode))));
 exit;
 ?>
